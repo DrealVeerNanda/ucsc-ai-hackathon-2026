@@ -184,6 +184,29 @@ GUIDANCE_WORDS=1 python main.py --guidance real   # fallback: spoken left, right
 - `voice.py` asks for a typed target unless a microphone is present. Then it is push-to-talk: Enter, speak, Enter. `VOICE_MODE=type` forces typing.
 - The GX10 has no speakers or microphone of its own, only HDMI. Pair the earbuds, then set `GUIDANCE_DEVICE` and `VOICE_DEVICE` if they are not the default.
 
+## Where the time goes
+
+Every run writes a trace to `logs/trace_*.jsonl` by itself: one line per camera frame with the time each step took, plus a line for every slow call (model loads, Cosmos, Whisper, audio underruns).
+
+```bash
+python tools/trace_report.py                       # newest run: every step, slowest first, and what limits the frame rate
+python tools/trace_report.py --skip 30 --csv out/trace.csv   # drop warm-up frames; one row per frame for a spreadsheet
+python tools/measure_camera_latency.py pathon      # at the GX10's own screen: real camera-to-GX10 delay, by flashing the screen
+```
+
+| In the trace | Meaning |
+|---|---|
+| `cable_ms` | Phone to GX10, extra over the quickest recent frame. Only sources that send a timestamp (PathOn, relay). |
+| `wait_ms` | The frame had arrived and sat waiting for the loop |
+| `skipped` | Camera frames that arrived and were never used |
+| `stream.prepare`, `perception.detector`, `perception.hand`, `perception.depth`, `guidance` | Time inside each step |
+| `loop_ms`, `idle_ms` | The whole loop for that frame, then how long it waited for the camera |
+| `e2e_ms` | Frame arrived to sound updated |
+
+To time something new: `with tracing.span("my.step"):` inside the loop, or `tracing.event("my.call", ms=...)` for anything slower than a frame. `TRACE=0` switches tracing off.
+
+The trace cannot see two things: the fixed camera and cable delay (the flash tool measures it) and Bluetooth earbud delay.
+
 ## Workflow
 
 - Pull before you start: `git pull --rebase`
