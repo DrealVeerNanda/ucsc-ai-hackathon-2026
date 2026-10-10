@@ -68,21 +68,38 @@ def back_project(u: float, v: float, d: float, K: np.ndarray) -> np.ndarray:
     return np.array([(u - K[0, 2]) * d / K[0, 0], (v - K[1, 2]) * d / K[1, 1], d])
 
 
-def box_xyz(box, depth: np.ndarray, K: np.ndarray):
-    """3D point of an object: its box centre, at the median depth of the box's centre third."""
+def box_xyz(box, depth: np.ndarray, K: np.ndarray, exclude: np.ndarray | None = None):
+    """3D point of an object: its box centre, at the median depth of the box's centre third.
+    With `exclude` (a mask of pixels that are hand, not object) the whole box is used minus
+    those pixels, leaning to the near side so the background behind the object does not win."""
     x1, y1, x2, y2 = box
     cx, cy = 0.5 * (x1 + x2), 0.5 * (y1 + y2)
-    hw, hh = max(2.0, (x2 - x1) / 6.0), max(2.0, (y2 - y1) / 6.0)
+    part = 2.0 if exclude is not None else 6.0
+    hw, hh = max(2.0, (x2 - x1) / part), max(2.0, (y2 - y1) / part)
     h, w = depth.shape[:2]
     xa, xb = int(max(0, cx - hw)), int(min(w, cx + hw + 1))
     ya, yb = int(max(0, cy - hh)), int(min(h, cy + hh + 1))
     if xb <= xa or yb <= ya:
         return None
     vals = depth[ya:yb, xa:xb]
-    vals = vals[(vals > DEPTH_MIN) & (vals < DEPTH_MAX)]
-    if vals.size < 5:
+    ok = (vals > DEPTH_MIN) & (vals < DEPTH_MAX)
+    if exclude is not None:
+        ok &= ~exclude[ya:yb, xa:xb].astype(bool)
+    vals = vals[ok]
+    if vals.size < (30 if exclude is not None else 5):
         return None
-    return back_project(cx, cy, float(np.median(vals)), K)
+    d = np.percentile(vals, 40) if exclude is not None else np.median(vals)
+    return back_project(cx, cy, float(d), K)
+
+
+def hand_mask(shape, points: np.ndarray, grow: float = 0.25, min_px: int = 41) -> np.ndarray:
+    """Pixels covered by the hand: the hull of its known points, grown to take in finger width."""
+    mask = np.zeros(shape[:2], np.uint8)
+    pts = np.round(points).astype(np.int32)
+    cv2.fillConvexPoly(mask, cv2.convexHull(pts), 1)
+    size = float(max(np.ptp(pts[:, 0]), np.ptp(pts[:, 1])))
+    k = max(min_px, int(grow * size)) | 1
+    return cv2.dilate(mask, np.ones((k, k), np.uint8))
 
 
 def iou(a, b) -> float:
@@ -377,6 +394,10 @@ class Perception:
         self._anchored = pose is not None
         covered = self._covered(self._box, hand)
         measured = box_xyz(self._box, frame.depth, frame.K) if seen and not covered else None
+        if measured is None and seen and covered and self._anchor is None:
+            # First sight of the object with the hand already on it: nothing is remembered yet,
+            # so read the depth from the part of the box the hand does not cover.
+            measured = box_xyz(self._box, frame.depth, frame.K, exclude=hand_mask(frame.depth.shape, hand.points))
         visible = measured is not None
         if measured is not None:
             p = measured if pose is None else pose[:3, :3] @ measured + pose[:3, 3]

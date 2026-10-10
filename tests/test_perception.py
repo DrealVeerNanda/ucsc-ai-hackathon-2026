@@ -263,3 +263,22 @@ def test_module_locate_runs_without_any_model(monkeypatch):
     monkeypatch.setattr(perception, "_default", None)
     s = perception.locate(frame(hands=[HAND]), "mug")
     assert s.object_xyz is None and np.allclose(s.hand_xyz, HAND, atol=0.004)
+
+
+def test_object_first_seen_with_the_hand_already_on_it_still_gets_a_position():
+    over = OBJ + np.array([0.0, 0.0, -0.08])            # fingertip resting 8 cm in front of the object centre
+    p = make(hands=(over,))
+    s = p.locate(frame(t=0.0, hands=[over]), "mug")     # no earlier frame without the hand
+    assert s.object_visible and s.object_xyz is not None
+    assert s.object_xyz[2] == pytest.approx(OBJ[2], abs=0.01)       # the object's depth, not the hand's
+    assert s.hand_xyz[2] == pytest.approx(over[2], abs=0.004)
+    assert np.linalg.norm(s.object_xyz - s.hand_xyz) == pytest.approx(0.08, abs=0.015)
+
+
+def test_hand_mask_covers_the_hand_and_little_else():
+    pts = np.array([[200, 300], [260, 300], [260, 420], [200, 420]], np.float32)
+    m = perception.hand_mask((H, W), pts)
+    assert m[360, 230] == 1 and m[300, 190] == 1         # inside, and just outside the hull (finger width)
+    assert m[360, 400] == 0 and m[100, 230] == 0
+    one = perception.hand_mask((H, W), np.array([[240, 320]], np.float32))
+    assert one[320, 240] == 1 and one[320, 258] == 1 and one[320, 300] == 0
