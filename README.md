@@ -5,6 +5,7 @@ Our team's project for the UCSC AI Hackathon, October 10–11, 2026, at UC Santa
 ## Team
 
 - Veer Nanda (@DrealVeerNanda)
+- Gavin Wang (gavinyhwang@gmail.com)
 - _add yourself_
 
 ## Project: Blindfold pickup (ASUS Local AI track)
