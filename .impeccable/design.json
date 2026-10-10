@@ -1,0 +1,478 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-10T16:00:00-07:00",
+  "title": "Design System: Blindfold pickup, live",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Blue-Black Ground",
+        "canonical": "oklch(0.165 0.022 255)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "plate": {
+        "role": "neutral",
+        "displayName": "Plate",
+        "canonical": "oklch(0.215 0.026 255)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "plate-hi": {
+        "role": "neutral",
+        "displayName": "Raised Plate",
+        "canonical": "oklch(0.265 0.03 255)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "oklch(0.33 0.03 255)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Broadcast White",
+        "canonical": "oklch(0.965 0.005 255)",
+        "tonalRamp": [
+          "#0a0b0c",
+          "#222426",
+          "#3e4042",
+          "#5c5e60",
+          "#7e8083",
+          "#9fa2a5",
+          "#c5c7ca",
+          "#edeef0"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "canonical": "oklch(0.76 0.02 255)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "faint": {
+        "role": "neutral",
+        "displayName": "Faint",
+        "canonical": "oklch(0.6 0.022 255)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "scrim": {
+        "role": "neutral",
+        "displayName": "Scrim",
+        "canonical": "oklch(0.12 0.02 255 / 0.82)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "video-well": {
+        "role": "neutral",
+        "displayName": "Video Well",
+        "canonical": "oklch(0.1 0.015 255)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "telestrator-yellow": {
+        "role": "primary",
+        "displayName": "Telestrator Yellow",
+        "canonical": "oklch(0.88 0.165 96)",
+        "tonalRamp": [
+          "#2a2100",
+          "#453a00",
+          "#625500",
+          "#807200",
+          "#a09000",
+          "#c1af0f",
+          "#e3cf35",
+          "#fff0a8"
+        ]
+      },
+      "on-yellow": {
+        "role": "primary",
+        "displayName": "Yellow Ink",
+        "canonical": "oklch(0.21 0.04 96)",
+        "tonalRamp": [
+          "#0e0b02",
+          "#2a240b",
+          "#464027",
+          "#645e44",
+          "#878165",
+          "#a9a286",
+          "#cfc8ab",
+          "#f3efdd"
+        ]
+      },
+      "grab-green": {
+        "role": "secondary",
+        "displayName": "Grab Green",
+        "canonical": "oklch(0.82 0.16 152)",
+        "tonalRamp": [
+          "#001400",
+          "#003500",
+          "#005403",
+          "#007529",
+          "#009a4d",
+          "#3ebd6d",
+          "#6be592",
+          "#beffcf"
+        ]
+      },
+      "on-green": {
+        "role": "secondary",
+        "displayName": "Green Ink",
+        "canonical": "oklch(0.2 0.04 152)",
+        "tonalRamp": [
+          "#040e06",
+          "#142a1a",
+          "#304635",
+          "#4d6453",
+          "#6f8775",
+          "#90a995",
+          "#b5cfbb",
+          "#e3f3e7"
+        ]
+      },
+      "warn-amber": {
+        "role": "tertiary",
+        "displayName": "Warn Amber",
+        "canonical": "oklch(0.8 0.13 65)",
+        "tonalRamp": [
+          "#1f0100",
+          "#4a0700",
+          "#6b2a00",
+          "#8e4a00",
+          "#b46d10",
+          "#d98f3f",
+          "#ffb567",
+          "#ffe5b8"
+        ]
+      },
+      "alert-red": {
+        "role": "tertiary",
+        "displayName": "Alert Red",
+        "canonical": "oklch(0.62 0.19 27)",
+        "tonalRamp": [
+          "#2c0000",
+          "#630000",
+          "#890000",
+          "#b00c15",
+          "#db423c",
+          "#ff685d",
+          "#ff9082",
+          "#ffd1c5"
+        ]
+      },
+      "depth-far": {
+        "role": "data",
+        "displayName": "Depth Far",
+        "canonical": "#0c1628",
+        "tonalRamp": [
+          "#0c1628",
+          "#26354a",
+          "#41556c",
+          "#5d758e",
+          "#7895b0",
+          "#93b5d1",
+          "#adcfeb",
+          "#c4e4ff"
+        ]
+      },
+      "depth-near": {
+        "role": "data",
+        "displayName": "Depth Near",
+        "canonical": "#c4e4ff",
+        "tonalRamp": [
+          "#0c1628",
+          "#26354a",
+          "#41556c",
+          "#5d758e",
+          "#7895b0",
+          "#93b5d1",
+          "#adcfeb",
+          "#c4e4ff"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Guidance state word, read from 2 m."
+      },
+      "display-number": {
+        "displayName": "Display Number",
+        "purpose": "Fingertip-to-object distance in telestrator yellow."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Clock bug time."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Current caption phrase and move-hand values."
+      },
+      "section": {
+        "displayName": "Section",
+        "purpose": "Column and rail headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Labels, rail text, object tags."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Sub-lines, step statuses, meter ends, caption tag."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "The only easing; caption entry and meter-mark fade."
+      },
+      {
+        "name": "caption-in",
+        "value": "220ms",
+        "purpose": "New caption phrase fades in; adds a 12px slide only under prefers-reduced-motion: no-preference."
+      },
+      {
+        "name": "caption-fade",
+        "value": "180ms",
+        "purpose": "Caption text opacity change."
+      },
+      {
+        "name": "mark-fade",
+        "value": "200ms",
+        "purpose": "Tone meter mark fades to 25% when the tone is off; position snaps."
+      },
+      {
+        "name": "beep-blink",
+        "value": "var(--period) steps(1, end) infinite",
+        "purpose": "Beep dot blinks at the real beep rate; state-carrying, kept under reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stack",
+        "value": "max-width: 899px"
+      },
+      {
+        "name": "rail-below",
+        "value": "max-width: 1279px"
+      },
+      {
+        "name": "root-18",
+        "value": "min-width: 1600px"
+      },
+      {
+        "name": "root-20",
+        "value": "min-width: 1880px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Leg Tag",
+      "kind": "chip",
+      "refersTo": "tag-leg",
+      "description": "Distance tag on the active fingertip-to-object leg; turns green within reach.",
+      "html": "<span class=\"ds-tag-leg\" tabindex=\"0\">18 cm</span> <span class=\"ds-tag-leg ds-is-close\">4 cm</span>",
+      "css": ".ds-tag-leg{font-family:system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif;font-variant-numeric:tabular-nums;display:inline-block;padding:2px 12px;border-radius:3px;background:var(--leg, oklch(0.88 0.165 96));color:var(--on-leg, oklch(0.21 0.04 96));font-size:1.44rem;font-weight:600;line-height:1.3;white-space:nowrap} .ds-tag-leg.ds-is-close{background:var(--grab, oklch(0.82 0.16 152));color:var(--on-grab, oklch(0.2 0.04 152))} .ds-tag-leg:focus-visible{outline:2px solid var(--text, oklch(0.965 0.005 255));outline-offset:2px}"
+    },
+    {
+      "name": "Object Tag",
+      "kind": "chip",
+      "refersTo": "tag-object",
+      "description": "Name plate pinned to the detected object; muted when remembered rather than seen.",
+      "html": "<span class=\"ds-tag-obj\">mug</span> <span class=\"ds-tag-obj ds-is-remembered\">mug</span>",
+      "css": ".ds-tag-obj{font-family:system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif;font-variant-numeric:tabular-nums;display:inline-block;padding:2px 8px;border-radius:3px;background:var(--text, oklch(0.965 0.005 255));color:var(--ground, oklch(0.165 0.022 255));font-size:1rem;font-weight:600;line-height:1.3} .ds-tag-obj.ds-is-remembered{background:var(--muted, oklch(0.76 0.02 255))}"
+    },
+    {
+      "name": "Hand Warning Tag",
+      "kind": "chip",
+      "refersTo": "tag-hand-warn",
+      "description": "Amber tag when the fingertip has no lidar depth.",
+      "html": "<span class=\"ds-tag-hand\">Too close for lidar</span>",
+      "css": ".ds-tag-hand{font-family:system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif;font-variant-numeric:tabular-nums;display:inline-block;padding:2px 8px;border-radius:3px;background:var(--warn, oklch(0.8 0.13 65));color:var(--on-leg, oklch(0.21 0.04 96));font-size:1rem;font-weight:500;line-height:1.3}"
+    },
+    {
+      "name": "Clock Bug",
+      "kind": "custom",
+      "refersTo": "clock-bug",
+      "description": "Elapsed-time bug over the top left of the video with a budget bar.",
+      "html": "<div class=\"ds-bug\"><p class=\"ds-bug-time\">0:07.4</p><p class=\"ds-bug-sub\">Finding the mug</p><div class=\"ds-budget\"><span style=\"--p:.4\"></span></div></div>",
+      "css": ".ds-bug{font-family:system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif;font-variant-numeric:tabular-nums;display:inline-block;min-width:11.5rem;padding:8px 16px 12px;border-radius:3px;background:var(--scrim, oklch(0.12 0.02 255 / 0.82));color:var(--text, oklch(0.965 0.005 255))} .ds-bug p{margin:0} .ds-bug-time{font-size:2.074rem;font-weight:700;line-height:1.1;letter-spacing:-0.01em} .ds-bug-sub{font-size:.833rem;color:var(--muted, oklch(0.76 0.02 255))} .ds-budget{position:relative;height:4px;margin-top:8px;background:var(--rule, oklch(0.33 0.03 255));border-radius:2px;overflow:hidden} .ds-budget span{position:absolute;inset:0;transform-origin:left;transform:scaleX(var(--p,0));background:var(--text, oklch(0.965 0.005 255))}"
+    },
+    {
+      "name": "Lower-Third Caption",
+      "kind": "custom",
+      "refersTo": "caption-now",
+      "description": "What the wearer hears, as a scrim strip at the bottom of the video.",
+      "html": "<div class=\"ds-caps\"><p class=\"ds-cap ds-cap-prev\">Found it</p><p class=\"ds-cap ds-cap-now\"><span class=\"ds-cap-tag\">Wearer hears</span><span>Show me your hand</span></p></div>",
+      "css": ".ds-caps{font-family:system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif;font-variant-numeric:tabular-nums;display:grid;color:var(--text, oklch(0.965 0.005 255))} .ds-cap{margin:0;padding:4px 16px;background:var(--scrim, oklch(0.12 0.02 255 / 0.82))} .ds-cap-prev{color:var(--muted, oklch(0.76 0.02 255));font-size:1rem} .ds-cap-now{display:flex;align-items:center;gap:12px;padding-block:12px;font-size:1.728rem;font-weight:600;line-height:1.25} .ds-cap-tag{flex:none;padding:2px 8px;border-radius:3px;background:var(--text, oklch(0.965 0.005 255));color:var(--ground, oklch(0.165 0.022 255));font-size:.833rem;font-weight:700} .ds-cap-now span:last-child{animation:ds-cap-in 220ms cubic-bezier(0.22,1,0.36,1)} @keyframes ds-cap-in{from{opacity:0}}"
+    },
+    {
+      "name": "Stale Banner",
+      "kind": "custom",
+      "refersTo": "stale-banner",
+      "description": "Alert plate shown only when frames stop arriving.",
+      "html": "<p class=\"ds-stale\" role=\"status\">No new frames for 3 s</p>",
+      "css": ".ds-stale{font-family:system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif;font-variant-numeric:tabular-nums;display:inline-block;margin:0;padding:8px 16px;border-radius:3px;background:var(--alert, oklch(0.62 0.19 27));color:var(--text, oklch(0.965 0.005 255));font-size:1.2rem;font-weight:600;text-align:center}"
+    },
+    {
+      "name": "Notice Plate",
+      "kind": "card",
+      "refersTo": "notice-plate",
+      "description": "Solid plate for waiting and lost-connection states.",
+      "html": "<p class=\"ds-notice\">Waiting for the first frame from main.py…</p>",
+      "css": ".ds-notice{font-family:system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif;font-variant-numeric:tabular-nums;display:inline-block;margin:0;padding:8px 16px;border-radius:3px;background:var(--plate, oklch(0.215 0.026 255));color:var(--muted, oklch(0.76 0.02 255));font-weight:500}"
+    },
+    {
+      "name": "Move Row",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "Fixed-cell move-hand direction row; green when on target.",
+      "html": "<dl class=\"ds-moves\"><div class=\"ds-move\"><dt>Side</dt><dd><svg viewBox=\"0 0 24 24\" width=\"1em\" height=\"1em\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg>6 cm right</dd></div><div class=\"ds-move ds-is-ok\"><dt>Height</dt><dd>On target</dd></div></dl>",
+      "css": ".ds-moves{font-family:system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif;font-variant-numeric:tabular-nums;margin:0;border-top:1px solid var(--rule, oklch(0.33 0.03 255));color:var(--text, oklch(0.965 0.005 255))} .ds-move{display:grid;grid-template-columns:5.5rem 1fr;align-items:center;padding:12px 0;border-bottom:1px solid var(--rule, oklch(0.33 0.03 255))} .ds-move dt{color:var(--muted, oklch(0.76 0.02 255))} .ds-move dd{margin:0;display:flex;align-items:center;gap:12px;font-size:1.728rem;font-weight:600;line-height:1.2} .ds-move.ds-is-ok dd{color:var(--grab, oklch(0.82 0.16 152))}"
+    },
+    {
+      "name": "Tone Meter",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "Pan or pitch meter: raised track, centre tick, white mark; snaps, fades when off.",
+      "html": "<div class=\"ds-meter\"><p class=\"ds-meter-name\">Pan <span>toward the side to move</span></p><div class=\"ds-track\"><span class=\"ds-mark\" style=\"--pos:.68\"></span></div><p class=\"ds-ends\"><span>Left ear</span><span>Right ear</span></p></div>",
+      "css": ".ds-meter{font-family:system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif;font-variant-numeric:tabular-nums;color:var(--text, oklch(0.965 0.005 255));min-width:16rem} .ds-meter p{margin:0} .ds-meter-name{font-weight:600} .ds-meter-name span{margin-left:8px;color:var(--muted, oklch(0.76 0.02 255));font-weight:400} .ds-track{position:relative;height:10px;margin-top:8px;border-radius:5px;background:var(--plate-hi, oklch(0.265 0.03 255))} .ds-track::after{content:'';position:absolute;left:50%;top:-3px;bottom:-3px;width:2px;translate:-1px 0;background:var(--rule, oklch(0.33 0.03 255))} .ds-mark{position:absolute;top:50%;left:calc(var(--pos,.5)*100%);width:22px;height:22px;border-radius:50%;background:var(--text, oklch(0.965 0.005 255));translate:-50% -50%;transition:opacity 200ms cubic-bezier(0.22,1,0.36,1)} .ds-ends{display:flex;justify-content:space-between;margin-top:4px;font-size:.833rem;color:var(--muted, oklch(0.76 0.02 255))}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Telestrator Booth",
+    "overview": "**Creative North Star: \"The Telestrator Booth\"**\n\nThe screen is a live sports broadcast of one event: a blindfolded hand reaching an object. Judges stand 1 to 2 m away and cannot hear the earbuds, so every graphic is a broadcast element laid over or beside live video: a clock bug, a lower-third caption, a telestrator line drawn from fingertip to object, a picture-in-picture depth inset. It is an Operate surface (a live monitor), also used by the team while tuning, so density stays honest: real frames, real millimetres, real milliseconds, and empty states where nothing has been measured yet.\n\nGraphics are flat plates on a blue-black ground. The video is always the brightest thing on screen; the surround is dark by decision so it never competes. One colour, telestrator yellow, is reserved for the active leg; green means success and nothing else. Type is a single white sans with tabular figures, set big enough that the state word and the distance read from across the table. Motion is almost absent: values snap like a broadcast data feed, and only new caption phrases wipe in.\n\nReference studied for the overlay grammar (annotations drawn over a camera image, depth beside colour): https://docs.foxglove.dev/docs/visualization/panels/image. The world is Live Broadcast Graphics (seed 5260f28d, code-led); it rejects the docked-panel telemetry grid.",
+    "keyCharacteristics": [
+      "Dark only; the live video is the brightest element on screen.",
+      "One reserved accent (telestrator yellow) for the active leg; green only for success.",
+      "Flat broadcast plates with 3px corners, no shadows.",
+      "System sans with tabular numerals everywhere; poster-size state and distance read from 2 m.",
+      "Values snap; motion only for new caption phrases and the state-carrying beep dot."
+    ],
+    "rules": [
+      {
+        "name": "The Telestrator Rule",
+        "body": "Yellow is the active leg. If an element is not the fingertip-to-object line, its distance, or that leg on the map, it is not yellow.",
+        "section": "colors"
+      },
+      {
+        "name": "The Green Means Grab Rule",
+        "body": "Green appears only when something succeeded. Never as decoration, a status-OK dot, or a brand colour.",
+        "section": "colors"
+      },
+      {
+        "name": "The Brightest Thing Rule",
+        "body": "Nothing on screen may outshine the video. Plates over video use the scrim; the surround stays at ground level. This is why the surface is dark only (doctrine rule 29 exception, recorded here).",
+        "section": "colors"
+      },
+      {
+        "name": "The Depth Keeps Its Own Hue Rule",
+        "body": "Data visualisations (the depth inset) ramp within the ground's blue family; they never borrow a signal colour.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Everything Rule",
+        "body": "`font-variant-numeric: tabular-nums` is set on the body; every number on screen holds its width while it changes.",
+        "section": "typography"
+      },
+      {
+        "name": "The Two Metre Rule",
+        "body": "The state word and the distance are deliberately larger than doctrine rule 15's Operate cap of 2x body (4.3x and 5.16x). They are read by judges from 1 to 2 m, the broadcast \"poster\" raise in the direction contract. No other text exceeds 2.074rem.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Plate Rule",
+        "body": "Graphics are flat plates. Separate with tone, scrim, or a 1px rule, never a shadow or a glow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** reserve Telestrator Yellow for the active leg: the line, its tag, the distance number, the map leg.",
+      "**Do** use Grab Green only for success: grab state, within reach, On target, steady tone, finished clock, the green video frame.",
+      "**Do** place plates over video on the scrim, and keep every plate to the 3px corner.",
+      "**Do** keep tabular numerals on every number and size live values against their cell, not their content.",
+      "**Do** show an honest empty state (\"–\", \"No timed trials yet\", \"Waiting for the first frame\") instead of a placeholder number.",
+      "**Do** label simulated input on screen whenever a lane is fake.",
+      "**Do** let values snap; animate only new caption phrases (opacity, plus 12px slide when motion is allowed) and the state-carrying beep blink."
+    ],
+    "donts": [
+      "**Don't** add a light scheme or lift the surround; nothing may be brighter than the video.",
+      "**Don't** colour the depth inset or any chart with yellow, green, amber, or red; ramp it within the ground's blue family.",
+      "**Don't** use shadows or glows to separate plates.",
+      "**Don't** set any text other than the state word and the distance above 2.074rem.",
+      "**Don't** use Alert Red for anything but stale frames."
+    ]
+  }
+}

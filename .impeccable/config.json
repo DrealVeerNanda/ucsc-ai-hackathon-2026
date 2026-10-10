@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font-size",
+        "value": "3.6px",
+        "createdAt": "2026-10-10T22:43:02.979Z",
+        "reason": "False positive: .map-text sizes text in the top-down map SVG's viewBox units (100 units wide), rendering about 13px on screen, not a CSS px size"
+      }
+    ]
+  }
+}
