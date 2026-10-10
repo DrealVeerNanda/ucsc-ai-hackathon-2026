@@ -177,7 +177,9 @@ def _record3d_frames(device_index: int = 0, timeout_s: float = 3.0) -> Iterator[
     session.on_new_frame = event.set
     session.on_stream_stopped = on_stopped
     if not session.connect(devs[device_index]):
-        raise SourceError("Record3D: connect() failed. Is another program already connected?")
+        raise SourceError("Record3D: the phone is on USB but the app is not streaming. Open Record3D, turn on "
+                          "Settings > 'USB Streaming mode', keep the phone unlocked and press the red button. "
+                          "(Or another program is already connected to it.)")
     try:
         truedepth = session.get_device_type() == 0  # TrueDepth = 0, LiDAR = 1
         if truedepth:
