@@ -97,9 +97,15 @@ Set `STREAM_SOURCE`, or call `stream.start(SOURCE)` once before the loop.
 
 ### Phone on the GX10
 
+This is already set up on our GX10 in `~/ucsc-ai-hackathon-2026` (`source .venv/bin/activate`). To redo it:
+
 ```bash
-sudo apt install usbmuxd libusbmuxd-dev cmake build-essential
-git clone https://github.com/marek-simonik/record3d && cd record3d && pip install .
+# The GX10 has no Python headers. Either `sudo apt install python3-dev`, or make the venv
+# from a uv Python, which brings its own and needs no sudo:
+pip install uv && uv venv --seed --managed-python --python 3.12 .venv && source .venv/bin/activate
+pip install -r requirements.txt
+# record3d has no ARM wheel and its source misses an include that GCC 13 insists on:
+CXXFLAGS="-include string -include cstdint" pip install record3d
 ```
 
 In Record3D: turn on USB Streaming mode in Settings, select the rear lidar camera, press the red button. Plug the phone into a data port, unlock it, tap Trust. Then:
