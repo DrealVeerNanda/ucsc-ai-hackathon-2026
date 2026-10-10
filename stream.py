@@ -228,6 +228,30 @@ def _pose_from_quat(p) -> np.ndarray | None:
     return _valid_pose(T)
 
 
+def _kill_orphan_iproxy():
+    """The PathOn SDK starts an `iproxy` tunnel and stops it when Python exits normally. If the
+    program is killed instead, the tunnel is left holding the port and the next run cannot
+    connect. Stop any such tunnel that no longer has a parent program."""
+    import subprocess
+    try:
+        rows = subprocess.run(["ps", "-eo", "pid=,ppid=,comm="], capture_output=True, text=True).stdout.splitlines()
+    except Exception:
+        return
+    procs = [r.split(None, 2) for r in rows]
+    names = {p[0]: p[2].strip() for p in procs if len(p) == 3}
+    killed = False
+    for pid, ppid, name in (p for p in procs if len(p) == 3):
+        # adopted by init or by systemd: whoever started it is gone
+        if name.strip() == "iproxy" and (ppid == "1" or names.get(ppid) == "systemd"):
+            try:
+                os.kill(int(pid), 15)
+                killed = True
+            except OSError:
+                pass
+    if killed:
+        time.sleep(0.3)
+
+
 def _pathon_frames(host: str | None = None, port: int = 8888, timeout_s: float = 5.0) -> Iterator[RawFrame]:
     """iPhone RGB + lidar via the free "Record3DStream - PathOn" app (USB, or Wi-Fi with host).
 
@@ -253,6 +277,7 @@ def _pathon_frames(host: str | None = None, port: int = 8888, timeout_s: float =
         if not ids:
             raise SourceError("PathOn: no iPhone on USB (`idevice_id -l` is empty). Plug in with a data "
                               "cable, unlock the phone and tap Trust.")
+        _kill_orphan_iproxy()
     client = IPhoneSensorClient(host or "localhost", port, timeout=timeout_s, usb=usb)
     try:
         try:
