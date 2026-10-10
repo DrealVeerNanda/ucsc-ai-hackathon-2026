@@ -13,6 +13,9 @@ Where frames come from is set by stream.start(SOURCE) or the STREAM_SOURCE envir
 Frames arrive upright, with depth resized to the rgb size and K matching it, so nothing
 downstream has to think about resolution or rotation. Depth 0 means no lidar reading there.
 Camera axes are x right, y down, z forward.
+
+Frame.t_recv is time.monotonic() when the frame reached this process. Record3D sends no
+capture timestamp, so Frame.t is the same value: use it for durations, not as a phone clock.
 """
 from __future__ import annotations
 
@@ -31,14 +34,7 @@ from typing import Iterator
 import cv2
 import numpy as np
 
-
-@dataclass
-class Frame:
-    rgb: np.ndarray        # H x W x 3, uint8, upright (not sideways)
-    depth: np.ndarray      # H x W, float32, meters, same size as rgb
-    K: np.ndarray          # 3 x 3 intrinsics matching rgb size
-    pose: np.ndarray | None  # 4 x 4 camera-to-world, None if unavailable
-    t: float               # capture time, seconds (time.time() when the frame reached this process)
+from interfaces import Frame
 
 
 @dataclass
@@ -126,7 +122,7 @@ def prepare(raw: RawFrame, t: float, rotate: int | None = None, max_side: int | 
         rgb = cv2.rotate(rgb, _CV_ROTATE[rotate])
         depth = cv2.rotate(depth, _CV_ROTATE[rotate])
         K = rotate_K(K, w, h, rotate)
-    return Frame(np.ascontiguousarray(rgb), np.ascontiguousarray(depth, dtype=np.float32), K, pose, t)
+    return Frame(np.ascontiguousarray(rgb), np.ascontiguousarray(depth, dtype=np.float32), K, pose, t, t_recv=t)
 
 
 def _clean_depth(depth, conf=None, min_conf: int = 1) -> np.ndarray:
@@ -447,7 +443,7 @@ class Stream:
         self.reconnect, self.loop = reconnect, loop
         self.reconnects = 0
         self._cond = threading.Condition()
-        self._latest = None  # (RawFrame, arrival time)
+        self._latest = None  # (RawFrame, time.monotonic() at arrival)
         self._seq = self._taken = 0
         self._arrivals = deque(maxlen=60)
         self._state, self._error = "connecting", None
@@ -476,7 +472,7 @@ class Stream:
                 for raw in gen:
                     if self._stop.is_set():
                         break
-                    now = time.time()
+                    now = time.monotonic()
                     with self._cond:
                         if self._state == "reconnecting":
                             print(f"[stream] {self.source} is back", file=sys.stderr)
@@ -543,7 +539,7 @@ class Stream:
             a, latest = list(self._arrivals), self._latest
             fps = (len(a) - 1) / (a[-1] - a[0]) if len(a) > 1 and a[-1] > a[0] else 0.0
             return {"source": self.source, "state": self._state, "error": self._error, "fps": round(fps, 1),
-                    "age_s": None if latest is None else time.time() - latest[1],
+                    "age_s": None if latest is None else time.monotonic() - latest[1],
                     "frames": self._seq, "reconnects": self.reconnects,
                     "raw_rgb": None if latest is None else latest[0].rgb.shape[:2],
                     "raw_depth": None if latest is None else latest[0].depth.shape[:2]}

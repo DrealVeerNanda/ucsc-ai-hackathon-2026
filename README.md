@@ -69,7 +69,7 @@ frame = stream.get_frame()   # newest Frame, or None if nothing new since the la
 - `rgb` and `depth` are upright and the same size. `K` matches that size.
 - `depth` is in meters. `0` means no lidar reading at that pixel.
 - `pose` is camera-to-world, or `None`. Do not build on it until lane 1 says it passed `tools/check_pose.py`.
-- `t` is `time.time()` when the frame arrived, so `time.time() - frame.t` is the frame age.
+- `t_recv` is `time.monotonic()` when the frame arrived, so `time.monotonic() - frame.t_recv` is the frame age. Record3D sends no capture timestamp, so `t` is the same value: fine for durations, not a phone clock.
 - `get_frame()` never blocks. `get_frame(wait=0.1)` waits up to 0.1 s for a new frame, so a loop does not spin.
 - `stream.status()` gives `state`, `fps` and `age_s` for the debug view. After a cable bump the stream reconnects by itself.
 

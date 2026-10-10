@@ -10,7 +10,8 @@ import numpy as np
 import pytest
 
 import stream
-from stream import Frame, RawFrame, Recorder, SourceError, Stream, prepare
+from interfaces import Frame
+from stream import RawFrame, Recorder, SourceError, Stream, prepare
 
 K0 = np.array([[500.0, 0, 170.0], [0, 510.0, 110.0], [0, 0, 1]])
 
@@ -46,7 +47,7 @@ def test_depth_is_resized_to_rgb_and_holes_stay_holes():
     assert fr.depth.shape == (240, 320) and fr.depth.dtype == np.float32
     assert set(np.unique(fr.depth)) == {0.0, 0.5, 2.0}   # nearest neighbour: no blended values
     assert fr.depth[75, 75] == 0.0 and fr.depth[200, 100] == 2.0
-    assert fr.t == 1.5 and np.allclose(fr.K, K0)
+    assert fr.t == 1.5 and fr.t_recv == 1.5 and np.allclose(fr.K, K0)
 
 
 def test_big_frames_are_downscaled_and_K_follows():
@@ -150,7 +151,7 @@ def test_get_frame_returns_each_frame_once_then_none(tmp_path):
     try:
         fr = s.get_frame(wait=1.0)
         assert isinstance(fr, Frame) and fr.depth.shape == fr.rgb.shape[:2]
-        assert abs(time.time() - fr.t) < 1.0
+        assert 0 <= time.monotonic() - fr.t_recv < 1.0 and fr.t == fr.t_recv
         assert s.get_frame() is None                 # nothing new yet: does not block
         seen = 1
         while (fr := s.get_frame(wait=0.5)) is not None:
