@@ -355,3 +355,29 @@ def test_relay_delivers_frames_over_a_socket():
         assert s.status()["state"] == "failed" and "disconnected" in s.status()["error"]
     finally:
         s.close()
+
+
+def test_auto_uses_whichever_app_is_streaming(monkeypatch):
+    # PathOn is not streaming (no phone answers), Record3D is
+    import subprocess
+    monkeypatch.setitem(sys.modules, "sdk", SimpleNamespace(IPhoneSensorClient=object))
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=""))
+    monkeypatch.setitem(sys.modules, "record3d", SimpleNamespace(Record3DStream=_FakeRecord3D))
+    s = Stream("auto", reconnect=False).start()
+    try:
+        fr = s.get_frame(wait=1.0)
+        assert fr is not None and fr.rgb.shape == (960, 720, 3)
+    finally:
+        s.close()
+
+
+def test_auto_reports_both_reasons_when_nothing_streams(monkeypatch):
+    import subprocess
+    monkeypatch.setitem(sys.modules, "sdk", SimpleNamespace(IPhoneSensorClient=object))
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=""))
+    monkeypatch.setitem(sys.modules, "record3d", SimpleNamespace(Record3DStream=_FakeRecord3D))
+    monkeypatch.setattr(_FakeRecord3D, "devices", [])
+    with pytest.raises(SourceError, match="no iPhone.*No Record3D device"):
+        Stream("auto").start()

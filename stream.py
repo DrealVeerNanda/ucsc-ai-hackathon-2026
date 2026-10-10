@@ -5,7 +5,8 @@
 
 Where frames come from is set by stream.start(SOURCE) or the STREAM_SOURCE environment variable:
 
-    record3d               Record3D app over USB (default)
+    auto                   whichever phone app is streaming over USB: PathOn, then Record3D (default)
+    record3d               Record3D app over USB
     pathon | pathon:IP     free "Record3DStream - PathOn" app over USB | Wi-Fi
     relay | relay:PORT     frames forwarded from a Mac by tools/relay_send.py
     recordings/NAME        a saved recording, looped and paced like a live camera
@@ -283,6 +284,23 @@ def _pathon_frames(host: str | None = None, port: int = 8888, timeout_s: float =
             pass
 
 
+def _auto_frames() -> Iterator[RawFrame]:
+    """Whichever app is streaming. The two are easy to mix up: the free one is called
+    "Record3DStream - PathOn", the paid one "Record3D"."""
+    errors = []
+    for source in (_pathon_frames, _record3d_frames):
+        it = source()
+        try:
+            first = next(it)
+        except SourceError as e:
+            errors.append(str(e))
+            continue
+        yield first
+        yield from it
+        return
+    raise SourceError("No phone app is streaming. " + " ALSO: ".join(errors))
+
+
 def _replay_frames(folder: str | Path, loop: bool = True, paced: bool = True) -> Iterator[RawFrame]:
     """Replays a folder written by Recorder at the speed it was recorded."""
     folder = Path(folder)
@@ -442,7 +460,7 @@ class Stream:
     never works on an old one. Once frames have flowed, a lost source (cable bump, app closed)
     is retried every second until it comes back."""
 
-    def __init__(self, source: str = "record3d", rotate: int | None = None, max_side: int | None = 960,
+    def __init__(self, source: str = "auto", rotate: int | None = None, max_side: int | None = 960,
                  reconnect: bool = True, loop: bool = True):
         self.source = str(source)
         self.rotate, self.max_side = rotate, max_side
@@ -460,6 +478,8 @@ class Stream:
 
     def _frames(self) -> Iterator[RawFrame]:
         kind, _, arg = self.source.partition(":")
+        if kind == "auto":
+            return _auto_frames()
         if kind == "record3d":
             return _record3d_frames(int(arg or 0))
         if kind == "pathon":
@@ -584,12 +604,12 @@ _default: Stream | None = None
 
 
 def start(source: str | None = None, **kw) -> Stream:
-    """Open the stream. Without arguments: STREAM_SOURCE (default record3d) and STREAM_ROTATE."""
+    """Open the stream. Without arguments: STREAM_SOURCE (default auto) and STREAM_ROTATE."""
     global _default
     stop()
     if "rotate" not in kw and os.environ.get("STREAM_ROTATE"):
         kw["rotate"] = int(os.environ["STREAM_ROTATE"])
-    _default = Stream(source or os.environ.get("STREAM_SOURCE", "record3d"), **kw).start()
+    _default = Stream(source or os.environ.get("STREAM_SOURCE", "auto"), **kw).start()
     return _default
 
 

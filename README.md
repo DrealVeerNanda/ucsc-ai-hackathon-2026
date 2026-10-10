@@ -101,8 +101,9 @@ Set `STREAM_SOURCE`, or call `stream.start(SOURCE)` once before the loop.
 
 | `STREAM_SOURCE` | Frames come from |
 |---|---|
-| `record3d` (default) | Record3D app over USB |
-| `pathon` | Free "Record3DStream - PathOn" app over USB. See `requirements.txt`. |
+| `auto` (default) | Whichever phone app is streaming over USB: PathOn first, then Record3D |
+| `pathon` | Free "Record3DStream - PathOn" app over USB. This is what we use. See `requirements.txt`. |
+| `record3d` | Paid Record3D app over USB |
 | `relay` | A Mac running `tools/relay_send.py` |
 | `recordings/NAME` | A saved recording |
 
