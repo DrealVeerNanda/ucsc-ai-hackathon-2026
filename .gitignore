@@ -12,3 +12,5 @@ build/
 .idea/
 .vscode/
 logs/
+out/
+.pytest_cache/
