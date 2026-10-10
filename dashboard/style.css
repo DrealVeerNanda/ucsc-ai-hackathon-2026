@@ -95,6 +95,7 @@ code {
   padding: var(--sp5);
   min-height: 100dvh;
   align-items: start;
+  align-content: start;
 }
 
 .stage { position: relative; height: calc(100dvh - 2 * var(--sp5)); min-height: 520px; }
@@ -140,6 +141,7 @@ code {
   vector-effect: non-scaling-stroke;
 }
 .leg-head { fill: var(--leg); }
+.leg-head.is-close { fill: var(--grab); }
 .leg.is-close { stroke: var(--grab); }
 
 .hand-ring { fill: none; stroke: var(--text); stroke-width: 3; vector-effect: non-scaling-stroke; }
@@ -444,6 +446,7 @@ code {
 
 .e2e { margin-top: var(--sp4); color: var(--muted); }
 .e2e-ms { color: var(--text); font-size: var(--s3); font-weight: 700; letter-spacing: -0.01em; }
+.e2e.is-pending .e2e-ms { display: none; }
 .e2e-fps { display: block; font-size: var(--s-1); }
 
 .map-title, .trials-title { margin-top: var(--sp5); font-size: var(--s1); font-weight: 600; }

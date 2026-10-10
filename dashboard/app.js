@@ -168,6 +168,7 @@
       vis(leg, !(false));
       const close = d.dist < GRAB_M;
       toggle(leg, "is-close", close);
+      leg.setAttribute("marker-end", close ? "url(#tip-close)" : "url(#tip)");
       toggle(legLabel, "is-close", close);
       setText(legLabel, cm(d.dist));
       vis(legLabel, !(false));
@@ -342,7 +343,8 @@
     const sound = a.tone ? (a.steady ? "Steady tone" : "Panned tone with beeps") : "Silent between phrases";
     step("sound", sound, "", a.tone ? "is-ok" : "is-idle");
 
-    setText($("e2e"), anyFake ? "–" : ms(d.e2e_ms) || "–");
+    setText($("e2e"), anyFake ? "" : ms(d.e2e_ms) || "–");
+    toggle($("e2e").parentElement, "is-pending", anyFake);
     setText($("e2e-label"), anyFake
       ? "end to end, needs real modules"
       : d.e2e_label === "proc" ? "processing time; frames carry no arrival stamp" : "from frame arrival to sound");
