@@ -13,6 +13,7 @@ Keys (debug window focused):
 """
 from __future__ import annotations
 
+import os
 import time
 
 import cv2
@@ -173,6 +174,8 @@ class FakeGuidance:
     def __init__(self, print_hz: float = 4.0):
         self.state = "idle"
         self.grab_t = 0.0
+        # How long "grab" holds before the next request; FAKE_GRAB_HOLD_S stretches it for screenshots.
+        self.grab_hold = float(os.environ.get("FAKE_GRAB_HOLD_S", "1.5"))
         self.print_every = 1.0 / print_hz
         self.last_print = 0.0
         self.found = False
@@ -194,7 +197,7 @@ class FakeGuidance:
     def update(self, scene: Scene) -> str:
         now = time.monotonic()
         if self.state == "grab":
-            if now - self.grab_t > 1.5:
+            if now - self.grab_t > self.grab_hold:
                 self.state = "idle"
             return self.state
         if self.state == "idle":

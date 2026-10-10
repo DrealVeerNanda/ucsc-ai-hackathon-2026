@@ -208,11 +208,12 @@
     const before = phrases[phrases.length - 2];
     const key = last ? `${last.t}|${last.text}` : "";
     if (key === captionKey) return;
+    const firstRender = captionKey === "";
     captionKey = key;
     toggle(now, "is-quiet", !last);
     setText($("cap-text"), last ? `“${last.text}”` : "Nothing said yet");
     setText(prev, before ? `“${before.text}”` : "");
-    if (last) {
+    if (last && !firstRender) {
       now.classList.add("is-fresh");
       clearTimeout(freshTimer);
       freshTimer = setTimeout(() => now.classList.remove("is-fresh"), 1400);
@@ -343,7 +344,7 @@
 
     setText($("e2e"), anyFake ? "–" : ms(d.e2e_ms) || "–");
     setText($("e2e-label"), anyFake
-      ? "from frame arrival to sound, measured once every module is real"
+      ? "end to end, needs real modules"
       : d.e2e_label === "proc" ? "processing time; frames carry no arrival stamp" : "from frame arrival to sound");
     setText($("fps"), d.fps ? `Loop running at ${tenth.format(d.fps)} frames a second` : "");
 

@@ -34,6 +34,9 @@ DEPTH_H = 240
 DEPTH_FAR = np.array([40, 22, 12], np.float32)
 DEPTH_NEAR = np.array([255, 228, 196], np.float32)
 MAX_FPS = 30.0
+# Host probed to tell whether the internet is reachable. Point it at an unroutable address
+# (DASHBOARD_NET_CHECK_HOST=10.255.255.1) to see the offline screen without unplugging.
+NET_CHECK_HOST = os.environ.get("DASHBOARD_NET_CHECK_HOST", "1.1.1.1")
 
 
 def _num(v, nd=4):
@@ -195,7 +198,7 @@ class Dashboard:
     def _background_loop(self):
         while True:
             try:
-                socket.create_connection(("1.1.1.1", 53), timeout=0.6).close()
+                socket.create_connection((NET_CHECK_HOST, 53), timeout=0.6).close()
                 self._online = True
             except OSError:
                 self._online = False

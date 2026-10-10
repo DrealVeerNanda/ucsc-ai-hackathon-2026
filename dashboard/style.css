@@ -447,7 +447,7 @@ code {
 .e2e-fps { display: block; font-size: var(--s-1); }
 
 .map-title, .trials-title { margin-top: var(--sp5); font-size: var(--s1); font-weight: 600; }
-.map { display: block; width: 100%; max-height: 13rem; margin-top: var(--sp3); }
+.map { display: block; width: 100%; max-height: 10.5rem; margin-top: var(--sp3); }
 .map-blind { fill: var(--plate-hi); }
 .map-ring { fill: none; stroke: var(--rule); stroke-width: 0.5; }
 .map-text { fill: var(--faint); font-size: 3.6px; font-family: var(--font); }
