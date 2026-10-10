@@ -1,6 +1,9 @@
 numpy
 opencv-python
 pytest
+# Lane 3 (guidance, voice). sounddevice needs PortAudio: sudo apt install libportaudio2 (already on the GX10)
+sounddevice
+faster-whisper
 # Lane 1 (stream): record3d (Record3D USB library) is installed separately because the GX10
 # has no prebuilt wheel:
 #   Mac:   brew install cmake && pip install record3d
