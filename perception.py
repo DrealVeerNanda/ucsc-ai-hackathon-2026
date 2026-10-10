@@ -221,6 +221,7 @@ class Hand:
     points: np.ndarray         # N x 2 px, everything known to be hand (for "is it covering the object")
     samples: list              # (u, v) pixels to read depth at, best first
     score: float = 1.0
+    px_per_m: float | None = None   # how big the hand looks: pixels per metre of real hand, if known
 
 
 class MediaPipeHand:
@@ -254,8 +255,11 @@ class MediaPipeHand:
         hands = []
         for lms, hd in zip(res.hand_landmarks, res.handedness):
             pts = np.array([[p.x * w, p.y * h] for p in lms], dtype=np.float32)
+            # Wrist to middle knuckle is about 9.5 cm and the knuckle row about 8 cm. One of the two
+            # faces the camera whichever way the hand points, so the larger gives the scale.
+            scale = max(np.linalg.norm(pts[0] - pts[9]) / 0.095, np.linalg.norm(pts[5] - pts[17]) / 0.08)
             hands.append(Hand(tip=tuple(pts[8]), points=pts, samples=[tuple(pts[i]) for i in (8, 7, 6, 5)],
-                              score=float(hd[0].score) if hd else 0.0))
+                              score=float(hd[0].score) if hd else 0.0, px_per_m=float(scale)))
         return hands
 
 
@@ -354,6 +358,15 @@ class Perception:
                 return back_project(hand.tip[0], hand.tip[1], p[2], frame.K)
         return None
 
+    def _in_reach(self, hand: Hand, xyz, frame: Frame) -> bool:
+        """Could this be the wearer's hand? By lidar depth if there is a reading; otherwise by
+        how big the hand looks, since a hand across the room is small in the picture."""
+        if xyz is not None:
+            return xyz[2] <= self.cfg.max_hand_m
+        if hand.px_per_m:
+            return frame.K[0, 0] / hand.px_per_m <= 1.3 * self.cfg.max_hand_m
+        return True
+
     def locate(self, frame: Frame, target: str) -> Scene:
         cfg = self.cfg
         tracing.begin_frame(frame.t)
@@ -390,8 +403,7 @@ class Perception:
             t_models += time.perf_counter() - t
             tracing.add("perception.hand", (time.perf_counter() - t) * 1000)
         hand, hand_raw = None, None
-        reach = [(k, p) for k, p in ((k, self._hand_xyz(k, frame)) for k in hands)
-                 if p is None or p[2] <= cfg.max_hand_m]       # no depth: may be ours, held too close
+        reach = [(k, p) for k, p in ((k, self._hand_xyz(k, frame)) for k in hands) if self._in_reach(k, p, frame)]
         if reach:
             if self._box is not None:
                 cx, cy = 0.5 * (self._box[0] + self._box[2]), 0.5 * (self._box[1] + self._box[3])

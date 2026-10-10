@@ -306,3 +306,27 @@ def test_a_patch_that_is_mostly_holes_is_not_read_from_its_edge():
     assert to_xyz(240, 300, depth, K, r=6) is None       # 1 column of 13 is not enough
     depth[:, 242:] = 1.2
     assert to_xyz(240, 300, depth, K, r=6)[2] == pytest.approx(1.2)
+
+
+def test_a_far_hand_with_no_depth_reading_is_judged_by_its_size():
+    f = frame()
+    f.depth[:] = 0.0                                     # no lidar anywhere near either hand
+    fx = K[0, 0]
+    far = Hand(tip=(100, 200), points=np.array([[100, 200]], np.float32), samples=[(100, 200)],
+               px_per_m=fx / 2.0)                        # looks as small as a hand 2 m away
+    near = Hand(tip=(300, 500), points=np.array([[300, 500]], np.float32), samples=[(300, 500)],
+                px_per_m=fx / 0.25)                      # looks as big as a hand 25 cm away
+
+    class Fixed:
+        def __init__(self, *hands):
+            self.hands = list(hands)
+
+        def detect(self, rgb, t_ms):
+            return self.hands
+
+    p = Perception(FakeDetector(), Fixed(far), PerceptionConfig(smooth=1))
+    s = p.locate(f, "mug")
+    assert not s.hand_visible and s.hand_px is None      # somebody else's
+    p = Perception(FakeDetector(), Fixed(far, near), PerceptionConfig(smooth=1))
+    s = p.locate(f, "mug")
+    assert s.hand_visible and s.hand_px == (300, 500) and s.hand_xyz is None   # ours, too close for lidar
