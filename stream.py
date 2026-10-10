@@ -19,6 +19,7 @@ capture timestamp, so Frame.t is the same value: use it for durations, not as a 
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import socket
@@ -590,6 +591,11 @@ def start(source: str | None = None, **kw) -> Stream:
         kw["rotate"] = int(os.environ["STREAM_ROTATE"])
     _default = Stream(source or os.environ.get("STREAM_SOURCE", "record3d"), **kw).start()
     return _default
+
+
+# Join the reader thread before Python shuts down. Left running, it can be torn down in the
+# middle of a decode, which aborts the process on Linux ("FATAL: exception not rethrown").
+atexit.register(lambda: stop())
 
 
 def get_frame(wait: float = 0.0) -> Frame | None:
