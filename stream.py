@@ -195,7 +195,7 @@ def _record3d_frames(device_index: int = 0, timeout_s: float = 3.0) -> Iterator[
                 raise SourceError("Record3D: stream stopped (cable unplugged or app closed).")
             rgb = np.array(session.get_rgb_frame(), copy=True)  # already RGB order
             try:
-                conf = np.array(session.get_confidence_frame(), copy=False)
+                conf = np.asarray(session.get_confidence_frame())
             except Exception:
                 conf = None
             depth = _clean_depth(session.get_depth_frame(), conf)
