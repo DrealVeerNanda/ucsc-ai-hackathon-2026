@@ -106,7 +106,10 @@ def evaluate(raws, times, spacing=0.5):
     out["best"] = {"residual": best_r, "name": best_name, "inverted": best_inv, "fix": best_F}
     cur = stream.POSE_FIX.get(kind)
     out["matches_stream"] = cur is not None and not best_inv and np.allclose(cur, best_F)
-    if out["ignoring_pose"] < MOVED_M:
+    if not np.isfinite(out["ignoring_pose"]):
+        out["verdict"] = "unclear"
+        out["why"] = "the camera saw almost no valid depth; is the lens covered, or too close to something?"
+    elif out["ignoring_pose"] < MOVED_M:
         out["verdict"], out["why"] = "unclear", "the phone barely moved; move it about 20 cm and tilt it"
     elif best_r < GOOD_M and best_r < 0.5 * out["ignoring_pose"]:
         out["verdict"], out["why"] = "yes", "depth agrees across frames once the pose is applied"

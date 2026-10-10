@@ -82,3 +82,11 @@ def test_wrong_poses_are_a_no():
     for i, raw in enumerate(raws):          # poses that have nothing to do with the real motion
         raw.pose = _camera(7 * i + 3)
     assert evaluate(raws, times)["verdict"] == "no"
+
+
+def test_covered_lens_is_unclear_not_a_no():
+    raws, times = _session(stream.POSE_FIX["record3d"])
+    for raw in raws:
+        raw.depth[:] = 0.0                    # phone face down on the table: no depth at all
+    r = evaluate(raws, times)
+    assert r["verdict"] == "unclear" and "valid depth" in r["why"]
