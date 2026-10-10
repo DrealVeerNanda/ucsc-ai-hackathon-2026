@@ -141,6 +141,49 @@ python tools/relay_send.py GX10_IP              # on the Mac
 
 Tests: `python -m pytest -q`
 
+## Perception (lane 2)
+
+`perception.py` is a working first version, ported from an earlier project so lane 2 does not start from zero. Change anything.
+
+It finds the object's box (YOLO-World, any name you type) and the index fingertip (MediaPipe Hands), reads lidar depth at both, and returns their positions in meters. When the hand covers the object it keeps the object's remembered depth.
+
+```bash
+python tools/check_perception.py recordings/NAME mug    # no window: prints fps, hit rates, distance. Saves out/perception.jpg
+python main.py --stream real --perception real          # with the debug view
+```
+
+| Setting | Values |
+|---|---|
+| `PERCEPTION_DETECTOR` | `yoloworld` (default), `yoloe`, `coco` (fixed classes: cup, bottle, banana...), `none` |
+| `PERCEPTION_HAND` | `mediapipe` (default), `sticker` (a green sticker on the hand), `none` |
+| `PERCEPTION_USE_POSE=1` | Remember the object in room coordinates. Only after `tools/check_pose.py` says yes. |
+| `PERCEPTION_DETECT_EVERY=2` | Run the detector on every second frame if the frame rate is short |
+
+On the GX10 it runs at about 35 ms per frame. Not yet checked: real lidar depth against a ruler (needs the phone), and the tuning in `PerceptionConfig`.
+
+## Guidance and voice (lane 3)
+
+`guidance.py`, `audio_out.py` and `voice.py` are also a working first version. Change anything.
+
+| You hear | It means |
+|---|---|
+| Tone in the right or left ear | Move the hand that way |
+| Pitch higher or lower | Move up or down |
+| Faster beeps | Closer |
+| Steady tone, then "grab" | Within 5 cm |
+
+```bash
+python tools/audio_demo.py --play            # hear a made-up reach. Without --play it writes out/audio_demo.wav
+python main.py --guidance real               # tune by ear: move the fake hand with the arrow keys
+GUIDANCE_WORDS=1 python main.py --guidance real   # fallback: spoken left, right, up, down, forward
+```
+
+- Distances and timings to tune are in `GuidanceConfig` in `guidance.py`; the sound itself is `ToneConfig` in `audio_out.py`.
+- The clips in `audio/` are placeholders made with the macOS voice. Replace them with ElevenLabs clips of the same file names.
+- If the loop stalls for half a second the tone goes quiet, so an old position never keeps steering.
+- `voice.py` asks for a typed target unless a microphone is present. Then it is push-to-talk: Enter, speak, Enter. `VOICE_MODE=type` forces typing.
+- The GX10 has no speakers or microphone of its own, only HDMI. Pair the earbuds, then set `GUIDANCE_DEVICE` and `VOICE_DEVICE` if they are not the default.
+
 ## Workflow
 
 - Pull before you start: `git pull --rebase`
