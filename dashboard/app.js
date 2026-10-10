@@ -76,6 +76,30 @@
     el.style.setProperty("--y", `${y}px`);
   }
 
+  // Off to the side of the leg, never over the fingertip ring, the arrowhead or the object.
+  function placeLegTag(el, hc, oc, box, dist) {
+    const w = video.clientWidth;
+    const h = video.clientHeight;
+    const tw = el.offsetWidth;
+    const th = el.offsetHeight;
+    const hx = hc[0] * w, hy = hc[1] * h, ox = oc[0] * w, oy = oc[1] * h;
+    const len = Math.hypot(ox - hx, oy - hy);
+    let x, y;
+    if (dist < 0.08 && box) {
+      const right = box[2] * w + 14;
+      x = right + tw < w - 8 ? right : box[0] * w - tw - 14;
+      y = (box[1] + box[3]) / 2 * h - th / 2;
+    } else {
+      let nx = -(oy - hy) / (len || 1), ny = (ox - hx) / (len || 1);
+      if (ny < 0) { nx = -nx; ny = -ny; }
+      const mx = hx + (ox - hx) * 0.4, my = hy + (oy - hy) * 0.4;
+      x = mx + nx * (th + 14) - tw / 2;
+      y = my + ny * (th + 14) - th / 2;
+    }
+    el.style.setProperty("--x", `${Math.min(Math.max(x, 8), w - tw - 8)}px`);
+    el.style.setProperty("--y", `${Math.min(Math.max(y, 8), h - th - 8)}px`);
+  }
+
   function brackets(x1, y1, x2, y2) {
     const l = Math.min(x2 - x1, y2 - y1) * 0.28;
     return [
@@ -147,7 +171,7 @@
       toggle(legLabel, "is-close", close);
       setText(legLabel, cm(d.dist));
       vis(legLabel, !(false));
-      placeTag(legLabel, (hc[0] + oc[0]) / 2, (hc[1] + oc[1]) / 2, -legLabel.offsetWidth / 2, 46);
+      placeLegTag(legLabel, hc, oc, obj.box, d.dist);
     } else {
       vis(leg, !(true));
       vis(legLabel, !(true));
@@ -212,10 +236,19 @@
   // guidance column -----------------------------------------------------------
 
   const MOVES = [
-    { pos: "Right", neg: "Left", rPos: "0deg", rNeg: "180deg" },
-    { pos: "Down", neg: "Up", rPos: "90deg", rNeg: "-90deg" },
-    { pos: "Forward", neg: "Back", rPos: "-90deg", rNeg: "90deg" },
+    { pos: "Right", neg: "Left" },
+    { pos: "Down", neg: "Up" },
+    { pos: "Forward", neg: "Back" },
   ];
+  // Reach gets its own glyphs (toward or away from a far edge) so it never reads as Height.
+  const ARROWS = {
+    Right: "M5 12h14M13 6l6 6-6 6",
+    Left: "M19 12H5M11 6l-6 6 6 6",
+    Up: "M12 19V5M6 11l6-6 6 6",
+    Down: "M12 5v14M6 13l6 6 6-6",
+    Forward: "M5 4h14M12 21V9M7 14l5-5 5 5",
+    Back: "M5 20h14M12 3v12M7 10l5 5 5-5",
+  };
 
   function renderGuide(d) {
     const state = d.state || "idle";
@@ -224,14 +257,13 @@
     toggle(stateEl, "is-grab", state === "grab");
     toggle(stateEl, "is-quiet", QUIET_STATES.has(state));
 
-    setText($("target"), d.heard ? `“${d.heard}”` : d.target || "nothing yet");
-
     const wrap = $("dist-wrap");
     const hasDist = d.dist != null;
     setText($("dist"), hasDist ? cm(d.dist) : "–");
     toggle(wrap, "is-empty", !hasDist);
     toggle(wrap, "is-close", hasDist && d.dist < GRAB_M);
-    setText(wrap.querySelector(".dist-label"), hasDist ? "between fingertip and object" : "Needs both the fingertip and the object");
+    const thing = d.target || "object";
+    setText(wrap.querySelector(".dist-label"), hasDist ? `between fingertip and ${thing}` : `Needs both the fingertip and the ${thing}`);
 
     document.querySelectorAll(".move").forEach((row, i) => {
       const text = row.querySelector(".move-text");
@@ -244,8 +276,10 @@
       } else if (Math.abs(v) <= DEAD_M) {
         setText(text, "On target");
       } else {
-        setText(text, `${v > 0 ? m.pos : m.neg} ${cm(v)}`);
-        row.style.setProperty("--r", v > 0 ? m.rPos : m.rNeg);
+        const word = v > 0 ? m.pos : m.neg;
+        setText(text, `${word} ${cm(v)}`);
+        const path = row.querySelector(".arrow path");
+        if (path.getAttribute("d") !== ARROWS[word]) path.setAttribute("d", ARROWS[word]);
       }
     });
 
@@ -277,9 +311,13 @@
 
   function renderSystem(d) {
     const st = d.stages || {};
+    const modes = d.modes || {};
+    const fake = (lane) => modes[lane] === "fake";
+    const timing = (lane, v) => (fake(lane) ? "Simulated" : ms(v));
+    const anyFake = Object.values(modes).includes("fake");
     const target = d.target || "object";
     const age = d.age_ms;
-    step("camera", age >= STALE_MS ? "No new frames" : "Color and depth, in sync", ms(age), age >= STALE_MS ? "is-warn" : "is-ok");
+    step("camera", age >= STALE_MS ? "No new frames" : "Color and depth, in sync", timing("stream", age), age >= STALE_MS ? "is-warn" : "is-ok");
 
     const obj = d.object;
     if (obj.visible && obj.xyz) step("object", `Found the ${target}`, "", "is-ok");
@@ -296,21 +334,24 @@
       const names = [models.object, models.hand].filter(Boolean).join(" and ");
       if (names) setText(document.querySelector('[data-step="object"] .step-name'), `Find the object (${names})`);
     }
-    step("depth", d.dist != null ? `${cm(d.dist)} apart; steps 2 to 4 run as one pass` : "Waiting for both points", ms(st.perception), d.dist != null ? "is-ok" : "is-idle");
-    step("guide", STATE_WORDS[d.state] || d.state || "Waiting", ms(st.guidance), QUIET_STATES.has(d.state) ? "is-idle" : "is-ok");
+    step("depth", d.dist != null ? `${cm(d.dist)} apart; steps 2 to 4 run as one pass` : "Waiting for both points", timing("perception", st.perception), d.dist != null ? "is-ok" : "is-idle");
+    step("guide", STATE_WORDS[d.state] || d.state || "Waiting", timing("guidance", st.guidance), QUIET_STATES.has(d.state) ? "is-idle" : "is-ok");
 
     const a = d.audio || {};
     const sound = a.tone ? (a.steady ? "Steady tone" : "Panned tone with beeps") : "Silent between phrases";
     step("sound", sound, "", a.tone ? "is-ok" : "is-idle");
 
-    setText($("e2e"), ms(d.e2e_ms) || "–");
-    setText($("e2e-label"), d.e2e_label === "proc" ? "processing time; frames carry no arrival stamp" : "from frame arrival to sound");
+    setText($("e2e"), anyFake ? "–" : ms(d.e2e_ms) || "–");
+    setText($("e2e-label"), anyFake
+      ? "from frame arrival to sound, measured once every module is real"
+      : d.e2e_label === "proc" ? "processing time; frames carry no arrival stamp" : "from frame arrival to sound");
     setText($("fps"), d.fps ? `Loop running at ${tenth.format(d.fps)} frames a second` : "");
 
     if (d.host) setText($("host"), d.host);
     const net = $("net");
     toggle(net, "is-offline", d.online === false);
-    setText(net, d.online === false ? "Internet unplugged" : d.online ? "Internet connected" : "Checking the internet connection…");
+    setText(net, d.online === false ? "Internet unplugged, still running" : d.online ? "Internet connected" : "Checking the internet connection…");
+    vis($("offline-bug"), d.online === false);
 
     renderTrials(d.trials);
     renderMap(d);
@@ -401,7 +442,7 @@
     }
     if (d.depth && d.depth !== shownDepth) {
       const pip = $("pip");
-      image("depth", "Lidar depth from the same frame, near is warm, far is cool", pip, pip.firstChild, 180, 240).src = d.depth;
+      image("depth", "Lidar depth from the same frame, near is pale, far is dark", pip, pip.firstChild, 180, 240).src = d.depth;
       shownDepth = d.depth;
       vis(pip, true);
     }
@@ -413,6 +454,7 @@
     if (!d) return;
     vis($("notice"), !(true));
     renderImages(d);
+    toggle(video, "is-grab", d.state === "grab");
     renderOverlay(d);
     renderClock(d);
     renderCaptions(d);
@@ -426,10 +468,6 @@
       scheduled = true;
       requestAnimationFrame(render);
     }
-  }
-
-  function sizeTracks() {
-    document.querySelectorAll(".track").forEach((t) => t.style.setProperty("--w", `${t.clientWidth}px`));
   }
 
   // wiring ------------------------------------------------------------------------
@@ -471,10 +509,7 @@
     sendKey(key);
   });
 
-  const tracks = new ResizeObserver(sizeTracks);
-  document.querySelectorAll(".track").forEach((t) => tracks.observe(t));
   new ResizeObserver(schedule).observe(video);
 
-  sizeTracks();
   connect();
 })();

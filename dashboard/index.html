@@ -45,12 +45,13 @@
         </figure>
 
         <p class="stale" id="stale" role="status" hidden></p>
+        <p class="offline-bug" id="offline-bug" hidden>Offline</p>
 
         <div class="captions" id="captions" aria-live="polite">
           <p class="cap cap-prev" id="cap-prev"></p>
           <p class="cap cap-now" id="cap-now">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5v14l-4.5-4.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>
-            <span id="cap-text">Nothing said yet</span>
+            <span class="cap-tag">Wearer hears</span>
+                        <span id="cap-text">Nothing said yet</span>
           </p>
         </div>
 
@@ -60,22 +61,21 @@
     </section>
 
     <section class="guide" id="guidance" aria-labelledby="state">
-      <p class="ask"><span class="ask-label">Wearer asked for</span> <span class="ask-target" id="target" translate="no">nothing yet</span></p>
       <h1 class="state" id="state">Waiting</h1>
-      <p class="dist" id="dist-wrap"><span id="dist">–</span><span class="dist-label">between fingertip and object</span></p>
+      <p class="dist" id="dist-wrap"><span id="dist">–</span><span class="dist-label">Needs both the fingertip and the object</span></p>
 
       <dl class="moves" id="moves">
         <div class="move" data-axis="0">
           <dt>Side</dt>
-          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg><span class="move-text">–</span></dd>
+          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg><span class="move-text">–</span></dd>
         </div>
         <div class="move" data-axis="1">
           <dt>Height</dt>
-          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg><span class="move-text">–</span></dd>
+          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg><span class="move-text">–</span></dd>
         </div>
         <div class="move" data-axis="2">
           <dt>Reach</dt>
-          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg><span class="move-text">–</span></dd>
+          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg><span class="move-text">–</span></dd>
         </div>
       </dl>
 

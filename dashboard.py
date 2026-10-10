@@ -29,6 +29,10 @@ from interfaces import hand_error, plan_audio
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard")
 MAX_IMG_H = 720
 DEPTH_H = 240
+# Depth picture in the page's own blue (hue 255): near is pale, far is dark. Yellow and
+# green stay reserved for the fingertip-to-object line and the grab. BGR.
+DEPTH_FAR = np.array([40, 22, 12], np.float32)
+DEPTH_NEAR = np.array([255, 228, 196], np.float32)
 MAX_FPS = 30.0
 
 
@@ -145,8 +149,8 @@ class Dashboard:
             d = frame.depth
             h, w = d.shape[:2]
             small = cv2.resize(d, (max(1, int(w * DEPTH_H / h)), DEPTH_H), interpolation=cv2.INTER_NEAREST)
-            norm = (np.clip((small - 0.2) / 1.8, 0, 1) * 255).astype(np.uint8)
-            img = cv2.applyColorMap(255 - norm, cv2.COLORMAP_TURBO)
+            near = np.clip(1 - (small - 0.2) / 1.8, 0, 1)[..., None]
+            img = (DEPTH_FAR + (DEPTH_NEAR - DEPTH_FAR) * near).astype(np.uint8)
             img[(small <= 0) | ~np.isfinite(small)] = 0
             ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
             uri = "data:image/jpeg;base64," + base64.b64encode(jpg.tobytes()).decode() if ok else None
