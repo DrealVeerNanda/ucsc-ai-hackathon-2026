@@ -4,6 +4,11 @@ pytest
 # Lane 3 (guidance, voice). sounddevice needs PortAudio: sudo apt install libportaudio2 (already on the GX10)
 sounddevice
 faster-whisper
+# Lane 2 (perception). Install torch first so it matches the GX10's CUDA 13:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+ultralytics
+clip @ git+https://github.com/ultralytics/CLIP.git   # text encoder for YOLO-World prompts
+mediapipe
 # Lane 1 (stream): record3d (Record3D USB library) is installed separately because the GX10
 # has no prebuilt wheel:
 #   Mac:   brew install cmake && pip install record3d
