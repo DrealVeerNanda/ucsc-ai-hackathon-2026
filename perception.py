@@ -58,7 +58,9 @@ def to_xyz(u: float, v: float, depth: np.ndarray, K: np.ndarray, r: int = 4, nea
         return None
     patch = depth[max(0, v - r):v + r + 1, max(0, u - r):u + r + 1]
     vals = patch[(patch > DEPTH_MIN) & (patch < DEPTH_MAX)]
-    if vals.size < 5:
+    # A patch that is mostly holes (a hand too close for lidar) must not be read from the few
+    # background pixels around its edge.
+    if vals.size < max(5, patch.size // 4):
         return None
     d = float(np.percentile(vals, 25) if nearest else np.median(vals))
     return back_project(u, v, d, K)
@@ -289,6 +291,7 @@ class PerceptionConfig:
     jump_m: float = 0.15         # a move larger than this restarts the average instead of blending
     box_margin: float = 0.10     # hand inside the box grown by this fraction: the box shows the hand
     hand_patch: int = 6          # half-size in px of the depth patch at the fingertip
+    max_hand_m: float = 0.90     # a hand farther from the camera than this is somebody else's
 
 
 class _Average:
@@ -343,6 +346,14 @@ class Perception:
         return bool(np.any((p[:, 0] >= box[0] - mx) & (p[:, 0] <= box[2] + mx) &
                            (p[:, 1] >= box[1] - my) & (p[:, 1] <= box[3] + my)))
 
+    def _hand_xyz(self, hand: Hand, frame: Frame):
+        """The fingertip's pixel, at the depth of the nearest valid sample along the finger."""
+        for u, v in hand.samples:
+            p = to_xyz(u, v, frame.depth, frame.K, r=self.cfg.hand_patch, nearest=True)
+            if p is not None:
+                return back_project(hand.tip[0], hand.tip[1], p[2], frame.K)
+        return None
+
     def locate(self, frame: Frame, target: str) -> Scene:
         cfg = self.cfg
         tracing.begin_frame(frame.t)
@@ -371,20 +382,22 @@ class Perception:
             self._i += 1
         seen = self._seen
 
-        # Hand: with two in view, take the one nearest the object.
+        # Hand: only one within arm's reach can be the wearer's. Of those, the one nearest the object.
         hands = []
         if self.hands is not None:
             t = time.perf_counter()
             hands = self.hands.detect(frame.rgb, int(frame.t * 1000))
             t_models += time.perf_counter() - t
             tracing.add("perception.hand", (time.perf_counter() - t) * 1000)
-        hand = None
-        if hands:
+        hand, hand_raw = None, None
+        reach = [(k, p) for k, p in ((k, self._hand_xyz(k, frame)) for k in hands)
+                 if p is None or p[2] <= cfg.max_hand_m]       # no depth: may be ours, held too close
+        if reach:
             if self._box is not None:
                 cx, cy = 0.5 * (self._box[0] + self._box[2]), 0.5 * (self._box[1] + self._box[3])
-                hand = min(hands, key=lambda k: (k.tip[0] - cx) ** 2 + (k.tip[1] - cy) ** 2)
+                hand, hand_raw = min(reach, key=lambda kp: (kp[0].tip[0] - cx) ** 2 + (kp[0].tip[1] - cy) ** 2)
             else:
-                hand = max(hands, key=lambda k: k.score)
+                hand, hand_raw = max(reach, key=lambda kp: kp[0].score)
 
         # Object position. Measured only when the detector sees it and the hand is not over it.
         pose = frame.pose if (cfg.use_pose and frame.pose is not None) else None
@@ -422,14 +435,7 @@ class Perception:
         if self._anchor is not None:
             object_xyz = self._anchor if pose is None else pose[:3, :3].T @ (self._anchor - pose[:3, 3])
 
-        # Fingertip position: its pixel, at the depth of the nearest valid sample along the finger.
-        hand_xyz = None
-        if hand is not None:
-            for u, v in hand.samples:
-                p = to_xyz(u, v, frame.depth, frame.K, r=cfg.hand_patch, nearest=True)
-                if p is not None:
-                    hand_xyz = self._hand_avg.add(back_project(hand.tip[0], hand.tip[1], p[2], frame.K))
-                    break
+        hand_xyz = None if hand_raw is None else self._hand_avg.add(hand_raw)
         if hand_xyz is None:
             self._hand_avg.clear()
 

@@ -282,3 +282,27 @@ def test_hand_mask_covers_the_hand_and_little_else():
     assert m[360, 400] == 0 and m[100, 230] == 0
     one = perception.hand_mask((H, W), np.array([[240, 320]], np.float32))
     assert one[320, 240] == 1 and one[320, 258] == 1 and one[320, 300] == 0
+
+
+def test_a_bystanders_hand_is_not_the_wearers():
+    theirs = np.array([-0.20, -0.25, 1.05])              # somebody sitting a metre away
+    s = make(hands=(theirs,)).locate(frame(hands=[theirs]), "mug")
+    assert not s.hand_visible and s.hand_xyz is None and s.hand_px is None
+    ours = np.array([0.10, 0.10, 0.45])
+    s = make(hands=(theirs, ours)).locate(frame(hands=[theirs, ours]), "mug")
+    assert s.hand_visible and np.allclose(s.hand_xyz, ours, atol=0.004)
+
+
+def test_a_bystanders_hand_near_the_object_in_the_image_still_loses():
+    behind = OBJ + np.array([0.02, -0.02, 0.70])         # lines up with the object on screen, but far behind it
+    ours = np.array([-0.18, 0.15, 0.40])
+    s = make(hands=(behind, ours)).locate(frame(hands=[behind, ours]), "mug")
+    assert np.allclose(s.hand_xyz, ours, atol=0.004)
+
+
+def test_a_patch_that_is_mostly_holes_is_not_read_from_its_edge():
+    depth = np.zeros((H, W), np.float32)                 # hand too close for lidar: no reading
+    depth[:, 246:] = 1.2                                 # background showing at the edge of the patch
+    assert to_xyz(240, 300, depth, K, r=6) is None       # 1 column of 13 is not enough
+    depth[:, 242:] = 1.2
+    assert to_xyz(240, 300, depth, K, r=6)[2] == pytest.approx(1.2)
