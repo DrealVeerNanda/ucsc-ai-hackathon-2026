@@ -266,7 +266,15 @@ State word (Display), distance (Display Number, yellow; green within reach; fain
 Numbered list in the rail: step number (faint), name (600), live ms (muted, right aligned), and a Label status line that turns white when OK and amber on warning. End-to-end latency follows as a 1.728rem figure with fps beneath.
 
 ### 3D Scene
-A canvas in the rail (13rem tall, Plate ground, 3px corner) showing the latest lidar frame as about 5,000 points in their real camera colours (dimmed to 85%), splatted with a depth buffer: no WebGL and no library, so it runs offline. The server sends the cloud as its own `cloud` stream event about 10 times a second (int16 mm xyz plus uint8 rgb, base64). Over the points: the object as a white wireframe box (dashed muted when remembered), the fingertip as a white dot with a ground-coloured ring, the leg as a 3px round-capped yellow line (green within reach), and the chest camera as a small muted frustum. The view sways ±0.55 rad about the hand-object midpoint over 14 s so depth reads at a glance; dragging takes over and the sway resumes 5 s after release; reduced motion holds a still three-quarter view. A one-line note under it counts the points and invites dragging. Replaced the flat top-down map on 2026-10-10 at Veer's request.
+A canvas in the rail (13rem tall, Plate ground, 3px corner) that answers "where is my hand relative to the mug" in one look.
+- **Level, not tilted:** the server fits the tabletop plane (RANSAC on the cloud, smoothed) and sends the rotation, so the table is flat and up is up. With no table in view it assumes the planned 30° chest tilt and says so under the view.
+- **Fixed third-person view:** seen from behind and above the wearer (about 34° down), like a game camera. No automatic motion. Drag to look around; double-click returns to the default view. The view recentres smoothly on the reach area.
+- **Scale and height cues:** a 10 cm grid in Rule colour on the tabletop; the hand casts a ground-coloured shadow disc with a dashed drop line, so its height reads without stereo.
+- **Points:** about 5,000 lidar points in real camera colour, splatted with a depth buffer into an offscreen canvas (no WebGL, no library, works offline). Tabletop points are dimmed to 38% so anything standing on the table stays bright.
+- **Labelled marks:** "You" (muted dot at the chest camera), the object as a white wireframe box resting on the table with its name tag (dashed muted with "last seen" when remembered), "Hand" as a white dot (label hidden at grab range so it never covers the object name), and the leg as a 3.5px round yellow line with a yellow distance tag (green within reach).
+- **Transport:** the cloud travels as its own `cloud` SSE event every third frame (int16 mm xyz plus uint8 rgb, base64, plus the level rotation and table height), so a newly opened page gets one at once.
+- **Note:** one muted line under it: "Seen from behind you. Grid squares are 10 cm."
+Replaced the flat top-down map on 2026-10-10 at Veer's request, then reworked the same day for readability (levelled, labelled, no sway).
 
 ## Do's and Don'ts
 

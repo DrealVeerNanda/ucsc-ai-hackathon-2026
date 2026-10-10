@@ -36,6 +36,10 @@ DEPTH_FAR = np.array([40, 22, 12], np.float32)
 CLOUD_POINTS = 9000
 CLOUD_EVERY = 3
 CLOUD_MAX_M = 1.6
+# Level the 3D view on the tabletop: RANSAC plane fit on the cloud. Without a table in view,
+# assume the planned chest mount (phone tilted down 30 degrees, table 45 cm below the lens).
+ASSUMED_TILT_DEG = 30.0
+ASSUMED_TABLE_M = 0.45
 DEPTH_NEAR = np.array([255, 228, 196], np.float32)
 MAX_FPS = 30.0
 # Host probed to tell whether the internet is reachable. Point it at an unroutable address
@@ -80,6 +84,10 @@ class Dashboard:
         self._online = None
         self._trials = _trial_stats()
         self._host = socket.gethostname().split(".")[0]
+        self._rng = np.random.default_rng(0)
+        t = np.radians(ASSUMED_TILT_DEG)
+        self._up = np.array([0.0, -np.cos(t), -np.sin(t)])  # table normal in camera axes
+        self._table_h = ASSUMED_TABLE_M                      # lens height above the table
 
     # main loop side ---------------------------------------------------------
 
@@ -183,9 +191,54 @@ class Dashboard:
         z = ds[ok]
         x = (us[ok] - frame.K[0, 2]) * z / frame.K[0, 0]
         y = (vs[ok] - frame.K[1, 2]) * z / frame.K[1, 1]
-        xyz = np.round(np.stack([x, y, z], axis=1) * 1000).astype("<i2")
+        pts = np.stack([x, y, z], axis=1)
+        found = self._fit_table(pts)
+        up = self._up
+        fwd = np.array([0.0, 0.0, 1.0]) - up * up[2]
+        fwd /= np.linalg.norm(fwd)
+        right = np.cross(fwd, up)
+        xyz = np.round(pts * 1000).astype("<i2")
         rgb = frame.rgb[::step, ::step][ok].astype(np.uint8)
-        return {"n": int(z.size), "b64": base64.b64encode(xyz.tobytes() + rgb.tobytes()).decode()}
+        return {"n": int(z.size), "b64": base64.b64encode(xyz.tobytes() + rgb.tobytes()).decode(),
+                # rows map camera axes to a level frame: x right, y up (off the table), z forward
+                "R": [_vec(right, 5), _vec(up, 5), _vec(fwd, 5)], "h": _num(self._table_h, 4),
+                "table": found}
+
+    def _fit_table(self, pts) -> bool:
+        """Find the tabletop: the biggest roughly level plane below the lens. Smoothed over time."""
+        if len(pts) < 200:
+            return False
+        rng = self._rng
+        sample = pts[rng.choice(len(pts), min(len(pts), 2500), replace=False)]
+        best = (0, None, None)
+        for _ in range(60):
+            a, b, c = sample[rng.choice(len(sample), 3, replace=False)]
+            n = np.cross(b - a, c - a)
+            norm = np.linalg.norm(n)
+            if norm < 1e-9:
+                continue
+            n /= norm
+            if n[1] > 0:          # face up, toward the lens (camera y points down)
+                n = -n
+            dist = -float(n @ a)  # lens height above this plane
+            if -n[1] < 0.5 or dist < 0.1:
+                continue
+            count = int((np.abs(sample @ n + dist) < 0.015).sum())
+            if count > best[0]:
+                best = (count, n, dist)
+        count, n, dist = best
+        if n is None or count < 0.25 * len(sample):
+            return False
+        inl = pts[np.abs(pts @ n + dist) < 0.015]
+        centre = inl.mean(axis=0)
+        n = np.linalg.svd(inl - centre, full_matrices=False)[2][2]
+        if n[1] > 0:
+            n = -n
+        dist = -float(n @ centre)
+        self._up = self._up * 0.7 + n * 0.3
+        self._up /= np.linalg.norm(self._up)
+        self._table_h = self._table_h * 0.7 + dist * 0.3
+        return True
 
     def _snapshot(self, frame, scene, info, phrases):
         img, (w, h) = self._image(frame)
