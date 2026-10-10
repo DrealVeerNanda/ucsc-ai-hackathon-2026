@@ -20,17 +20,19 @@ import cv2
 import numpy as np
 
 URL = "http://127.0.0.1:8001/v1"
-PROMPT = ('Find the {target} in this image. Reply with JSON only: {{"box": [x1, y1, x2, y2] bounding box '
-          'of the {target} with coordinates normalized to 0-1000, or null if it is not visible, '
-          '"grasp": "<where to hold it, a few words>"}}')
+PROMPT = ('Is there a {target} in this image? Reply with JSON only: {{"visible": true or false, '
+          '"box": [x1, y1, x2, y2] bounding box of the {target} with coordinates normalized to 0-1000, '
+          'or null if it is not visible, "grasp": "<where to hold it, a few words>"}}')
 SCHEMA = {
     "type": "object",
     "properties": {
+        # Asked first and on its own: without it both models drew a box for objects that were not there.
+        "visible": {"type": "boolean"},
         "box": {"anyOf": [{"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
                           {"type": "null"}]},
         "grasp": {"type": "string", "maxLength": 60},
     },
-    "required": ["box", "grasp"],
+    "required": ["visible", "box", "grasp"],
     "additionalProperties": False,
 }
 
@@ -55,7 +57,7 @@ def ask(rgb: np.ndarray, target: str, url: str = URL, max_side: int = 640, timeo
         reply = json.load(r)
     seconds = time.perf_counter() - t0
     d = json.loads(reply["choices"][0]["message"]["content"])
-    box = d.get("box")
+    box = d.get("box") if d.get("visible", True) else None
     if box is not None:
         x1, x2 = sorted((box[0] * w / 1000.0, box[2] * w / 1000.0))
         y1, y2 = sorted((box[1] * h / 1000.0, box[3] * h / 1000.0))
