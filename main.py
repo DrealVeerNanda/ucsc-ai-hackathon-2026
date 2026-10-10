@@ -5,10 +5,13 @@ Every lane's module can be fake or real, so pieces swap in one at a time:
     python main.py                                   # all fake
     python main.py --guidance real                   # lane 3 tunes audio on fake scenes
     python main.py --stream real --perception real   # lanes 1 + 2 live, printed audio
-    python main.py --all-real --fullscreen           # the demo
+    python main.py --all-real                        # the demo
 
-Keys: q / esc quit, t ask for a new target. Fake perception adds hand keys (see fakes.py).
-Each run writes a per-frame CSV to logs/ and prints a latency summary on exit.
+The judge dashboard opens in the browser at http://localhost:8642 (--ui web, the default).
+--ui cv shows the OpenCV debug window instead, --ui both shows both, --ui none neither.
+Keys (dashboard or window): q / esc quit, t ask for a new target. Fake perception adds
+hand keys (see fakes.py). Each run writes a per-frame CSV to logs/ and prints a latency
+summary on exit.
 """
 from __future__ import annotations
 
@@ -16,7 +19,9 @@ import argparse
 import csv
 import importlib
 import os
+import sys
 import time
+import webbrowser
 from collections import deque
 from types import SimpleNamespace
 
@@ -24,11 +29,15 @@ import numpy as np
 
 import debug_view
 import fakes
+from dashboard import Dashboard
 from interfaces import hand_error
 
 LANES = ("stream", "perception", "guidance", "voice")
 STAGES = ("stream", "perception", "guidance", "view")
 FAKE_KEYS_HINT = "arrows/w/s move hand   o occlude   h hide hand   n jitter   r reset"
+# What guidance says on entering each state, per the team plan, for guidance modules
+# that do not report their own phrases through pop_phrases().
+STATE_PHRASES = {"waiting_hand": "Show me your hand", "grab": "Grab"}
 
 
 def parse_args():
@@ -40,14 +49,21 @@ def parse_args():
     ap.add_argument("--ask", action="store_true", help="fake voice: type the target in the terminal")
     ap.add_argument("--image", help="fake stream: replay this image instead of the synthetic table")
     ap.add_argument("--fps", type=float, default=30.0, help="fake stream frame rate")
-    ap.add_argument("--no-view", action="store_true", help="run without the debug window")
-    ap.add_argument("--fullscreen", action="store_true")
+    ap.add_argument("--ui", choices=("web", "cv", "both", "none"), default="web",
+                    help="judge dashboard in the browser, OpenCV debug window, both, or neither")
+    ap.add_argument("--host", default="0.0.0.0", help="dashboard bind address")
+    ap.add_argument("--port", type=int, default=8642, help="dashboard port")
+    ap.add_argument("--no-open", action="store_true", help="do not open the dashboard in a browser")
+    ap.add_argument("--no-view", action="store_true", help="same as --ui none")
+    ap.add_argument("--fullscreen", action="store_true", help="OpenCV window fullscreen")
     ap.add_argument("--frames", type=int, default=0, help="stop after N frames (smoke tests)")
     ap.add_argument("--log-dir", default="logs")
     args = ap.parse_args()
     if args.all_real:
         for lane in LANES:
             setattr(args, lane, "real")
+    if args.no_view:
+        args.ui = "none"
     return args
 
 
@@ -63,15 +79,15 @@ def load_modules(args) -> SimpleNamespace:
         m.fake_locate = fakes.FakeLocate()
         m.locate = m.fake_locate.locate
     if args.guidance == "real":
-        g = importlib.import_module("guidance")
-        m.update, m.reset = g.update, getattr(g, "reset", None)
+        m.guidance = importlib.import_module("guidance")
     else:
-        g = fakes.FakeGuidance()
-        m.update, m.reset = g.update, g.reset
+        m.guidance = fakes.FakeGuidance()
+    m.update, m.reset = m.guidance.update, getattr(m.guidance, "reset", None)
     if args.voice == "real":
-        m.listen = importlib.import_module("voice").listen_for_target
+        m.voice = importlib.import_module("voice")
     else:
-        m.listen = fakes.FakeVoice(args.target, args.ask).listen_for_target
+        m.voice = fakes.FakeVoice(args.target, args.ask)
+    m.listen = m.voice.listen_for_target
     return m
 
 
@@ -143,18 +159,37 @@ class Stats:
 def main():
     args = parse_args()
     mods = load_modules(args)
-    view = not args.no_view
+    view = args.ui in ("cv", "both")
     modes = "  ".join(f"{lane}:{getattr(args, lane)}" for lane in LANES)
+    modes_map = {lane: getattr(args, lane) for lane in LANES}
     print(f"[main] {modes}")
 
     log = RunLog(args.log_dir)
     stats = Stats()
     if view:
         debug_view.open_window(args.fullscreen)
+    dash = None
+    if args.ui in ("web", "both"):
+        dash = Dashboard(args.host, args.port)
+        url = dash.start()
+        print(f"[main] dashboard at {url}")
+        if not args.no_open:
+            webbrowser.open(url)
+
+    pop_phrases = getattr(mods.guidance, "pop_phrases", None)
+    run = {"status": "idle", "started": None, "elapsed_s": None, "target": None}
+    last = None              # (frame, scene, info) for redraws while no frames arrive
+    last_shown = 0.0
+    t_recv_src = None
+    prev_state = None
+    n = 0
 
     def request_target(prev: str | None = None) -> str:
         if view:
             debug_view.show_message("LISTENING...")
+        if dash and last is not None:
+            f, s, info = last
+            dash.publish(f, s, dict(info, state="listening"))
         target = None
         while not target:
             target = mods.listen()
@@ -163,14 +198,10 @@ def main():
             mods.reset(target)
         if mods.fake_locate:
             mods.fake_locate.reset_hand()
+        run.update(status="running", started=time.monotonic(), elapsed_s=0.0, target=target)
         return target
 
     target = request_target()
-    prev_state = None
-    last = None              # (frame, scene, info) for redraws while no frames arrive
-    last_shown = 0.0
-    t_recv_src = None
-    n = 0
 
     def handle_key(key: str | None) -> bool:
         """Returns False to quit."""
@@ -183,6 +214,9 @@ def main():
             mods.fake_locate.handle_key(key)
         return True
 
+    def handle_web_keys() -> bool:
+        return all(handle_key(k) for k in dash.pop_keys()) if dash else True
+
     try:
         while True:
             t0 = time.perf_counter()
@@ -190,12 +224,16 @@ def main():
             if frame is None:
                 time.sleep(0.002)
                 now = time.monotonic()
-                if view and last is not None and now - last_shown > 0.1:
+                if last is not None and now - last_shown > 0.1:
                     f, s, info = last
                     info["age_ms"] = (now - info["t_recv"]) * 1000
                     last_shown = now
-                    if not handle_key(debug_view.show(f, s, info)):
+                    if dash:
+                        dash.publish(f, s, info)
+                    if view and not handle_key(debug_view.show(f, s, info)):
                         break
+                if not handle_web_keys():
+                    break
                 continue
             t1 = time.perf_counter()
 
@@ -218,23 +256,42 @@ def main():
 
             stages = {"stream": (t1 - t0) * 1000, "perception": (t2 - t1) * 1000,
                       "guidance": (t3 - t2) * 1000}
+
+            if pop_phrases:
+                phrases = pop_phrases()
+            else:
+                phrases = [STATE_PHRASES[state]] if state != prev_state and state in STATE_PHRASES else []
+            if dash:
+                for text in phrases:
+                    dash.say(text)
+            if run["status"] == "running":
+                run["elapsed_s"] = now - run["started"]
+                if state == "grab":
+                    run["status"] = "done"
+
             info = {
                 "target": target, "state": state, "fps": stats.fps,
                 "age_ms": e2e_ms, "e2e_ms": e2e_ms, "e2e_label": t_recv_src,
                 "stages": dict(stages, view=stats.series["view"][-1] if stats.series["view"] else 0.0),
-                "modes": modes, "t_recv": t_recv,
+                "modes": modes, "modes_map": modes_map, "t_recv": t_recv,
                 "keys_hint": FAKE_KEYS_HINT if mods.fake_locate else None,
+                "audio": getattr(mods.guidance, "last_audio", None),
+                "heard": getattr(mods.voice, "last_transcript", None),
+                "models": getattr(sys.modules.get("perception"), "MODEL_NAMES", None),
+                "run": {k: run[k] for k in ("status", "elapsed_s", "target")},
             }
             key = None
             if view:
                 key = debug_view.show(frame, scene, info)
-                last, last_shown = (frame, scene, info), now
+            if dash:
+                dash.publish(frame, scene, info)
+            last, last_shown = (frame, scene, info), now
             stages["view"] = (time.perf_counter() - t3) * 1000
 
             stats.add(stages, e2e_ms, now)
             log.row(frame, scene, t_recv, info["age_ms"], e2e_ms, stages, target, state)
 
-            if not handle_key(key):
+            if not handle_key(key) or not handle_web_keys():
                 break
             if prev_state not in (None, "idle") and state == "idle":
                 target = request_target(target)
@@ -249,6 +306,8 @@ def main():
         log.close()
         if view:
             debug_view.close()
+        if dash:
+            dash.stop()
         report = stats.report(t_recv_src or "e2e")
         print(f"\n[main] {n} frames, log: {log.path}\n{report}")
         with open(log.path.replace(".csv", "_summary.txt"), "w") as f:

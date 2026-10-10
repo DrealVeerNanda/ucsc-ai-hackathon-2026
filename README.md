@@ -22,7 +22,8 @@ Audio tones steer their hand to the object. Every model runs on the ASUS Ascent 
 | `voice.py` | 3 | `listen_for_target() -> str` |
 | `main.py` | 4 | the loop; every module can be fake or real |
 | `fakes.py` | 4 | fake versions of all of the above |
-| `debug_view.py` | 4 | the on-screen overlay judges watch |
+| `dashboard.py`, `dashboard/` | 4 | the judge dashboard in the browser, served by `main.py` (offline, no CDN) |
+| `debug_view.py` | 4 | OpenCV debug window (`--ui cv`) |
 | `trials.py` | 4 | timed baseline / guided trials into `trials.csv` |
 
 ### Run it
@@ -32,10 +33,22 @@ pip install -r requirements.txt
 python main.py                                   # everything fake
 python main.py --guidance real                   # lane 3: tune audio against fake scenes
 python main.py --stream real --perception real   # lanes 1 + 2 live
-python main.py --all-real --fullscreen           # the demo
+python main.py --all-real                        # the demo
 ```
 
-Fake perception keys (debug window focused): arrows and `w`/`s` move the hand 1 cm,
+`main.py` serves the judge dashboard at http://localhost:8642 and opens it. From another
+machine on the same network use `http://<gx10-ip>:8642`. `--ui cv` shows the OpenCV window
+instead, `--ui both` shows both, `--no-open` skips opening the browser.
+
+What modules can report to the dashboard (all optional, picked up if present):
+
+- `guidance.last_audio`: `{"tone": bool, "pan": -1..1, "pitch": -1..1, "beep_hz": float, "steady": bool}`.
+  Without it the dashboard shows the plan's mapping and says it is estimated.
+- `guidance.pop_phrases()`: list of phrases spoken since the last call, for the captions.
+- `voice.last_transcript`: what the wearer said, shown as a quote.
+- `perception.MODEL_NAMES`: `{"object": "YOLO-World", "hand": "MediaPipe"}`, shown in the pipeline steps.
+
+Fake perception keys (dashboard or debug window focused): arrows and `w`/`s` move the hand 1 cm,
 `o` occludes the object, `h` hides the hand, `n` adds jitter, `r` resets. `t` asks for a
 new target, `q` quits. Each run writes a per-frame CSV to `logs/` and prints p50/p95
 latency per stage on exit.

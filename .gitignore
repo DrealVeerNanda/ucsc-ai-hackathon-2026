@@ -14,3 +14,6 @@ build/
 logs/
 out/
 .pytest_cache/
+screenshots/
+.impeccable/review/
+.impeccable/config.local.json

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0d1219">
+  <title>Blindfold pickup, live</title>
+  <meta name="description" content="Live view of the blindfold pickup system: the chest camera, each on-device step, and what the wearer hears.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#guidance">Skip to guidance</a>
+  <main class="screen">
+    <section class="stage" aria-label="Live chest camera">
+      <div class="video" id="video">
+        <svg id="overlay" class="overlay" aria-hidden="true" viewBox="0 0 1000 1333" preserveAspectRatio="none">
+          <defs>
+            <marker id="tip" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+              <path d="M0 0 10 5 0 10z" class="leg-head"/>
+            </marker>
+          </defs>
+          <g id="obj" class="obj" hidden>
+            <path id="obj-brackets" class="brackets"/>
+          </g>
+          <line id="leg" class="leg" marker-end="url(#tip)" hidden/>
+          <g id="hand" class="hand" hidden>
+            <circle r="24" class="hand-ring"/>
+            <circle r="11" class="hand-dot"/>
+          </g>
+        </svg>
+        <p id="obj-label" class="tag tag-obj" hidden></p>
+        <p id="leg-label" class="tag tag-leg" hidden></p>
+        <p id="hand-label" class="tag tag-hand" hidden></p>
+
+        <div class="bug" id="clock">
+          <p class="bug-time"><span id="clock-time">0:00.0</span></p>
+          <p class="bug-sub" id="clock-sub">Waiting for a request</p>
+          <div class="budget" id="budget" hidden><span id="budget-fill"></span></div>
+        </div>
+
+        <figure class="pip" id="pip" hidden>
+          <figcaption>Lidar depth</figcaption>
+        </figure>
+
+        <p class="stale" id="stale" role="status" hidden></p>
+
+        <div class="captions" id="captions" aria-live="polite">
+          <p class="cap cap-prev" id="cap-prev"></p>
+          <p class="cap cap-now" id="cap-now">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5v14l-4.5-4.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+            <span id="cap-text">Nothing said yet</span>
+          </p>
+        </div>
+
+        <p class="notice" id="notice">Waiting for the first frame from main.py…</p>
+      </div>
+      <p class="sim" id="sim" hidden></p>
+    </section>
+
+    <section class="guide" id="guidance" aria-labelledby="state">
+      <p class="ask"><span class="ask-label">Wearer asked for</span> <span class="ask-target" id="target" translate="no">nothing yet</span></p>
+      <h1 class="state" id="state">Waiting</h1>
+      <p class="dist" id="dist-wrap"><span id="dist">–</span><span class="dist-label">between fingertip and object</span></p>
+
+      <dl class="moves" id="moves">
+        <div class="move" data-axis="0">
+          <dt>Side</dt>
+          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg><span class="move-text">–</span></dd>
+        </div>
+        <div class="move" data-axis="1">
+          <dt>Height</dt>
+          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg><span class="move-text">–</span></dd>
+        </div>
+        <div class="move" data-axis="2">
+          <dt>Reach</dt>
+          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg><span class="move-text">–</span></dd>
+        </div>
+      </dl>
+
+      <h2 class="ears-title">In the earbuds</h2>
+      <div class="ears">
+        <div class="meter" id="pan">
+          <p class="meter-name">Pan <span class="meter-hint">toward the side to move</span></p>
+          <div class="track"><span class="mark" id="pan-mark"></span></div>
+          <p class="meter-ends"><span>Left ear</span><span>Right ear</span></p>
+        </div>
+        <div class="meter" id="pitch">
+          <p class="meter-name">Pitch <span class="meter-hint">higher means move up</span></p>
+          <div class="track"><span class="mark" id="pitch-mark"></span></div>
+          <p class="meter-ends"><span>Lower</span><span>Higher</span></p>
+        </div>
+        <p class="beeps" id="beeps"><span class="beep-dot" id="beep-dot"></span><span id="beep-text">Silent</span></p>
+        <p class="audio-note" id="audio-note" hidden>Estimated from the team’s sound mapping; guidance is not reporting what it plays.</p>
+      </div>
+    </section>
+
+    <aside class="system" aria-labelledby="sys-title">
+      <h2 class="sys-title" id="sys-title">Running on <span id="host" translate="no">this machine</span></h2>
+      <p class="net" id="net">Checking the internet connection…</p>
+
+      <ol class="steps" id="steps">
+        <li data-step="camera"><span class="step-name">iPhone camera and lidar</span><span class="step-status"></span><span class="step-ms"></span></li>
+        <li data-step="object"><span class="step-name">Find the object</span><span class="step-status"></span><span class="step-ms" id="perc-ms"></span></li>
+        <li data-step="hand"><span class="step-name">Find the fingertip</span><span class="step-status"></span><span class="step-ms"></span></li>
+        <li data-step="depth"><span class="step-name">Measure in 3D</span><span class="step-status"></span><span class="step-ms"></span></li>
+        <li data-step="guide"><span class="step-name">Choose guidance</span><span class="step-status"></span><span class="step-ms"></span></li>
+        <li data-step="sound"><span class="step-name">Play to earbuds</span><span class="step-status"></span><span class="step-ms"></span></li>
+      </ol>
+      <p class="e2e"><span class="e2e-ms" id="e2e">–</span> <span id="e2e-label">from frame arrival to sound</span><span class="e2e-fps" id="fps"></span></p>
+
+      <h2 class="map-title">From above</h2>
+      <svg class="map" id="map" viewBox="-50 24 100 70" preserveAspectRatio="xMidYMax meet" role="img" aria-label="Top-down view of the wearer, the hand and the object">
+        <path class="map-blind" d="M -25 90 A 25 25 0 0 1 25 90 Z"/>
+        <path class="map-ring" d="M -50 90 A 50 50 0 0 1 50 90"/>
+        <path class="map-ring" d="M -75 90 A 75 75 0 0 1 75 90"/>
+        <text class="map-text" x="0" y="80" text-anchor="middle">lidar blind</text>
+        <text class="map-text" x="36" y="56">50 cm</text>
+        <text class="map-text" x="49" y="38" text-anchor="end">75 cm</text>
+        <rect class="map-wearer" x="-7" y="89" width="14" height="5" rx="1"/>
+        <line class="leg map-leg" id="map-leg" hidden/>
+        <rect class="map-obj" id="map-obj" width="6" height="6" hidden/>
+        <circle class="map-hand" id="map-hand" r="2.6" hidden/>
+      </svg>
+
+      <h2 class="trials-title">Timed trials</h2>
+      <p class="trials" id="trials">No timed trials yet. Run <code>python trials.py baseline</code> to record unaided times.</p>
+    </aside>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

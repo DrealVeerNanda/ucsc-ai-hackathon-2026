@@ -18,7 +18,7 @@ import time
 import cv2
 import numpy as np
 
-from interfaces import Frame, Scene, hand_error
+from interfaces import Frame, Scene, hand_error, plan_audio
 
 W, H = 480, 640                              # portrait, upright
 OBJECT_XYZ = np.array([0.05, 0.12, 0.60])    # meters, camera frame
@@ -175,9 +175,21 @@ class FakeGuidance:
         self.grab_t = 0.0
         self.print_every = 1.0 / print_hz
         self.last_print = 0.0
+        self.found = False
+        self.last_audio = plan_audio(None, "idle")
+        self._phrases = []
+
+    def say(self, text: str) -> None:
+        self._phrases.append(text)
+        print(f"[guide] says: {text}")
+
+    def pop_phrases(self) -> list:
+        out, self._phrases = self._phrases, []
+        return out
 
     def reset(self, target: str) -> None:
-        self.state = "searching"
+        self.state, self.found = "searching", False
+        self.say("Looking")
 
     def update(self, scene: Scene) -> str:
         now = time.monotonic()
@@ -188,17 +200,28 @@ class FakeGuidance:
         if self.state == "idle":
             return self.state
 
+        prev = self.state
         err = hand_error(scene)
         if scene.object_xyz is None:
             self.state = "searching"
+            if self.found:
+                self.found = False
+                self.say("I lost it")
         elif scene.hand_xyz is None:
             self.state = "waiting_hand"
         elif np.linalg.norm(err) < self.GRAB_M:
             self.state, self.grab_t = "grab", now
-            print("[guide] GRAB")
+            self.last_audio = plan_audio(err, self.state)
+            self.say("Grab")
             return self.state
         else:
             self.state = "guiding"
+        if scene.object_xyz is not None and not self.found:
+            self.found = True
+            self.say("Found it")
+        if self.state == "waiting_hand" and prev != "waiting_hand":
+            self.say("Show me your hand")
+        self.last_audio = plan_audio(err, self.state)
 
         if now - self.last_print >= self.print_every:
             self.last_print = now
