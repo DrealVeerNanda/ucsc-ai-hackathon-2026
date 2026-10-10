@@ -55,6 +55,72 @@ git clone https://github.com/DrealVeerNanda/ucsc-ai-hackathon-2026.git
 cd ucsc-ai-hackathon-2026
 ```
 
+## Stream (lane 1)
+
+`stream.py` gives everyone the iPhone's colour and lidar depth:
+
+```python
+import stream
+frame = stream.get_frame()   # newest Frame, or None if nothing new since the last call
+```
+
+`Frame` has `rgb`, `depth`, `K`, `pose`, `t`, as agreed. What you can rely on:
+
+- `rgb` and `depth` are upright and the same size. `K` matches that size.
+- `depth` is in meters. `0` means no lidar reading at that pixel.
+- `pose` is camera-to-world, or `None`. Do not build on it until lane 1 says it passed `tools/check_pose.py`.
+- `t` is `time.time()` when the frame arrived, so `time.time() - frame.t` is the frame age.
+- `get_frame()` never blocks. `get_frame(wait=0.1)` waits up to 0.1 s for a new frame, so a loop does not spin.
+- `stream.status()` gives `state`, `fps` and `age_s` for the debug view. After a cable bump the stream reconnects by itself.
+
+### Work without the phone
+
+```bash
+python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+STREAM_SOURCE=recordings/NAME python main.py              # replays a recording, looped, at real speed
+python tools/probe_stream.py recordings/NAME --show       # look at it
+```
+
+### Pick the source
+
+Set `STREAM_SOURCE`, or call `stream.start(SOURCE)` once before the loop.
+
+| `STREAM_SOURCE` | Frames come from |
+|---|---|
+| `record3d` (default) | Record3D app over USB |
+| `pathon` | Free "Record3DStream - PathOn" app over USB. See `requirements.txt`. |
+| `relay` | A Mac running `tools/relay_send.py` |
+| `recordings/NAME` | A saved recording |
+
+`STREAM_ROTATE=0|90|180|270` turns the image clockwise if it is not upright.
+
+### Phone on the GX10
+
+```bash
+sudo apt install usbmuxd libusbmuxd-dev cmake build-essential
+git clone https://github.com/marek-simonik/record3d && cd record3d && pip install .
+```
+
+In Record3D: turn on USB Streaming mode in Settings, select the rear lidar camera, press the red button. Plug the phone into a data port, unlock it, tap Trust. Then:
+
+```bash
+python tools/probe_stream.py            # frame rate, sizes, K, depth range, pose yes or no
+python tools/probe_stream.py --show     # live rgb and depth. r rotates, s saves, q quits
+python tools/check_pose.py              # move the phone for 10 s. Says if lane 2 can use the pose
+python tools/record.py object_on_table  # 30 s into recordings/object_on_table
+```
+
+### If record3d will not build on the GX10
+
+Read the phone on a Mac and forward frames over Ethernet. Models still run on the GX10.
+
+```bash
+STREAM_SOURCE=relay python main.py              # on the GX10
+python tools/relay_send.py GX10_IP              # on the Mac
+```
+
+Tests: `python -m pytest -q`
+
 ## Workflow
 
 - Pull before you start: `git pull --rebase`

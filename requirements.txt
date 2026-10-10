@@ -1,2 +1,13 @@
 numpy
 opencv-python
+pytest
+# Lane 1 (stream): record3d (Record3D USB library) is installed separately because the GX10
+# has no prebuilt wheel:
+#   Mac:   brew install cmake && pip install record3d
+#   GX10:  build from source, see "Stream (lane 1)" in README.md
+# Optional: free iPhone lidar streaming via the "Record3DStream - PathOn" app (STREAM_SOURCE=pathon).
+# Its SDK is pure Python, so there is nothing to build on ARM.
+#   macOS:  brew install libimobiledevice
+#   Ubuntu: sudo apt install libimobiledevice-utils libusbmuxd-tools
+#   pip install 'git+https://github.com/YoshiRi/Record3DStream#subdirectory=sdk'
+#   SDK licence: personal/non-commercial use only, no redistribution. Do not vendor it into this repo.
