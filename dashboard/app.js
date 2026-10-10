@@ -205,7 +205,7 @@
     const now = $("cap-now");
     const prev = $("cap-prev");
     const last = phrases[phrases.length - 1];
-    const before = phrases[phrases.length - 2];
+    const before = last && [...phrases].reverse().find((p) => p.text !== last.text);
     const key = last ? `${last.t}|${last.text}` : "";
     if (key === captionKey) return;
     const firstRender = captionKey === "";
@@ -225,8 +225,9 @@
     const sim = $("sim");
     vis(sim, !(fake.length === 0));
     if (fake.length) {
-      const keys = d.modes.perception === "fake" ? ". Arrow keys, W and S move the hand." : "";
-      setText(sim, `Simulated ${fake.join(", ")}${keys}`);
+      const keys = d.modes.perception === "fake" ? " Arrows, W and S move the hand." : "";
+      const what = fake.length === 4 ? "Simulated input." : `Simulated ${fake.join(", ")}.`;
+      setText(sim, `${what}${keys}`);
     }
     const stale = $("stale");
     const age = d.age_ms || 0;
@@ -284,21 +285,70 @@
       }
     });
 
-    const a = d.audio || {};
-    const on = Boolean(a.tone);
-    for (const [id, val] of [["pan", a.pan], ["pitch", a.pitch]]) {
-      const meter = $(id);
-      toggle(meter, "is-off", !on);
-      $(`${id}-mark`).style.setProperty("--pos", on ? (Math.max(-1, Math.min(1, val || 0)) + 1) / 2 : 0.5);
+    renderSpoken(d);
+  }
+
+  // spoken guidance -------------------------------------------------------------
+
+  const DIRECTION_WORDS = new Set(["Left", "Right", "Up", "Down", "Forward", "Back"]);
+  const FRESH_MS = 2500;
+
+  // Why the latest word was said, from the measured positions, so a judge can check it.
+  function whyFor(text, d) {
+    const thing = d.target || "object";
+    const e = d.err;
+    const off = (axis) => (e ? cm(e[axis]) : "");
+    switch (text) {
+      case "Right": return e ? `Hand is ${off(0)} left of the ${thing}` : "";
+      case "Left": return e ? `Hand is ${off(0)} right of the ${thing}` : "";
+      case "Down": return e ? `Hand is ${off(1)} above the ${thing}` : "";
+      case "Up": return e ? `Hand is ${off(1)} below the ${thing}` : "";
+      case "Forward": return e ? `Hand is ${off(2)} short of the ${thing}` : "";
+      case "Back": return e ? `Hand is ${off(2)} past the ${thing}` : "";
+      case "Looking": return `Searching for the ${thing}`;
+      case "Found it": return `The ${thing} is in view`;
+      case "Show me your hand": return "The fingertip is not in view";
+      case "Grab": return "Fingertip within 5 cm";
+      case "I lost it": return `The ${thing} left the view`;
+      case "I can't see that": return `No ${thing} found yet`;
+      default: return "";
     }
-    const beeps = $("beeps");
-    const beepOn = on && !a.steady && a.beep_hz > 0;
-    toggle(beeps, "is-off", !on);
-    toggle(beeps, "is-steady", on && a.steady);
-    toggle(beeps, "is-beeping", beepOn);
-    if (beepOn) beeps.style.setProperty("--period", `${(1 / a.beep_hz).toFixed(3)}s`);
-    setText($("beep-text"), !on ? "Silent" : a.steady ? "Steady tone, grab now" : `Beeping ${tenth.format(a.beep_hz)} times a second`);
-    vis($("audio-note"), !(d.audio_source !== "derived"));
+  }
+
+  function renderSpoken(d) {
+    const phrases = d.phrases || [];
+    const last = phrases[phrases.length - 1];
+    const fresh = last && (d.sent - last.t) * 1000 < FRESH_MS;
+    const now = $("say-now");
+    const word = fresh ? last.text : "Quiet";
+    setText($("say-word"), word);
+    toggle(now, "is-quiet", !fresh);
+    toggle(now, "is-phrase", fresh && !DIRECTION_WORDS.has(word));
+    toggle(now, "is-grab", fresh && word === "Grab");
+    if (fresh && DIRECTION_WORDS.has(word)) {
+      const path = now.querySelector(".arrow path");
+      if (path.getAttribute("d") !== ARROWS[word]) path.setAttribute("d", ARROWS[word]);
+    }
+    setText($("say-why"), fresh ? whyFor(word, d) : last ? "Between instructions" : "Nothing said yet");
+
+    // earlier instructions, newest first, repeats collapsed ("Right ×5")
+    const runs = [];
+    for (const p of phrases.slice(0, -1).reverse()) {
+      const r = runs[runs.length - 1];
+      if (r && r.text === p.text) r.n += 1;
+      else runs.push({ text: p.text, n: 1 });
+    }
+    const items = runs.slice(0, 5).map((r) => (r.n > 1 ? `${r.text} ×${r.n}` : r.text));
+    const list = $("said");
+    const key = items.join("|");
+    if (list.dataset.key !== key) {
+      list.dataset.key = key;
+      list.replaceChildren(...items.map((text) => {
+        const li = document.createElement("li");
+        li.textContent = text;
+        return li;
+      }));
+    }
   }
 
   // system rail ---------------------------------------------------------------
@@ -318,7 +368,7 @@
     const anyFake = Object.values(modes).includes("fake");
     const target = d.target || "object";
     const age = d.age_ms;
-    step("camera", age >= STALE_MS ? "No new frames" : "Color and depth, in sync", timing("stream", age), age >= STALE_MS ? "is-warn" : "is-ok");
+    step("camera", age >= STALE_MS ? "No new frames" : "Color and depth", timing("stream", age), age >= STALE_MS ? "is-warn" : "is-ok");
 
     const obj = d.object;
     if (obj.visible && obj.xyz) step("object", `Found the ${target}`, "", "is-ok");
@@ -335,19 +385,17 @@
       const names = [models.object, models.hand].filter(Boolean).join(" and ");
       if (names) setText(document.querySelector('[data-step="object"] .step-name'), `Find the object (${names})`);
     }
-    step("depth", d.dist != null ? `${cm(d.dist)} apart; steps 2 to 4 run as one pass` : "Waiting for both points", timing("perception", st.perception), d.dist != null ? "is-ok" : "is-idle");
+    step("depth", d.dist != null ? `${cm(d.dist)} apart` : "Waiting for both points", timing("perception", st.perception), d.dist != null ? "is-ok" : "is-idle");
     step("guide", STATE_WORDS[d.state] || d.state || "Waiting", timing("guidance", st.guidance), QUIET_STATES.has(d.state) ? "is-idle" : "is-ok");
 
-    const a = d.audio || {};
-    const sound = a.tone ? (a.steady ? "Steady tone" : "Panned tone with beeps") : "Silent between phrases";
-    step("sound", sound, "", a.tone ? "is-ok" : "is-idle");
+    const said = (d.phrases || [])[(d.phrases || []).length - 1];
+    const recent = said && (d.sent - said.t) * 1000 < FRESH_MS;
+    step("sound", recent ? `Said “${said.text}”` : "Quiet between instructions", "", recent ? "is-ok" : "is-idle");
 
-    setText($("e2e"), anyFake ? "" : ms(d.e2e_ms) || "–");
+    setText($("e2e"), anyFake ? "Simulated" : ms(d.e2e_ms) || "–");
     toggle($("e2e").parentElement, "is-pending", anyFake);
-    setText($("e2e-label"), anyFake
-      ? "end to end, needs real modules"
-      : d.e2e_label === "proc" ? "processing time; frames carry no arrival stamp" : "from frame arrival to sound");
-    setText($("fps"), d.fps ? `Loop running at ${tenth.format(d.fps)} frames a second` : "");
+    setText($("e2e-label"), d.e2e_label === "proc" && !anyFake ? "Processing only" : "Camera to earbuds");
+    setText($("fps"), d.fps ? `${tenth.format(d.fps)} fps` : "");
 
     if (d.host) setText($("host"), d.host);
     const net = $("net");
@@ -364,7 +412,7 @@
     if (!t || (t.baseline.n === 0 && t.guided.n === 0)) {
       if (!el.dataset.empty) {
         el.dataset.empty = "1";
-        el.innerHTML = "No timed trials yet. Run <code>python trials.py baseline</code> to record unaided times.";
+        el.innerHTML = "None yet. Run <code>trials.py baseline</code>.";
       }
       return;
     }
@@ -690,7 +738,7 @@
         dirty = true;
         setText(note, !n
           ? "Waiting for lidar points…"
-          : `Seen from behind you. Grid squares are 10 cm.${tableFound ? "" : " No table found; assuming a 30° tilt."}`);
+          : `View from behind you, 10 cm grid.${tableFound ? "" : " No table found; assuming a 30° tilt."}`);
       },
     };
   })();

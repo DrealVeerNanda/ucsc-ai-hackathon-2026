@@ -8,6 +8,7 @@
   <title>Blindfold pickup, live</title>
   <meta name="description" content="Live view of the blindfold pickup system: the chest camera, each on-device step, and what the wearer hears.">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/barlow-semi-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -83,20 +84,11 @@
       </dl>
 
       <h2 class="ears-title">In the earbuds</h2>
-      <div class="ears">
-        <div class="meter" id="pan">
-          <p class="meter-name">Pan <span class="meter-hint">toward the side to move</span></p>
-          <div class="track"><span class="mark" id="pan-mark"></span></div>
-          <p class="meter-ends"><span>Left ear</span><span>Right ear</span></p>
-        </div>
-        <div class="meter" id="pitch">
-          <p class="meter-name">Pitch <span class="meter-hint">higher means move up</span></p>
-          <div class="track"><span class="mark" id="pitch-mark"></span></div>
-          <p class="meter-ends"><span>Lower</span><span>Higher</span></p>
-        </div>
-        <p class="beeps" id="beeps"><span class="beep-dot" id="beep-dot"></span><span id="beep-text">Silent</span></p>
-        <p class="audio-note" id="audio-note" hidden>Estimated from the team’s sound mapping; guidance is not reporting what it plays.</p>
+      <div class="say" aria-live="polite">
+        <p class="say-now is-quiet" id="say-now"><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg><span id="say-word">Quiet</span></p>
+        <p class="say-why" id="say-why">Nothing said yet</p>
       </div>
+      <ol class="said" id="said" aria-label="Said before, newest first"></ol>
     </section>
 
     <aside class="system" aria-labelledby="sys-title">
@@ -109,16 +101,16 @@
         <li data-step="hand"><span class="step-name">Find the fingertip</span><span class="step-status"></span><span class="step-ms"></span></li>
         <li data-step="depth"><span class="step-name">Measure in 3D</span><span class="step-status"></span><span class="step-ms"></span></li>
         <li data-step="guide"><span class="step-name">Choose guidance</span><span class="step-status"></span><span class="step-ms"></span></li>
-        <li data-step="sound"><span class="step-name">Play to earbuds</span><span class="step-status"></span><span class="step-ms"></span></li>
+        <li data-step="sound"><span class="step-name">Speak to earbuds</span><span class="step-status"></span><span class="step-ms"></span></li>
       </ol>
-      <p class="e2e"><span class="e2e-ms" id="e2e">–</span> <span id="e2e-label">from frame arrival to sound</span><span class="e2e-fps" id="fps"></span></p>
+      <p class="e2e"><span class="e2e-label" id="e2e-label">Camera to earbuds</span><span class="e2e-ms" id="e2e">–</span><span class="e2e-fps" id="fps"></span></p>
 
       <h2 class="map-title">The scene in 3D</h2>
       <canvas class="scene" id="scene" role="img" aria-label="3D view of the lidar points, the fingertip, the object and the line between them"></canvas>
       <p class="scene-note" id="scene-note">Waiting for lidar points…</p>
 
       <h2 class="trials-title">Timed trials</h2>
-      <p class="trials" id="trials">No timed trials yet. Run <code>python trials.py baseline</code> to record unaided times.</p>
+      <p class="trials" id="trials">None yet. Run <code>trials.py baseline</code>.</p>
     </aside>
   </main>
   <script src="app.js"></script>

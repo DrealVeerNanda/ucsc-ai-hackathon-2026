@@ -4,7 +4,6 @@ description: Live broadcast graphics over a chest camera, so judges can follow a
 colors:
   ground: "oklch(0.165 0.022 255)"
   plate: "oklch(0.215 0.026 255)"
-  plate-hi: "oklch(0.265 0.03 255)"
   rule: "oklch(0.33 0.03 255)"
   text: "oklch(0.965 0.005 255)"
   muted: "oklch(0.76 0.02 255)"
@@ -21,45 +20,47 @@ colors:
   depth-near: "#c4e4ff"
 typography:
   display:
-    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif"
+    fontFamily: "\"Barlow Semi Condensed\", \"Barlow Display Fallback\", sans-serif"
     fontSize: "min(4.3rem, 15cqi)"
     fontWeight: 700
     lineHeight: 1.02
-    letterSpacing: "-0.025em"
     fontFeature: "\"tnum\""
   display-number:
-    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif"
+    fontFamily: "\"Barlow Semi Condensed\", \"Barlow Display Fallback\", sans-serif"
     fontSize: "min(5.16rem, 17cqi)"
     fontWeight: 700
     lineHeight: 1
-    letterSpacing: "-0.03em"
     fontFeature: "\"tnum\""
+  spoken:
+    fontFamily: "\"Barlow Semi Condensed\", \"Barlow Display Fallback\", sans-serif"
+    fontSize: "2.986rem"
+    fontWeight: 700
+    lineHeight: 1.1
   headline:
-    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif"
+    fontFamily: "\"Barlow Semi Condensed\", \"Barlow Display Fallback\", sans-serif"
     fontSize: "2.074rem"
     fontWeight: 700
     lineHeight: 1.1
-    letterSpacing: "-0.01em"
     fontFeature: "\"tnum\""
   title:
-    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif"
+    fontFamily: "Barlow, \"Barlow Fallback\", sans-serif"
     fontSize: "1.728rem"
     fontWeight: 600
     lineHeight: 1.25
     fontFeature: "\"tnum\""
   section:
-    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif"
+    fontFamily: "Barlow, \"Barlow Fallback\", sans-serif"
     fontSize: "1.2rem"
     fontWeight: 600
     lineHeight: 1.45
   body:
-    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif"
+    fontFamily: "Barlow, \"Barlow Fallback\", sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.45
     fontFeature: "\"tnum\""
   label:
-    fontFamily: "system-ui, -apple-system, \"Segoe UI\", Ubuntu, Cantarell, \"Noto Sans\", sans-serif"
+    fontFamily: "Barlow, \"Barlow Fallback\", sans-serif"
     fontSize: "0.833rem"
     fontWeight: 400
     lineHeight: 1.45
@@ -119,6 +120,12 @@ components:
     textColor: "{colors.text}"
     rounded: "{rounded.plate}"
     padding: "8px 16px"
+  said-chip:
+    backgroundColor: "{colors.plate}"
+    textColor: "{colors.muted}"
+    typography: "{typography.body}"
+    rounded: "{rounded.plate}"
+    padding: "2px 8px"
   notice-plate:
     backgroundColor: "{colors.plate}"
     textColor: "{colors.muted}"
@@ -139,7 +146,7 @@ components:
 
 The screen is a live sports broadcast of one event: a blindfolded hand reaching an object. Judges stand 1 to 2 m away and cannot hear the earbuds, so every graphic is a broadcast element laid over or beside live video: a clock bug, a lower-third caption, a telestrator line drawn from fingertip to object, a picture-in-picture depth inset. It is an Operate surface (a live monitor), also used by the team while tuning, so density stays honest: real frames, real millimetres, real milliseconds, and empty states where nothing has been measured yet.
 
-Graphics are flat plates on a blue-black ground. The video is always the brightest thing on screen; the surround is dark by decision so it never competes. One colour, telestrator yellow, is reserved for the active leg; green means success and nothing else. Type is a single white sans with tabular figures, set big enough that the state word and the distance read from across the table. Motion is almost absent: values snap like a broadcast data feed, and only new caption phrases wipe in.
+Graphics are flat plates on a blue-black ground. The video is always the brightest thing on screen; the surround is dark by decision so it never competes. One colour, telestrator yellow, is reserved for the active leg; green means success and nothing else. Type is Barlow, a signage grotesk drawn from California plates and highway signs, in white with tabular figures: a semi-condensed bold cut for the broadcast figures and words, regular width for everything else, set big enough that the state word, the distance and the spoken instruction read from across the table. Motion is almost absent: values snap like a broadcast data feed, and only new caption phrases wipe in.
 
 Reference studied for the overlay grammar (annotations drawn over a camera image, depth beside colour): https://docs.foxglove.dev/docs/visualization/panels/image. The world is Live Broadcast Graphics (seed 5260f28d, code-led); it rejects the docked-panel telemetry grid.
 
@@ -147,8 +154,8 @@ Reference studied for the overlay grammar (annotations drawn over a camera image
 - Dark only; the live video is the brightest element on screen.
 - One reserved accent (telestrator yellow) for the active leg; green only for success.
 - Flat broadcast plates with 3px corners, no shadows.
-- System sans with tabular numerals everywhere; poster-size state and distance read from 2 m.
-- Values snap; motion only for new caption phrases and the state-carrying beep dot.
+- Self-hosted Barlow (Semi Condensed 700 for figures, 400 to 600 for text) with tabular numerals everywhere; poster-size state, distance and spoken word read from 2 m.
+- Values snap; motion only for new caption phrases.
 
 ## Colors
 
@@ -158,7 +165,7 @@ A restrained broadcast palette: a cool blue-black ground (hue 255) in four tonal
 - **Telestrator Yellow** (oklch(0.88 0.165 96), about #f8d63b): the active leg and only the active leg. The fingertip-to-object line and its arrowhead on camera, the leg's distance tag, the poster distance number in the guidance column, and the leg in the 3D scene. Text on it is **Yellow Ink** (oklch(0.21 0.04 96)).
 
 ### Secondary
-- **Grab Green** (oklch(0.82 0.16 152), about #67e18f): success states only. The GRAB state word, the leg and its tag once within reach, "On target" move values, the steady-tone beep dot, the finished clock time, and the 6px green frame around the video at grab. Text on it is **Green Ink** (oklch(0.2 0.04 152)).
+- **Grab Green** (oklch(0.82 0.16 152), about #67e18f): success states only. The GRAB state word, the leg and its tag once within reach, "On target" move values, the spoken "Grab", the finished clock time, and the 6px green frame around the video at grab. Text on it is **Green Ink** (oklch(0.2 0.04 152)).
 
 ### Tertiary
 - **Warn Amber** (oklch(0.8 0.13 65), about #f7ab5d): "too close for lidar" and "covered by the arm": the dashed hand ring when the fingertip has no depth, its tag, and warning pipeline step statuses.
@@ -167,13 +174,12 @@ A restrained broadcast palette: a cool blue-black ground (hue 255) in four tonal
 ### Neutral
 - **Blue-Black Ground** (oklch(0.165 0.022 255)): page background.
 - **Video Well** (oklch(0.1 0.015 255)): behind the camera image, darker than the ground so letterboxing reads as the frame's edge.
-- **Plate** (oklch(0.215 0.026 255)): solid informational plates (the "waiting for first frame" notice).
-- **Raised Plate** (oklch(0.265 0.03 255)): meter tracks.
-- **Rule** (oklch(0.33 0.03 255)): 1px hairlines between move rows and pipeline steps, the meter centre tick.
+- **Plate** (oklch(0.215 0.026 255)): solid informational plates (the "waiting for first frame" notice), the earlier-instruction chips, and the 3D scene's ground.
+- **Rule** (oklch(0.33 0.03 255)): 1px hairlines between move rows and pipeline steps, the 10 cm grid in the 3D scene.
 - **Scrim** (oklch(0.12 0.02 255 / 0.82)): translucent plates sitting over video (clock bug, captions, depth inset, simulated-lanes note).
-- **Broadcast White** (oklch(0.965 0.005 255)): primary text, object brackets, the hand marker, meter marks.
+- **Broadcast White** (oklch(0.965 0.005 255)): primary text, object brackets, the hand marker.
 - **Muted** (oklch(0.76 0.02 255)): labels, secondary text, remembered (out-of-view) objects drawn dashed.
-- **Faint** (oklch(0.6 0.022 255)): empty values ("–"), step numbers, the idle beep dot.
+- **Faint** (oklch(0.6 0.022 255)): empty values ("–"), step numbers, "Quiet" between instructions.
 
 ### Depth Ramp
 - **Depth Far to Depth Near** (#0c1628 to #c4e4ff, set in `dashboard.py` as BGR): the lidar inset is a navy-to-pale ramp in the ground's blue family, so nearer reads lighter without spending yellow or green.
@@ -189,29 +195,32 @@ A restrained broadcast palette: a cool blue-black ground (hue 255) in four tonal
 
 ## Typography
 
-**Display Font:** System UI stack (system-ui, -apple-system, Segoe UI, Ubuntu, Cantarell, Noto Sans, sans-serif)
-**Body Font:** the same stack
-**Label/Mono Font:** ui-monospace stack for inline commands only
+**Display Font:** Barlow Semi Condensed 700, with "Barlow Display Fallback" (Arial Narrow, size-adjust 88%)
+**Body Font:** Barlow 400, 500, 600, with "Barlow Fallback" (Arial, size-adjust 93%)
+**Label/Mono Font:** ui-monospace stack for inline commands only (`python trials.py baseline`)
 
-**Character:** one neutral white sans, as in a broadcast data feed, with tabular numerals on everything so ticking values never jitter. Hierarchy comes from weight (400, 500, 600, 700) and the three text tones, then size.
+**Character:** Barlow by Jeremy Tribby (OFL 1.1), a slightly rounded, low-contrast grotesk drawn from California's car plates, highway signs, buses and trains (source: https://github.com/jpt/barlow). Signage lettering fits a screen that issues directions and is read from 2 m. The semi-condensed bold cut (the display token) carries the broadcast figures and words (clock, distance, state word, spoken instruction, end-to-end figure, offline plate and line, camera distance tag), the way a score bug sets its numbers; regular-width Barlow carries everything else. Tabular numerals on everything so ticking values never jitter.
 
-The build ships no web fonts because the demo must run with the network unplugged. This is provisional, not a rule future surfaces inherit: a face self-hosted from the GX10 would also run offline and would give the poster-size state word its own voice.
+Self-hosted from `dashboard/fonts/` (four latin-subset woff2 files, about 16 KB each, plus OFL.txt), so the page runs with the network unplugged. The display cut is preloaded. Chosen 2026-10-10 at Veer's request to replace the platform UI font.
 
 ### Hierarchy
-- **Display** (700, min(4.3rem, 15cqi), 1.02, -0.025em): the guidance state word (Searching, Guiding, GRAB), read from 2 m.
-- **Display Number** (700, min(5.16rem, 17cqi), 1, -0.03em): the fingertip-to-object distance in telestrator yellow.
-- **Headline** (700, 2.074rem, 1.1): the clock bug time; the end-to-end latency figure runs one step down at 1.728rem.
-- **Title** (600, 1.728rem, 1.25): the current caption phrase and the move-hand values (Side, Height, Reach).
-- **Section** (600, 1.2rem to 1.44rem): column headings ("In the earbuds" at 1.44rem; rail headings at 1.2rem). Also the distance tag on camera (1.44rem).
-- **Body** (400, 1rem, 1.45): labels, rail text, object tags (600). Notes cap at 40 to 46ch.
-- **Label** (400 to 700, 0.833rem): clock sub-line, step statuses, meter ends, inset caption, the "Wearer hears" caption tag (700).
+- **Display** (Barlow Semi Condensed 700, min(4.3rem, 15cqi), 1.02, no tracking): the guidance state word (Looking, Guiding, Grab), read from 2 m.
+- **Display Number** (Barlow Semi Condensed 700, min(5.16rem, 17cqi), 1): the fingertip-to-object distance in telestrator yellow.
+- **Spoken Word** (Barlow Semi Condensed 700, 2.986rem, 1.1): the instruction being spoken now, with its arrow.
+- **Headline** (Barlow Semi Condensed 700, 2.074rem, 1.1): the clock bug time. The end-to-end latency figure uses the same cut one step down at 1.728rem; the leg distance tag and the offline plate use it at 1.44rem.
+- **Title** (Barlow 600, 1.728rem, 1.25): the current caption phrase and the move-hand values (Side, Height, Reach).
+- **Section** (Barlow 600, 1.2rem to 1.44rem): column headings ("In the earbuds" at 1.44rem; rail headings at 1.2rem).
+- **Body** (Barlow 400, 1rem, 1.45): labels, rail text, the "why" line, earlier-instruction chips, object tags (600). Notes cap at 40ch.
+- **Label** (Barlow 400 to 600, 0.833rem): clock sub-line, step statuses, inset caption, fps, 3D note, simulated note, the "Wearer hears" caption tag (600).
 
 Scale is fixed rem at a 1.2 ratio (0.833, 1, 1.2, 1.44, 1.728, 2.074, 2.986, 4.3, 5.16). Root size is 16px, 18px from 1600px wide, 20px from 1880px wide, so the whole screen scales for a projector or large monitor without reflowing.
 
 ### Named Rules
 **The Tabular Everything Rule.** `font-variant-numeric: tabular-nums` is set on the body; every number on screen holds its width while it changes.
 
-**The Two Metre Rule.** The state word and the distance are deliberately larger than doctrine rule 15's Operate cap of 2x body (4.3x and 5.16x). They are read by judges from 1 to 2 m, the broadcast "poster" raise in the direction contract. No other text exceeds 2.074rem.
+**The Two Metre Rule.** The state word, the distance and the spoken instruction are deliberately larger than doctrine rule 15's Operate cap of 2x body (4.3x, 5.16x and 2.986x). They are read by judges from 1 to 2 m, the broadcast "poster" raise in the direction contract. No other text exceeds 2.074rem.
+
+**The Display Cut Rule.** Barlow Semi Condensed 700 (the display token) is for broadcast figures and the words judges read from 2 m; it never sets running text or labels. It takes no negative tracking. Regular-width Barlow tops out at 600.
 
 ## Layout
 
@@ -230,14 +239,14 @@ Flat. There are no shadows anywhere. Depth comes from tone: the video well is da
 
 ## Shapes
 
-Every plate, tag, banner, and the video itself takes the same small 3px corner. Circles are reserved for dots and markers (the hand dot and ring, meter marks, the beep dot, the 3D fingertip). Meter tracks are 10px rounded bars. On camera, the object is marked with square-capped corner brackets (5px stroke, non-scaling), the leg with a round-capped 5px line and a solid arrowhead; remembered objects and depth-less hands switch to dashes.
+Every plate, tag, banner, and the video itself takes the same small 3px corner. Circles are reserved for dots and markers (the hand dot and ring, the 3D fingertip). On camera, the object is marked with square-capped corner brackets (5px stroke, non-scaling), the leg with a round-capped 5px line and a solid arrowhead; remembered objects and depth-less hands switch to dashes.
 
 ## Components
 
 ### Overlay Tags
 Small solid plates pinned to points in the camera image.
 - **Object tag:** white plate, ground-coloured text, 600; muted plate when the object is remembered rather than seen.
-- **Leg tag:** yellow plate with yellow ink at 1.44rem, padding 2px 12px; turns green with green ink within reach.
+- **Leg tag:** yellow plate with yellow ink, display cut 700 at 1.44rem, padding 2px 12px; turns green with green ink within reach.
 - **Hand tag:** amber plate with dark ink, 500, only when the fingertip lacks depth.
 
 ### Clock Bug
@@ -250,20 +259,17 @@ Full-width scrim strip at the bottom of the video showing what the wearer hears.
 ### Status Banners and Plates
 - **Stale banner:** Alert Red plate, white 1.2rem 600, centred at 30% height; appears only when frames stop arriving.
 - **Notice plate:** solid Plate, muted text, centred; used for "waiting for the first frame" and lost connection.
-- **Offline bug:** white plate, ground text, 1.44rem 700, top centre of the video when the network is unplugged.
+- **Offline bug:** white plate, ground text, display cut 1.44rem 700, top centre of the video when the network is unplugged.
 - **Simulated note:** scrim plate under the clock bug in muted Label text, naming which lanes are fake.
 
 ### Guidance Column
 State word (Display), distance (Display Number, yellow; green within reach; faint "–" when either point is missing), then three move rows between 1px rules: muted axis label, Title-weight value with an SVG arrow that snaps to direction. "On target" rows turn green and hide the arrow.
 
-### Tone Meters
-10px Raised Plate track with a 2px centre tick and a 22px white circular mark positioned along it; ends labelled in Label text. The mark fades to 25% opacity when the tone is off (200ms opacity only); position changes snap.
-
-### Beep Indicator
-14px dot plus text. Faint when silent, white and blinking at the real beep period while beeping (stepped opacity, no easing), solid green for the steady tone. The blink carries state, so it is kept under reduced motion. An "estimated" note appears when guidance does not report what it plays.
+### Spoken Instruction
+Guidance speaks single words (left, right, up, down, forward, back) at most twice a second, plus the fixed phrases (Looking, Found it, Show me your hand, Grab, I lost it, I can't see that). Under "In the earbuds": the word spoken in the last 2.5 s in the Spoken Word style with its direction arrow (no arrow for phrases; green for Grab; Faint "Quiet" between instructions), then one Muted line saying why, computed from the measured positions ("Hand is 20 cm left of the mug"), then up to five earlier instructions as Plate chips, newest first and white, repeats collapsed ("Right ×5"). Values snap; no motion. `main.py` records exactly what guidance plays by listening to its sound sink, so the panel never guesses. Replaced the tone meters and beep dot on 2026-10-10 when the team settled on spoken words.
 
 ### Pipeline Steps
-Numbered list in the rail: step number (faint), name (600), live ms (muted, right aligned), and a Label status line that turns white when OK and amber on warning. End-to-end latency follows as a 1.728rem figure with fps beneath.
+Numbered list in the rail: step number (faint), name (600), live ms (muted, right aligned; "Simulated" for a fake lane), and a short Label status line that turns white when OK and amber on warning. End-to-end latency follows as a 1.728rem display figure labelled "camera to earbuds" ("processing only" when that is all that is measured), with fps beneath as "28.9 fps". While any lane is fake the figure reads "Simulated" in Muted, never a number.
 
 ### 3D Scene
 A canvas in the rail (13rem tall, Plate ground, 3px corner) that answers "where is my hand relative to the mug" in one look.
@@ -273,23 +279,25 @@ A canvas in the rail (13rem tall, Plate ground, 3px corner) that answers "where 
 - **Points:** about 5,000 lidar points in real camera colour, splatted with a depth buffer into an offscreen canvas (no WebGL, no library, works offline). Tabletop points are dimmed to 38% so anything standing on the table stays bright.
 - **Labelled marks:** "You" (muted dot at the chest camera), the object as a white wireframe box resting on the table with its name tag (dashed muted with "last seen" when remembered), "Hand" as a white dot (label hidden at grab range so it never covers the object name), and the leg as a 3.5px round yellow line with a yellow distance tag (green within reach).
 - **Transport:** the cloud travels as its own `cloud` SSE event every third frame (int16 mm xyz plus uint8 rgb, base64, plus the level rotation and table height), so a newly opened page gets one at once.
-- **Note:** one muted line under it: "Seen from behind you. Grid squares are 10 cm."
+- **Note:** one muted Label line under it: "View from behind you, 10 cm grid." (plus the assumed-tilt sentence when no table is found).
 Replaced the flat top-down map on 2026-10-10 at Veer's request, then reworked the same day for readability (levelled, labelled, no sway).
 
 ## Do's and Don'ts
 
 ### Do:
 - **Do** reserve Telestrator Yellow for the active leg: the line, its tag, the distance number, the 3D leg.
-- **Do** use Grab Green only for success: grab state, within reach, On target, steady tone, finished clock, the green video frame.
+- **Do** use Grab Green only for success: grab state, within reach, On target, the spoken Grab, finished clock, the green video frame.
 - **Do** place plates over video on the scrim, and keep every plate to the 3px corner.
 - **Do** keep tabular numerals on every number and size live values against their cell, not their content.
-- **Do** show an honest empty state ("–", "No timed trials yet", "Waiting for the first frame") instead of a placeholder number.
+- **Do** show an honest empty state ("–", "None yet", "Waiting for the first frame") instead of a placeholder number.
 - **Do** label simulated input on screen whenever a lane is fake.
-- **Do** let values snap; animate only new caption phrases (opacity, plus 12px slide when motion is allowed) and the state-carrying beep blink.
+- **Do** let values snap; animate only new caption phrases (opacity, plus 12px slide when motion is allowed).
 
 ### Don't:
 - **Don't** add a light scheme or lift the surround; nothing may be brighter than the video.
 - **Don't** colour the depth inset or any chart with yellow, green, amber, or red; ramp it within the ground's blue family.
 - **Don't** use shadows or glows to separate plates.
-- **Don't** set any text other than the state word and the distance above 2.074rem.
+- **Don't** set any text other than the state word, the distance and the spoken instruction above 2.074rem.
+- **Don't** set running text or labels in the semi-condensed display cut, track it negatively, or push regular-width Barlow past 600.
+- **Don't** fall back to the platform UI stack; text names Barlow then its size-adjusted fallback.
 - **Don't** use Alert Red for anything but stale frames.

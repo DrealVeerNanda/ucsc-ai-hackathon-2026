@@ -43,14 +43,3 @@ def hand_error(scene: Scene) -> Optional[np.ndarray]:
         return None
     return np.asarray(scene.object_xyz, float) - np.asarray(scene.hand_xyz, float)
 
-
-def plan_audio(err: Optional[np.ndarray], state: Optional[str]) -> dict:
-    """The team plan's first audio mapping: pan toward the side to move, pitch up for up,
-    faster beeps when closer, a steady tone inside 5 cm."""
-    if err is None or state not in ("guiding", "grab"):
-        return {"tone": False, "pan": 0.0, "pitch": 0.0, "beep_hz": 0.0, "steady": False}
-    d = float(np.linalg.norm(err))
-    steady = d < 0.05
-    beep = 0.0 if steady else float(np.interp(d, [0.05, 0.5], [10.0, 2.0]))
-    return {"tone": True, "pan": float(np.clip(err[0] / 0.3, -1, 1)),
-            "pitch": float(np.clip(-err[1] / 0.3, -1, 1)), "beep_hz": beep, "steady": steady}

@@ -1,12 +1,21 @@
 /* Judge dashboard. Tokens and rationale live in DESIGN.md. */
 
+/* Barlow (Jeremy Tribby, OFL, fonts/OFL.txt): drawn from California highway signs and
+   plates, self-hosted so the page runs with the network unplugged. */
+@font-face { font-family: "Barlow"; font-weight: 400; font-display: swap; src: url("fonts/barlow-400.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 500; font-display: swap; src: url("fonts/barlow-500.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: swap; src: url("fonts/barlow-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; font-display: swap; src: url("fonts/barlow-semi-condensed-700.woff2") format("woff2"); }
+/* Fallbacks sized to Barlow's narrower set, so the swap does not shift the layout. */
+@font-face { font-family: "Barlow Fallback"; src: local("Arial"), local("Helvetica"), local("Liberation Sans"); size-adjust: 93%; ascent-override: 100%; descent-override: 20%; }
+@font-face { font-family: "Barlow Display Fallback"; src: local("Arial Narrow"), local("Arial"), local("Liberation Sans Narrow"); size-adjust: 88%; ascent-override: 100%; descent-override: 20%; }
+
 :root {
   color-scheme: dark;
 
   /* color: restrained, one accent reserved for the active leg */
   --ground: oklch(0.165 0.022 255);
   --plate: oklch(0.215 0.026 255);
-  --plate-hi: oklch(0.265 0.03 255);
   --rule: oklch(0.33 0.03 255);
   --text: oklch(0.965 0.005 255);
   --muted: oklch(0.76 0.02 255);
@@ -19,8 +28,9 @@
   --alert: oklch(0.62 0.19 27);
   --scrim: oklch(0.12 0.02 255 / 0.82);
 
-  /* type: system UI stack, 1.2 scale */
-  --font: system-ui, -apple-system, "Segoe UI", Ubuntu, Cantarell, "Noto Sans", sans-serif;
+  /* type: Barlow text, Barlow Semi Condensed display, 1.2 scale */
+  --font: "Barlow", "Barlow Fallback", sans-serif;
+  --display: "Barlow Semi Condensed", "Barlow Display Fallback", sans-serif;
   --s-1: 0.833rem;
   --s0: 1rem;
   --s1: 1.2rem;
@@ -164,7 +174,7 @@ code {
 }
 .tag-obj { background: var(--text); color: var(--ground); }
 .tag-obj.is-remembered { background: var(--muted); }
-.tag-leg { background: var(--leg); color: var(--on-leg); font-size: var(--s2); padding: 2px var(--sp3); }
+.tag-leg { background: var(--leg); color: var(--on-leg); font-family: var(--display); font-weight: 700; font-size: var(--s2); padding: 2px var(--sp3); }
 .tag-leg.is-close { background: var(--grab); color: var(--on-grab); }
 .tag-hand { background: var(--warn); color: var(--on-leg); font-weight: 500; }
 
@@ -178,7 +188,7 @@ code {
   background: var(--scrim);
   border-radius: var(--radius);
 }
-.bug-time { font-size: var(--s4); font-weight: 700; line-height: 1.1; letter-spacing: -0.01em; }
+.bug-time { font-family: var(--display); font-size: var(--s4); font-weight: 700; line-height: 1.1; }
 .bug.is-done .bug-time { color: var(--grab); }
 .bug-sub { font-size: var(--s-1); color: var(--muted); }
 .budget {
@@ -265,7 +275,7 @@ code {
   background: var(--text);
   color: var(--ground);
   font-size: var(--s-1);
-  font-weight: 700;
+  font-weight: 600;
 }
 .cap-now.is-quiet { color: var(--muted); font-weight: 500; font-size: var(--s1); }
 #cap-text { transition: opacity 180ms var(--ease); }
@@ -300,9 +310,9 @@ code {
 .state {
   margin-top: 0;
   font-size: min(var(--s8), 15cqi);
+  font-family: var(--display);
   font-weight: 700;
   line-height: 1.02;
-  letter-spacing: -0.025em;
 }
 @supports (text-wrap: balance) { .state { text-wrap: balance; } }
 .state.is-grab { color: var(--grab); }
@@ -314,9 +324,9 @@ code {
 }
 #dist {
   font-size: min(var(--s9), 17cqi);
+  font-family: var(--display);
   font-weight: 700;
   line-height: 1;
-  letter-spacing: -0.03em;
   color: var(--leg);
 }
 .dist.is-close #dist { color: var(--grab); }
@@ -354,58 +364,36 @@ code {
   font-size: var(--s2);
   font-weight: 600;
 }
-.ears { display: grid; gap: var(--sp5); margin-top: var(--sp4); }
-.meter-name { font-weight: 600; }
-.meter-hint { margin-left: var(--sp2); color: var(--muted); font-weight: 400; }
-.track {
-  position: relative;
-  height: 10px;
-  margin-top: var(--sp2);
-  border-radius: var(--radius);
-  background: var(--plate-hi);
-}
-.track::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: -3px;
-  bottom: -3px;
-  width: 2px;
-  translate: -1px 0;
-  background: var(--rule);
-}
-.mark {
-  position: absolute;
-  top: 50%;
-  left: calc(var(--pos, 0.5) * 100%);
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--text);
-  translate: -50% -50%;
-  transition: opacity 200ms var(--ease);
-}
-.meter.is-off .mark { opacity: 0.25; }
-.meter-ends {
+.say { margin-top: var(--sp3); }
+.say-now {
   display: flex;
-  justify-content: space-between;
-  margin-top: var(--sp1);
-  font-size: var(--s-1);
+  align-items: center;
+  gap: var(--sp3);
+  font-family: var(--display);
+  font-size: var(--s6);
+  font-weight: 700;
+  line-height: 1.1;
+}
+.say-now .arrow { width: 0.9em; height: 0.9em; stroke-width: 2.4; }
+.say-now.is-phrase .arrow, .say-now.is-quiet .arrow { display: none; }
+.say-now.is-quiet { color: var(--faint); }
+.say-now.is-grab { color: var(--grab); }
+.say-why { margin-top: var(--sp1); color: var(--muted); }
+.said {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp2);
+  margin-top: var(--sp4);
+  padding: 0;
+  list-style: none;
+}
+.said li {
+  padding: 2px var(--sp2);
+  border-radius: var(--radius);
+  background: var(--plate);
   color: var(--muted);
 }
-
-.beeps { display: flex; align-items: center; gap: var(--sp3); font-size: var(--s1); font-weight: 600; }
-.beep-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--faint);
-}
-.beeps.is-beeping .beep-dot { background: var(--text); animation: beep var(--period, 1s) steps(1, end) infinite; }
-.beeps.is-steady .beep-dot { background: var(--grab); }
-.beeps.is-off { color: var(--muted); font-weight: 500; }
-@keyframes beep { 0% { opacity: 1; } 35% { opacity: 0.15; } }
-.audio-note { font-size: var(--s-1); color: var(--muted); max-width: 46ch; }
+.said li:first-child { color: var(--text); }
 
 /* system rail -------------------------------------------------------------- */
 
@@ -413,7 +401,7 @@ code {
 
 .sys-title { font-size: var(--s1); font-weight: 600; overflow-wrap: anywhere; }
 .net { margin-top: var(--sp1); color: var(--muted); }
-.net.is-offline { color: var(--text); font-size: var(--s2); font-weight: 700; line-height: 1.2; }
+.net.is-offline { color: var(--text); font-family: var(--display); font-size: var(--s2); font-weight: 700; line-height: 1.2; }
 
 .steps {
   list-style: none;
@@ -444,16 +432,17 @@ code {
 .steps li.is-warn .step-status { color: var(--warn); }
 .steps li.is-idle .step-name { color: var(--muted); }
 
-.e2e { margin-top: var(--sp4); color: var(--muted); }
-.e2e-ms { color: var(--text); font-size: var(--s3); font-weight: 700; letter-spacing: -0.01em; }
-.e2e.is-pending .e2e-ms { display: none; }
+.e2e { display: flex; flex-direction: column; margin-top: var(--sp4); color: var(--muted); }
+.e2e-label { font-size: var(--s-1); }
+.e2e-ms { color: var(--text); font-family: var(--display); font-size: var(--s3); font-weight: 700; }
+.e2e.is-pending .e2e-ms { color: var(--muted); }
 .e2e-fps { display: block; font-size: var(--s-1); }
 
 .map-title, .trials-title { margin-top: var(--sp5); font-size: var(--s1); font-weight: 600; }
 .scene {
   display: block;
   width: 100%;
-  height: 13rem;
+  height: 12rem;
   margin-top: var(--sp3);
   border-radius: var(--radius);
   background: var(--plate);
@@ -479,6 +468,8 @@ code {
   .stage { height: auto; min-height: 0; }
   .video { height: auto; width: min(100%, calc(82dvh * var(--aspect, 0.75))); margin-inline: auto; }
   .bug { min-width: 0; }
+  .move { grid-template-columns: 4.5rem 1fr; }
+  .move dd { font-size: var(--s2); }
   .sim { position: static; translate: none; max-width: none; margin: var(--sp2) auto 0; width: fit-content; }
   .bug-time { font-size: var(--s3); }
   .cap-now { font-size: var(--s1); }
@@ -494,6 +485,7 @@ code {
   border-radius: var(--radius);
   background: var(--text);
   color: var(--ground);
+  font-family: var(--display);
   font-size: var(--s2);
   font-weight: 700;
 }

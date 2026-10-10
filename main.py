@@ -36,8 +36,36 @@ LANES = ("stream", "perception", "guidance", "voice")
 STAGES = ("stream", "perception", "guidance", "view")
 FAKE_KEYS_HINT = "arrows/w/s move hand   o occlude   h hide hand   n jitter   r reset"
 # What guidance says on entering each state, per the team plan, for guidance modules
-# that do not report their own phrases through pop_phrases().
-STATE_PHRASES = {"waiting_hand": "Show me your hand", "grab": "Grab"}
+# that neither report phrases nor let us listen to their sink.
+STATE_PHRASES = {"waiting_hand": "show_me_your_hand", "grab": "grab"}
+# Clip names (audio/*.wav) as the wearer hears them; words not listed are capitalised.
+CLIP_TEXT = {"looking": "Looking", "found_it": "Found it", "show_me_your_hand": "Show me your hand",
+             "grab": "Grab", "i_lost_it": "I lost it", "i_cant_see_that": "I can't see that"}
+
+
+def clip_text(name: str) -> str:
+    return CLIP_TEXT.get(name, name.replace("_", " ").capitalize())
+
+
+def listen_to_guidance(g):
+    """Record every clip guidance plays, so the dashboard shows exactly what the wearer hears.
+    Wraps the sink of guidance.py's default instance; a public pop_phrases() would replace this."""
+    spoken = []
+    inst = g._get()
+    play = inst.sink.say
+
+    def say(name, now=False):
+        spoken.append(name)
+        return play(name, now=now)
+
+    inst.sink.say = say
+
+    def pop():
+        out = spoken[:]
+        spoken.clear()
+        return out
+
+    return pop
 
 
 def parse_args():
@@ -45,6 +73,7 @@ def parse_args():
     for lane in LANES:
         ap.add_argument(f"--{lane}", choices=("fake", "real"), default="fake")
     ap.add_argument("--all-real", action="store_true", help="use every real module")
+    ap.add_argument("--tones", action="store_true", help="real guidance plays tones instead of spoken words")
     ap.add_argument("--target", default="mug", help="target for fake voice")
     ap.add_argument("--ask", action="store_true", help="fake voice: type the target in the terminal")
     ap.add_argument("--image", help="fake stream: replay this image instead of the synthetic table")
@@ -83,6 +112,9 @@ def load_modules(args) -> SimpleNamespace:
     else:
         m.guidance = fakes.FakeGuidance()
     m.update, m.reset = m.guidance.update, getattr(m.guidance, "reset", None)
+    m.pop_phrases = getattr(m.guidance, "pop_phrases", None)
+    if m.pop_phrases is None and hasattr(m.guidance, "_get"):
+        m.pop_phrases = listen_to_guidance(m.guidance)
     if args.voice == "real":
         m.voice = importlib.import_module("voice")
     else:
@@ -158,6 +190,8 @@ class Stats:
 
 def main():
     args = parse_args()
+    # Spoken words (left, right, up, down, forward, back) are the default guidance.
+    os.environ.setdefault("GUIDANCE_WORDS", "0" if args.tones else "1")
     mods = load_modules(args)
     view = args.ui in ("cv", "both")
     modes = "  ".join(f"{lane}:{getattr(args, lane)}" for lane in LANES)
@@ -176,7 +210,7 @@ def main():
         if not args.no_open:
             webbrowser.open(url)
 
-    pop_phrases = getattr(mods.guidance, "pop_phrases", None)
+    pop_phrases = mods.pop_phrases
     run = {"status": "idle", "started": None, "elapsed_s": None, "target": None}
     last = None              # (frame, scene, info) for redraws while no frames arrive
     last_shown = 0.0
@@ -262,8 +296,8 @@ def main():
             else:
                 phrases = [STATE_PHRASES[state]] if state != prev_state and state in STATE_PHRASES else []
             if dash:
-                for text in phrases:
-                    dash.say(text)
+                for name in phrases:
+                    dash.say(clip_text(name))
             if run["status"] == "running":
                 run["elapsed_s"] = now - run["started"]
                 if state == "grab":
@@ -275,7 +309,6 @@ def main():
                 "stages": dict(stages, view=stats.series["view"][-1] if stats.series["view"] else 0.0),
                 "modes": modes, "modes_map": modes_map, "t_recv": t_recv,
                 "keys_hint": FAKE_KEYS_HINT if mods.fake_locate else None,
-                "audio": getattr(mods.guidance, "last_audio", None),
                 "heard": getattr(mods.voice, "last_transcript", None),
                 "models": getattr(sys.modules.get("perception"), "MODEL_NAMES", None),
                 "run": {k: run[k] for k in ("status", "elapsed_s", "target")},

@@ -10,7 +10,7 @@ related_targets: ["dashboard/style.css","dashboard/app.js"]
 Mode: Operate (live monitor read by standing judges at 1 to 2 m; the team also tunes with it).
 Job: let judges follow, in seconds, what the system sees, decides and says while a blindfolded wearer reaches for an object.
 First read: the hand being steered to the object on the live camera.
-Constraints: served by main.py from the GX10, works with the network unplugged (no CDN, no web fonts), fed by /events at up to 30 fps. Branding deferred.
+Constraints: served by main.py from the GX10, works with the network unplugged (no CDN; fonts self-hosted from dashboard/fonts), fed by /events at up to 30 fps. Branding deferred.
 Unresolved: final detector and hand tracker names (shown only when perception reports MODEL_NAMES), display hardware (assumed GX10 monitor, landscape 1920x1080).
 
 ## Direction contract

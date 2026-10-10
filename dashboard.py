@@ -24,7 +24,7 @@ import cv2
 import numpy as np
 
 import trials
-from interfaces import hand_error, plan_audio
+from interfaces import hand_error
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard")
 MAX_IMG_H = 720
@@ -79,7 +79,7 @@ class Dashboard:
         self._seq = 0
         self._img_cache = (None, None, (0, 0))
         self._depth_cache = (None, None)
-        self._phrases = collections.deque(maxlen=8)
+        self._phrases = collections.deque(maxlen=12)
         self._keys = collections.deque(maxlen=64)
         self._online = None
         self._trials = _trial_stats()
@@ -254,7 +254,6 @@ class Dashboard:
             x, y, z = scene.object_xyz
             obj_px = [(frame.K[0, 0] * x / z + frame.K[0, 2]) / w, (frame.K[1, 1] * y / z + frame.K[1, 2]) / h]
         hand_px = None if scene.hand_px is None else [scene.hand_px[0] / w, scene.hand_px[1] / h]
-        audio = info.get("audio") or plan_audio(err, info.get("state"))
         return {
             "seq": self._seq + 1, "sent": round(time.time(), 3),
             "img": img, "aspect": w / h, "depth": self._depth(frame),
@@ -262,8 +261,6 @@ class Dashboard:
             "object": {"box": box, "px": obj_px, "xyz": _vec(scene.object_xyz), "visible": bool(scene.object_visible)},
             "hand": {"px": hand_px, "xyz": _vec(scene.hand_xyz), "visible": bool(scene.hand_visible)},
             "err": _vec(err), "dist": _num(np.linalg.norm(err)) if err is not None else None,
-            "audio": {k: (_num(v, 3) if isinstance(v, float) else v) for k, v in audio.items()},
-            "audio_source": "guidance" if info.get("audio") else "derived",
             "phrases": phrases,
             "stages": {k: _num(v, 2) for k, v in (info.get("stages") or {}).items()},
             "fps": _num(info.get("fps"), 1), "age_ms": _num(info.get("age_ms"), 1),

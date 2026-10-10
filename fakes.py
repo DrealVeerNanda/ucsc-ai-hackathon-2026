@@ -19,7 +19,7 @@ import time
 import cv2
 import numpy as np
 
-from interfaces import Frame, Scene, hand_error, plan_audio
+from interfaces import Frame, Scene, hand_error
 
 W, H = 480, 640                              # portrait, upright
 OBJECT_XYZ = np.array([0.05, 0.12, 0.60])    # meters, camera frame
@@ -165,11 +165,20 @@ class FakeLocate:
         )
 
 
+def word_for(err, dead_m: float) -> str | None:
+    """Same rule as guidance.word_for: the axis with the largest error outside the dead zone."""
+    axis = int(np.argmax(np.abs(err)))
+    if abs(err[axis]) <= dead_m:
+        return None
+    return (("left", "right"), ("up", "down"), ("back", "forward"))[axis][int(err[axis] > 0)]
+
+
 class FakeGuidance:
-    """Prints what lane 3's audio would say, and runs the same state machine."""
+    """Speaks (prints) what lane 3's words mode would say, with the same state machine."""
 
     GRAB_M = 0.05
     DEAD_M = 0.03
+    WORD_GAP_S = 0.5   # at most two words a second, as in guidance.py
 
     def __init__(self, print_hz: float = 4.0):
         self.state = "idle"
@@ -179,12 +188,12 @@ class FakeGuidance:
         self.print_every = 1.0 / print_hz
         self.last_print = 0.0
         self.found = False
-        self.last_audio = plan_audio(None, "idle")
+        self.word_t = -1e9
         self._phrases = []
 
-    def say(self, text: str) -> None:
-        self._phrases.append(text)
-        print(f"[guide] says: {text}")
+    def say(self, clip: str) -> None:
+        self._phrases.append(clip)
+        print(f"[guide] says: {clip}")
 
     def pop_phrases(self) -> list:
         out, self._phrases = self._phrases, []
@@ -192,7 +201,7 @@ class FakeGuidance:
 
     def reset(self, target: str) -> None:
         self.state, self.found = "searching", False
-        self.say("Looking")
+        self.say("looking")
 
     def update(self, scene: Scene) -> str:
         now = time.monotonic()
@@ -209,22 +218,25 @@ class FakeGuidance:
             self.state = "searching"
             if self.found:
                 self.found = False
-                self.say("I lost it")
+                self.say("i_lost_it")
         elif scene.hand_xyz is None:
             self.state = "waiting_hand"
         elif np.linalg.norm(err) < self.GRAB_M:
             self.state, self.grab_t = "grab", now
-            self.last_audio = plan_audio(err, self.state)
-            self.say("Grab")
+            self.say("grab")
             return self.state
         else:
             self.state = "guiding"
         if scene.object_xyz is not None and not self.found:
             self.found = True
-            self.say("Found it")
+            self.say("found_it")
         if self.state == "waiting_hand" and prev != "waiting_hand":
-            self.say("Show me your hand")
-        self.last_audio = plan_audio(err, self.state)
+            self.say("show_me_your_hand")
+        if self.state == "guiding" and now - self.word_t >= self.WORD_GAP_S:
+            word = word_for(err, self.DEAD_M)
+            if word:
+                self.word_t = now
+                self.say(word)
 
         if now - self.last_print >= self.print_every:
             self.last_print = now
