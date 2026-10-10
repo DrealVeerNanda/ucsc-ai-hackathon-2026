@@ -34,6 +34,7 @@ from typing import Iterator
 import cv2
 import numpy as np
 
+import tracing
 from interfaces import Frame
 
 
@@ -45,6 +46,7 @@ class RawFrame:
     K: np.ndarray                # 3 x 3, for the rgb size
     pose: np.ndarray | None      # 4 x 4, as the app reports it
     kind: str = "record3d"       # which app sent it: picks the entry in ROTATE and POSE_FIX
+    t_src: float | None = None   # seconds on the sender's clock (phone, or the relaying Mac), if it sends one
 
 
 class SourceError(RuntimeError):
@@ -97,7 +99,7 @@ def shrink(raw: RawFrame, max_side: int | None) -> RawFrame:
     K[0] *= nw / w
     K[1] *= nh / h
     rgb = cv2.resize(raw.rgb, (nw, nh), interpolation=cv2.INTER_AREA)
-    return RawFrame(rgb, raw.depth, K, raw.pose, raw.kind)
+    return RawFrame(rgb, raw.depth, K, raw.pose, raw.kind, raw.t_src)
 
 
 def prepare(raw: RawFrame, t: float, rotate: int | None = None, max_side: int | None = 960,
@@ -272,7 +274,7 @@ def _pathon_frames(host: str | None = None, port: int = 8888, timeout_s: float =
             K = np.array([[i.fx, 0, i.ppx], [0, i.fy, i.ppy], [0, 0, 1]], dtype=np.float64)
             rgb = cv2.cvtColor(fr.color, cv2.COLOR_BGR2RGB)
             depth = _clean_depth(fr.depth, getattr(fr, "confidence", None))
-            yield RawFrame(rgb, depth, K, _valid_pose(fr.transform), "pathon")
+            yield RawFrame(rgb, depth, K, _valid_pose(fr.transform), "pathon", getattr(fr, "timestamp", None))
     finally:
         try:
             client.stop()
@@ -326,7 +328,7 @@ def _to_mm(depth: np.ndarray) -> np.ndarray:
 
 
 def encode_raw(raw: RawFrame, jpeg_quality: int = 85) -> bytes:
-    meta = json.dumps({"kind": raw.kind, "K": np.asarray(raw.K, dtype=np.float64).ravel().tolist(),
+    meta = json.dumps({"kind": raw.kind, "t_send": time.time(), "K": np.asarray(raw.K, dtype=np.float64).ravel().tolist(),
                        "pose": None if raw.pose is None else np.asarray(raw.pose, dtype=np.float64).ravel().tolist()}).encode()
     _, jpg = cv2.imencode(".jpg", cv2.cvtColor(raw.rgb, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
     _, png = cv2.imencode(".png", _to_mm(raw.depth), [cv2.IMWRITE_PNG_COMPRESSION, 1])
@@ -341,7 +343,8 @@ def decode_raw(meta: bytes, jpg: bytes, png: bytes) -> RawFrame:
         raise SourceError("relay: could not decode a frame")
     pose = None if m["pose"] is None else np.array(m["pose"], dtype=np.float64).reshape(4, 4)
     return RawFrame(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), mm.astype(np.float32) / 1000.0,
-                    np.array(m["K"], dtype=np.float64).reshape(3, 3), pose, m.get("kind", "record3d"))
+                    np.array(m["K"], dtype=np.float64).reshape(3, 3), pose, m.get("kind", "record3d"),
+                    m.get("t_send"))
 
 
 def _recv_exact(conn: socket.socket, n: int) -> bytes:
@@ -447,6 +450,8 @@ class Stream:
         self._cond = threading.Condition()
         self._latest = None  # (RawFrame, time.monotonic() at arrival)
         self._seq = self._taken = 0
+        self._offsets = deque(maxlen=600)   # arrival time minus the sender's timestamp, recent frames
+        self._cable_ms = None
         self._arrivals = deque(maxlen=60)
         self._state, self._error = "connecting", None
         self._stop = threading.Event()
@@ -479,6 +484,7 @@ class Stream:
                         if self._state == "reconnecting":
                             print(f"[stream] {self.source} is back", file=sys.stderr)
                         self._latest = (raw, now)
+                        self._cable_ms = self._delay_ms(raw, now)
                         self._seq += 1
                         self._arrivals.append(now)
                         self._state, self._error = "streaming", None
@@ -499,6 +505,16 @@ class Stream:
                 gen.close()
             self._stop.wait(1.0)
 
+    def _delay_ms(self, raw: RawFrame, now: float):
+        """How much longer this frame took to get here than the quickest recent one. The two
+        clocks are not synchronised, so the absolute delay is unknown: this is the part of it
+        that varies (queueing, a busy phone, a slow link). tools/measure_camera_latency.py
+        measures the absolute number."""
+        if raw.t_src is None:
+            return None
+        self._offsets.append(now - raw.t_src)
+        return (self._offsets[-1] - min(self._offsets)) * 1000.0
+
     def start(self, timeout: float | None = None) -> "Stream":
         """Blocks until the first frame. Raises SourceError if the source cannot be opened."""
         if timeout is None:
@@ -516,6 +532,7 @@ class Stream:
         if not ok:
             self.close()
             raise SourceError(err or f"{self.source}: no frame within {timeout:.0f} s")
+        tracing.meta(source=self.source)
         return self
 
     def get_raw(self, wait: float = 0.0):
@@ -525,14 +542,21 @@ class Stream:
                 self._cond.wait(wait)
             if self._seq == self._taken:
                 return None
+            self._skipped = self._seq - self._taken - 1    # arrived and were overwritten unseen
             self._taken = self._seq
+            self._taken_cable_ms = self._cable_ms
             return self._latest
 
     def get_frame(self, wait: float = 0.0) -> Frame | None:
+        tracing.loop_returned()
         got = self.get_raw(wait)
         if got is None:
             return None
-        return prepare(got[0], got[1], rotate=self.rotate, max_side=self.max_side)
+        raw, t = got
+        tracing.begin_frame(t, wait_ms=round((time.monotonic() - t) * 1000, 3), skipped=self._skipped,
+                            **({} if self._taken_cable_ms is None else {"cable_ms": round(self._taken_cable_ms, 3)}))
+        with tracing.span("stream.prepare"):
+            return prepare(raw, t, rotate=self.rotate, max_side=self.max_side)
 
     def status(self) -> dict:
         """state is connecting, streaming, reconnecting, ended or failed. age_s is how old the

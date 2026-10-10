@@ -19,6 +19,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import tracing  # noqa: E402
+
 URL = "http://127.0.0.1:8001/v1"
 PROMPT = ('Is there a {target} in this image? Reply with JSON only: {{"visible": true or false, '
           '"box": [x1, y1, x2, y2] bounding box of the {target} with coordinates normalized to 0-1000, '
@@ -64,6 +67,8 @@ def ask(rgb: np.ndarray, target: str, url: str = URL, max_side: int = 640, timeo
         box = (max(0.0, x1), max(0.0, y1), min(float(w), x2), min(float(h), y2))
         if box[2] - box[0] < 2 or box[3] - box[1] < 2:
             box = None
+    tracing.event("cosmos", seconds * 1000, target=target, found=box is not None,
+                  tokens=reply.get("usage", {}).get("completion_tokens"))
     return {"box": box, "grasp": d.get("grasp", ""), "seconds": seconds, "usage": reply.get("usage", {})}
 
 

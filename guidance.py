@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+import tracing
 from audio_out import ToneConfig, open_sink
 from interfaces import Scene, hand_error
 
@@ -196,7 +197,12 @@ def _get() -> Guidance:
 
 
 def update(scene: Scene) -> str:
-    return _get().update(scene)
+    tracing.begin_frame(scene.t)
+    with tracing.span("guidance"):
+        state = _get().update(scene)
+    age_ms = (time.monotonic() - scene.t) * 1000      # only meaningful when scene.t is an arrival time
+    tracing.put(state=state, **({"e2e_ms": round(age_ms, 3)} if 0 <= age_ms < 10000 else {}))
+    return state
 
 
 def reset(target: str) -> None:

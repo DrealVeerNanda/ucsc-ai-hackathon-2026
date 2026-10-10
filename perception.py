@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import urllib.request
 from collections import deque
 from contextlib import contextmanager
@@ -35,6 +36,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+import tracing
 from interfaces import Frame, Scene
 
 MODELS_DIR = Path(os.environ.get("MODELS_DIR") or Path(__file__).resolve().parent / "models")
@@ -326,16 +328,26 @@ class Perception:
 
     def locate(self, frame: Frame, target: str) -> Scene:
         cfg = self.cfg
+        tracing.begin_frame(frame.t)
+        t_start = time.perf_counter()
+        t_models = 0.0               # time inside the models, the rest of locate() is our own maths
         if target != self.target:
             self.target = target
             self._forget()
             if self.detector is not None:
-                self.detector.set_target(target)
+                t = time.perf_counter()
+                self.detector.set_target(target)     # encodes the text prompt: slow, once per target
+                t_models += time.perf_counter() - t
+                tracing.event("detector.set_target", (time.perf_counter() - t) * 1000, target=target)
 
         # Object box: fresh from the detector, or reused for a few frames.
         if self.detector is not None:
             if self._i % cfg.detect_every == 0 or not self._seen:
-                det = self._pick(self.detector.detect(frame.rgb))
+                t = time.perf_counter()
+                dets = self.detector.detect(frame.rgb)
+                t_models += time.perf_counter() - t
+                tracing.add("perception.detector", (time.perf_counter() - t) * 1000)
+                det = self._pick(dets)
                 if det is not None:
                     self._box = det.box
                 self._seen = det is not None
@@ -343,7 +355,12 @@ class Perception:
         seen = self._seen
 
         # Hand: with two in view, take the one nearest the object.
-        hands = self.hands.detect(frame.rgb, int(frame.t * 1000)) if self.hands is not None else []
+        hands = []
+        if self.hands is not None:
+            t = time.perf_counter()
+            hands = self.hands.detect(frame.rgb, int(frame.t * 1000))
+            t_models += time.perf_counter() - t
+            tracing.add("perception.hand", (time.perf_counter() - t) * 1000)
         hand = None
         if hands:
             if self._box is not None:
@@ -395,6 +412,7 @@ class Perception:
         if hand_xyz is None:
             self._hand_avg.clear()
 
+        tracing.add("perception.depth", (time.perf_counter() - t_start - t_models) * 1000)
         return Scene(
             object_xyz=object_xyz, hand_xyz=hand_xyz,
             object_visible=visible, hand_visible=hand is not None,
@@ -414,20 +432,23 @@ def build(detector: str | None = None, hand: str | None = None) -> Perception:
     detector = detector or os.environ.get("PERCEPTION_DETECTOR", "yoloworld")
     hand = hand or os.environ.get("PERCEPTION_HAND", "mediapipe")
     device = os.environ.get("PERCEPTION_DEVICE") or None
-    if detector == "none":
-        det = None
-    elif detector == "coco":
-        det = CocoDetector(device=device)
-    else:
-        det = OpenVocabDetector(detector, device=device)
-    if hand == "none":
-        hands = None
-    elif hand == "sticker":
-        hsv = os.environ.get("PERCEPTION_STICKER_HSV")
-        v = [int(x) for x in hsv.split(",")] if hsv else [35, 80, 80, 85, 255, 255]
-        hands = StickerHand(v[:3], v[3:])
-    else:
-        hands = MediaPipeHand()
+    tracing.meta(detector=detector, hand=hand)
+    with tracing.timed("load.detector", kind=detector):
+        if detector == "none":
+            det = None
+        elif detector == "coco":
+            det = CocoDetector(device=device)
+        else:
+            det = OpenVocabDetector(detector, device=device)
+    with tracing.timed("load.hand", kind=hand):
+        if hand == "none":
+            hands = None
+        elif hand == "sticker":
+            hsv = os.environ.get("PERCEPTION_STICKER_HSV")
+            v = [int(x) for x in hsv.split(",")] if hsv else [35, 80, 80, 85, 255, 255]
+            hands = StickerHand(v[:3], v[3:])
+        else:
+            hands = MediaPipeHand()
     cfg = PerceptionConfig(use_pose=os.environ.get("PERCEPTION_USE_POSE", "") not in ("", "0"),
                            detect_every=int(os.environ.get("PERCEPTION_DETECT_EVERY", "1")))
     return Perception(det, hands, cfg)

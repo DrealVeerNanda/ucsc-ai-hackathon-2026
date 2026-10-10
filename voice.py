@@ -20,8 +20,11 @@ import os
 import re
 import sys
 import threading
+import time
 
 import numpy as np
+
+import tracing
 
 SR = 16000          # what Whisper expects
 MAX_S = 8.0         # stop recording after this even without the second Enter
@@ -65,7 +68,8 @@ class Listener:
         self.sd = sd
         self.device = device
         sd.check_input_settings(device=device, samplerate=SR, channels=1)   # fails if there is no microphone
-        self.whisper = WhisperModel(model, device="cpu", compute_type="int8")
+        with tracing.timed("load.whisper", model=model):
+            self.whisper = WhisperModel(model, device="cpu", compute_type="int8")
 
     def record(self) -> np.ndarray:
         chunks = []
@@ -85,7 +89,10 @@ class Listener:
         return " ".join(s.text for s in segments).strip()
 
     def listen(self) -> str:
-        text = self.transcribe(self.record())
+        audio = self.record()
+        t = time.perf_counter()
+        text = self.transcribe(audio)
+        tracing.event("whisper", (time.perf_counter() - t) * 1000, audio_s=round(audio.size / SR, 2), text=text)
         target = extract_target(text)
         print(f"[voice] heard {text!r} -> target {target!r}")
         return target

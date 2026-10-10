@@ -21,6 +21,8 @@ from pathlib import Path
 
 import numpy as np
 
+import tracing
+
 CLIPS_DIR = Path(__file__).resolve().parent / "audio"
 
 
@@ -209,9 +211,24 @@ class AudioEngine(Mixer):
         self.stream = sd.OutputStream(samplerate=self.cfg.sr, channels=2, dtype="float32", device=device,
                                       blocksize=blocksize, callback=self._cb, latency="low")
         self.stream.start()
+        self._blocks = self._underruns = 0
+        self._render_max = 0.0
+        self._reported = time.monotonic()
+        tracing.meta(audio_out_ms=round(float(self.stream.latency) * 1000, 1), audio_block=blocksize,
+                     audio_device=str(sd.query_devices(self.stream.device).get("name", "")))
 
     def _cb(self, outdata, frames, time_info, status):
+        t = time.perf_counter()
         outdata[:] = self.render(frames)
+        self._render_max = max(self._render_max, (time.perf_counter() - t) * 1000)
+        self._blocks += 1
+        self._underruns += bool(status and status.output_underflow)
+        now = time.monotonic()
+        if now - self._reported >= 5.0:      # a summary now and then, not a line per 5 ms block
+            tracing.event("audio", render_max_ms=round(self._render_max, 3), blocks=self._blocks,
+                          underruns=self._underruns)
+            self._blocks = self._underruns = 0
+            self._render_max, self._reported = 0.0, now
 
     def close(self):
         self.synth.set(0.0, self.cfg.base_hz, 1.0, "silent")
