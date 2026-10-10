@@ -329,4 +329,50 @@ def test_a_far_hand_with_no_depth_reading_is_judged_by_its_size():
     assert not s.hand_visible and s.hand_px is None      # somebody else's
     p = Perception(FakeDetector(), Fixed(far, near), PerceptionConfig(smooth=1))
     s = p.locate(f, "mug")
-    assert s.hand_visible and s.hand_px == (300, 500) and s.hand_xyz is None   # ours, too close for lidar
+    assert s.hand_visible and s.hand_px == (300, 500)    # ours, too close for lidar
+    assert s.hand_xyz[2] == pytest.approx(0.25, abs=0.005)   # so its depth comes from its size
+
+
+def _sized(xyz, real_scale=1.0):
+    """A hand at xyz whose apparent size matches a hand `real_scale` times the standard one."""
+    u, v = project(xyz, K)
+    return Hand(tip=(u, v), points=np.array([[u, v]], np.float32), samples=[(u, v)],
+                px_per_m=K[0, 0] / xyz[2] * real_scale)
+
+
+class _Hands:
+    def __init__(self, *hands):
+        self.hands = list(hands)
+
+    def detect(self, rgb, t_ms):
+        return self.hands
+
+
+def test_hand_too_close_for_lidar_gets_its_depth_from_its_size():
+    near = np.array([0.02, 0.05, 0.14])
+    f = frame(hands=[near])                              # painted at 0.14 m: below what lidar accepts
+    s = Perception(FakeDetector(), _Hands(_sized(near)), PerceptionConfig(smooth=1)).locate(f, "mug")
+    assert s.hand_visible and np.allclose(s.hand_xyz, near, atol=0.005)
+    off = Perception(FakeDetector(), _Hands(_sized(near)), PerceptionConfig(smooth=1, size_depth=False))
+    assert off.locate(f, "mug").hand_xyz is None
+
+
+def test_size_estimate_is_fitted_to_the_wearers_hand():
+    p = Perception(FakeDetector(), _Hands(), PerceptionConfig(smooth=1))
+    for i in range(12):                                  # a big hand, seen with lidar at 45 cm
+        h = np.array([-0.15, 0.05, 0.45])
+        p.hands = _Hands(_sized(h, real_scale=1.25))
+        assert p.locate(frame(t=0.03 * i, hands=[h]), "mug").hand_xyz[2] == pytest.approx(0.45, abs=0.005)
+    near = np.array([0.0, 0.05, 0.14])
+    p.hands = _Hands(_sized(near, real_scale=1.25))
+    s = p.locate(frame(t=1.0, hands=[near]), "mug")
+    assert s.hand_xyz[2] == pytest.approx(0.14, abs=0.01)   # unfitted it would read 0.11
+
+
+def test_lidar_reading_past_a_close_hand_is_overruled_by_its_size():
+    near = np.array([0.02, 0.05, 0.18])
+    f = frame(hands=[near])
+    u, v = (int(round(x)) for x in project(near, K))
+    f.depth[v - 20:v + 21, u - 20:u + 21] = 0.85         # lidar sees the table through the too-close hand
+    s = Perception(FakeDetector(), _Hands(_sized(near)), PerceptionConfig(smooth=1)).locate(f, "mug")
+    assert s.hand_xyz[2] == pytest.approx(0.18, abs=0.005)

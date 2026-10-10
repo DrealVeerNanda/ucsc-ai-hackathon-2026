@@ -296,6 +296,7 @@ class PerceptionConfig:
     box_margin: float = 0.10     # hand inside the box grown by this fraction: the box shows the hand
     hand_patch: int = 6          # half-size in px of the depth patch at the fingertip
     max_hand_m: float = 0.90     # a hand farther from the camera than this is somebody else's
+    size_depth: bool = True      # no lidar on the hand (closer than about 20 cm): estimate its depth from its size
 
 
 class _Average:
@@ -322,6 +323,7 @@ class Perception:
         self.target = None
         self._obj_avg = _Average(self.cfg.smooth, self.cfg.jump_m)
         self._hand_avg = _Average(self.cfg.smooth, self.cfg.jump_m)
+        self._hand_scale = deque(maxlen=90)   # lidar depth / size-based depth, to fit the size estimate to this hand
         self._forget()
 
     def _forget(self):
@@ -351,21 +353,36 @@ class Perception:
                            (p[:, 1] >= box[1] - my) & (p[:, 1] <= box[3] + my)))
 
     def _hand_xyz(self, hand: Hand, frame: Frame):
-        """The fingertip's pixel, at the depth of the nearest valid sample along the finger."""
-        for u, v in hand.samples:
-            p = to_xyz(u, v, frame.depth, frame.K, r=self.cfg.hand_patch, nearest=True)
-            if p is not None:
-                return back_project(hand.tip[0], hand.tip[1], p[2], frame.K)
-        return None
+        """(fingertip position or None, where its depth came from, in reach?).
 
-    def _in_reach(self, hand: Hand, xyz, frame: Frame) -> bool:
-        """Could this be the wearer's hand? By lidar depth if there is a reading; otherwise by
-        how big the hand looks, since a hand across the room is small in the picture."""
-        if xyz is not None:
-            return xyz[2] <= self.cfg.max_hand_m
+        Depth is lidar at the fingertip, or further down the finger if the tip has no reading.
+        Lidar reads nothing closer than about 20 cm, so a hand near the chest has none: then
+        the depth is estimated from how big the hand looks, fitted to this wearer's hand
+        whenever lidar and size are both available. Coarser, but it keeps the guidance going."""
+        cfg = self.cfg
+        z_lidar = None
+        for u, v in hand.samples:
+            p = to_xyz(u, v, frame.depth, frame.K, r=cfg.hand_patch, nearest=True)
+            if p is not None:
+                z_lidar = float(p[2])
+                break
+        z_size = None
         if hand.px_per_m:
-            return frame.K[0, 0] / hand.px_per_m <= 1.3 * self.cfg.max_hand_m
-        return True
+            raw = frame.K[0, 0] / hand.px_per_m
+            if z_lidar is not None and 0.25 <= z_lidar <= 0.8 and 0.6 < z_lidar / raw < 1.6:
+                self._hand_scale.append(z_lidar / raw)
+            z_size = raw * (float(np.median(self._hand_scale)) if len(self._hand_scale) >= 10 else 1.0)
+            if z_lidar is not None and z_size < 0.35 and z_lidar > 1.8 * z_size:
+                z_lidar = None       # the hand is plainly close, yet lidar reports far: it is reading past it
+        if z_lidar is not None:
+            z, src, reach = z_lidar, "lidar", z_lidar <= cfg.max_hand_m
+        elif z_size is not None:
+            reach = z_size <= 1.3 * cfg.max_hand_m       # a hand across the room is small in the picture
+            z, src = (z_size, "size") if cfg.size_depth else (None, "none")
+        else:
+            return None, "none", True                    # nothing to judge by: may be ours, held too close
+        xyz = None if z is None else back_project(hand.tip[0], hand.tip[1], z, frame.K)
+        return xyz, src, reach
 
     def locate(self, frame: Frame, target: str) -> Scene:
         cfg = self.cfg
@@ -403,13 +420,14 @@ class Perception:
             t_models += time.perf_counter() - t
             tracing.add("perception.hand", (time.perf_counter() - t) * 1000)
         hand, hand_raw = None, None
-        reach = [(k, p) for k, p in ((k, self._hand_xyz(k, frame)) for k in hands) if self._in_reach(k, p, frame)]
+        reach = [(k, p, src) for k, (p, src, ok) in ((k, self._hand_xyz(k, frame)) for k in hands) if ok]
         if reach:
             if self._box is not None:
                 cx, cy = 0.5 * (self._box[0] + self._box[2]), 0.5 * (self._box[1] + self._box[3])
-                hand, hand_raw = min(reach, key=lambda kp: (kp[0].tip[0] - cx) ** 2 + (kp[0].tip[1] - cy) ** 2)
+                hand, hand_raw, src = min(reach, key=lambda kp: (kp[0].tip[0] - cx) ** 2 + (kp[0].tip[1] - cy) ** 2)
             else:
-                hand, hand_raw = max(reach, key=lambda kp: kp[0].score)
+                hand, hand_raw, src = max(reach, key=lambda kp: kp[0].score)
+            tracing.put(hand_depth=src)
 
         # Object position. Measured only when the detector sees it and the hand is not over it.
         pose = frame.pose if (cfg.use_pose and frame.pose is not None) else None
