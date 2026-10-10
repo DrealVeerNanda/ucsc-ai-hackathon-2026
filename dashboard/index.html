@@ -113,19 +113,9 @@
       </ol>
       <p class="e2e"><span class="e2e-ms" id="e2e">–</span> <span id="e2e-label">from frame arrival to sound</span><span class="e2e-fps" id="fps"></span></p>
 
-      <h2 class="map-title">From above</h2>
-      <svg class="map" id="map" viewBox="-50 24 100 70" preserveAspectRatio="xMidYMax meet" role="img" aria-label="Top-down view of the wearer, the hand and the object">
-        <path class="map-blind" d="M -25 90 A 25 25 0 0 1 25 90 Z"/>
-        <path class="map-ring" d="M -50 90 A 50 50 0 0 1 50 90"/>
-        <path class="map-ring" d="M -75 90 A 75 75 0 0 1 75 90"/>
-        <text class="map-text" x="0" y="80" text-anchor="middle">lidar blind</text>
-        <text class="map-text" x="36" y="56">50 cm</text>
-        <text class="map-text" x="49" y="38" text-anchor="end">75 cm</text>
-        <rect class="map-wearer" x="-7" y="89" width="14" height="5" rx="1"/>
-        <line class="leg map-leg" id="map-leg" hidden/>
-        <rect class="map-obj" id="map-obj" width="6" height="6" hidden/>
-        <circle class="map-hand" id="map-hand" r="2.6" hidden/>
-      </svg>
+      <h2 class="map-title">The scene in 3D</h2>
+      <canvas class="scene" id="scene" role="img" aria-label="3D view of the lidar points, the fingertip, the object and the line between them"></canvas>
+      <p class="scene-note" id="scene-note">Waiting for lidar points…</p>
 
       <h2 class="trials-title">Timed trials</h2>
       <p class="trials" id="trials">No timed trials yet. Run <code>python trials.py baseline</code> to record unaided times.</p>

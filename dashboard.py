@@ -32,6 +32,10 @@ DEPTH_H = 240
 # Depth picture in the page's own blue (hue 255): near is pale, far is dark. Yellow and
 # green stay reserved for the fingertip-to-object line and the grab. BGR.
 DEPTH_FAR = np.array([40, 22, 12], np.float32)
+# 3D view: about this many lidar points, sent every few frames (int16 mm xyz + uint8 rgb).
+CLOUD_POINTS = 9000
+CLOUD_EVERY = 3
+CLOUD_MAX_M = 1.6
 DEPTH_NEAR = np.array([255, 228, 196], np.float32)
 MAX_FPS = 30.0
 # Host probed to tell whether the internet is reachable. Point it at an unroutable address
@@ -66,6 +70,8 @@ class Dashboard:
         self._cond = threading.Condition()
         self._snap = None             # latest (frame, scene, info) from main
         self._msg = b""               # latest encoded SSE payload
+        self._cloud_msg = b""         # latest point cloud, its own SSE event so new pages get it at once
+        self._cloud_seq = 0
         self._seq = 0
         self._img_cache = (None, None, (0, 0))
         self._depth_cache = (None, None)
@@ -124,12 +130,18 @@ class Dashboard:
                 continue
             try:
                 body = json.dumps(self._snapshot(*snap, phrases), separators=(",", ":"))
+                cloud = None
+                if self._seq % CLOUD_EVERY == 0:
+                    cloud = json.dumps(self._cloud(snap[0]), separators=(",", ":"))
             except Exception as e:  # never let one bad frame kill the stream
                 print(f"[dashboard] encode failed: {e!r}")
                 continue
             with self._cond:
                 self._seq += 1
                 self._msg = f"id: {self._seq}\ndata: {body}\n\n".encode()
+                if cloud:
+                    self._cloud_seq += 1
+                    self._cloud_msg = f"event: cloud\ndata: {cloud}\n\n".encode()
                 self._cond.notify_all()
 
     def _image(self, frame):
@@ -159,6 +171,21 @@ class Dashboard:
             uri = "data:image/jpeg;base64," + base64.b64encode(jpg.tobytes()).decode() if ok else None
             self._depth_cache = (key, uri)
         return self._depth_cache[1]
+
+    def _cloud(self, frame):
+        """A thinned, coloured point cloud in camera coordinates."""
+        d = frame.depth
+        h, w = d.shape[:2]
+        step = max(1, int(np.ceil(np.sqrt(h * w / CLOUD_POINTS))))
+        ds = d[::step, ::step]
+        vs, us = np.mgrid[0:h:step, 0:w:step]
+        ok = np.isfinite(ds) & (ds > 0.15) & (ds < CLOUD_MAX_M)
+        z = ds[ok]
+        x = (us[ok] - frame.K[0, 2]) * z / frame.K[0, 0]
+        y = (vs[ok] - frame.K[1, 2]) * z / frame.K[1, 1]
+        xyz = np.round(np.stack([x, y, z], axis=1) * 1000).astype("<i2")
+        rgb = frame.rgb[::step, ::step][ok].astype(np.uint8)
+        return {"n": int(z.size), "b64": base64.b64encode(xyz.tobytes() + rgb.tobytes()).decode()}
 
     def _snapshot(self, frame, scene, info, phrases):
         img, (w, h) = self._image(frame)
@@ -261,16 +288,21 @@ class Dashboard:
                 self.send_header("Connection", "keep-alive")
                 self.end_headers()
                 seen = -1
+                seen_cloud = -1
                 try:
                     while True:
                         with dash._cond:
                             dash._cond.wait_for(lambda: dash._seq != seen, timeout=2.0)
                             seq, msg = dash._seq, dash._msg
+                            cloud_seq, cloud_msg = dash._cloud_seq, dash._cloud_msg
                         if seq == seen or not msg:
                             self.wfile.write(b": keepalive\n\n")
                         else:
                             self.wfile.write(msg)
                             seen = seq
+                        if cloud_msg and cloud_seq != seen_cloud:
+                            self.wfile.write(cloud_msg)
+                            seen_cloud = cloud_seq
                         self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     return

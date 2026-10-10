@@ -155,7 +155,7 @@ Reference studied for the overlay grammar (annotations drawn over a camera image
 A restrained broadcast palette: a cool blue-black ground (hue 255) in four tonal steps, white text in three tones, and four signal colours whose meanings never overlap.
 
 ### Primary
-- **Telestrator Yellow** (oklch(0.88 0.165 96), about #f8d63b): the active leg and only the active leg. The fingertip-to-object line and its arrowhead on camera, the leg's distance tag, the poster distance number in the guidance column, and the leg on the top-down map. Text on it is **Yellow Ink** (oklch(0.21 0.04 96)).
+- **Telestrator Yellow** (oklch(0.88 0.165 96), about #f8d63b): the active leg and only the active leg. The fingertip-to-object line and its arrowhead on camera, the leg's distance tag, the poster distance number in the guidance column, and the leg in the 3D scene. Text on it is **Yellow Ink** (oklch(0.21 0.04 96)).
 
 ### Secondary
 - **Grab Green** (oklch(0.82 0.16 152), about #67e18f): success states only. The GRAB state word, the leg and its tag once within reach, "On target" move values, the steady-tone beep dot, the finished clock time, and the 6px green frame around the video at grab. Text on it is **Green Ink** (oklch(0.2 0.04 152)).
@@ -168,18 +168,18 @@ A restrained broadcast palette: a cool blue-black ground (hue 255) in four tonal
 - **Blue-Black Ground** (oklch(0.165 0.022 255)): page background.
 - **Video Well** (oklch(0.1 0.015 255)): behind the camera image, darker than the ground so letterboxing reads as the frame's edge.
 - **Plate** (oklch(0.215 0.026 255)): solid informational plates (the "waiting for first frame" notice).
-- **Raised Plate** (oklch(0.265 0.03 255)): meter tracks, the lidar-blind zone on the map.
-- **Rule** (oklch(0.33 0.03 255)): 1px hairlines between move rows and pipeline steps, the meter centre tick, map range rings.
+- **Raised Plate** (oklch(0.265 0.03 255)): meter tracks.
+- **Rule** (oklch(0.33 0.03 255)): 1px hairlines between move rows and pipeline steps, the meter centre tick.
 - **Scrim** (oklch(0.12 0.02 255 / 0.82)): translucent plates sitting over video (clock bug, captions, depth inset, simulated-lanes note).
 - **Broadcast White** (oklch(0.965 0.005 255)): primary text, object brackets, the hand marker, meter marks.
 - **Muted** (oklch(0.76 0.02 255)): labels, secondary text, remembered (out-of-view) objects drawn dashed.
-- **Faint** (oklch(0.6 0.022 255)): empty values ("–"), step numbers, map annotations, the idle beep dot.
+- **Faint** (oklch(0.6 0.022 255)): empty values ("–"), step numbers, the idle beep dot.
 
 ### Depth Ramp
 - **Depth Far to Depth Near** (#0c1628 to #c4e4ff, set in `dashboard.py` as BGR): the lidar inset is a navy-to-pale ramp in the ground's blue family, so nearer reads lighter without spending yellow or green.
 
 ### Named Rules
-**The Telestrator Rule.** Yellow is the active leg. If an element is not the fingertip-to-object line, its distance, or that leg on the map, it is not yellow.
+**The Telestrator Rule.** Yellow is the active leg. If an element is not the fingertip-to-object line, its distance, or that leg in the 3D scene, it is not yellow.
 
 **The Green Means Grab Rule.** Green appears only when something succeeded. Never as decoration, a status-OK dot, or a brand colour.
 
@@ -230,7 +230,7 @@ Flat. There are no shadows anywhere. Depth comes from tone: the video well is da
 
 ## Shapes
 
-Every plate, tag, banner, and the video itself takes the same small 3px corner. Circles are reserved for dots and markers (the hand dot and ring, meter marks, the beep dot, map hand). Meter tracks are 10px rounded bars. On camera, the object is marked with square-capped corner brackets (5px stroke, non-scaling), the leg with a round-capped 5px line and a solid arrowhead; remembered objects and depth-less hands switch to dashes.
+Every plate, tag, banner, and the video itself takes the same small 3px corner. Circles are reserved for dots and markers (the hand dot and ring, meter marks, the beep dot, the 3D fingertip). Meter tracks are 10px rounded bars. On camera, the object is marked with square-capped corner brackets (5px stroke, non-scaling), the leg with a round-capped 5px line and a solid arrowhead; remembered objects and depth-less hands switch to dashes.
 
 ## Components
 
@@ -265,13 +265,13 @@ State word (Display), distance (Display Number, yellow; green within reach; fain
 ### Pipeline Steps
 Numbered list in the rail: step number (faint), name (600), live ms (muted, right aligned), and a Label status line that turns white when OK and amber on warning. End-to-end latency follows as a 1.728rem figure with fps beneath.
 
-### Top-Down Map
-Inline SVG: range rings in rule colour, the lidar-blind half disc in Raised Plate, the wearer as a muted bar, the object as a white square outline (dashed muted when remembered), the hand as a white dot, and the leg in yellow.
+### 3D Scene
+A canvas in the rail (13rem tall, Plate ground, 3px corner) showing the latest lidar frame as about 5,000 points in their real camera colours (dimmed to 85%), splatted with a depth buffer: no WebGL and no library, so it runs offline. The server sends the cloud as its own `cloud` stream event about 10 times a second (int16 mm xyz plus uint8 rgb, base64). Over the points: the object as a white wireframe box (dashed muted when remembered), the fingertip as a white dot with a ground-coloured ring, the leg as a 3px round-capped yellow line (green within reach), and the chest camera as a small muted frustum. The view sways ±0.55 rad about the hand-object midpoint over 14 s so depth reads at a glance; dragging takes over and the sway resumes 5 s after release; reduced motion holds a still three-quarter view. A one-line note under it counts the points and invites dragging. Replaced the flat top-down map on 2026-10-10 at Veer's request.
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** reserve Telestrator Yellow for the active leg: the line, its tag, the distance number, the map leg.
+- **Do** reserve Telestrator Yellow for the active leg: the line, its tag, the distance number, the 3D leg.
 - **Do** use Grab Green only for success: grab state, within reach, On target, steady tone, finished clock, the green video frame.
 - **Do** place plates over video on the scrim, and keep every plate to the 3px corner.
 - **Do** keep tabular numerals on every number and size live values against their cell, not their content.
