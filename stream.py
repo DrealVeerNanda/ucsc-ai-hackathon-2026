@@ -337,6 +337,8 @@ def _replay_frames(folder: str | Path, loop: bool = True, paced: bool = True) ->
     """Replays a folder written by Recorder at the speed it was recorded."""
     folder = Path(folder)
     video, side = folder / "rgb.mp4", folder / "frames.npz"
+    if video.exists() and (folder / "meta.part").exists():          # a recording whose run was cut short
+        pack(folder)
     if not video.exists() or not side.exists():
         raise SourceError(f"Not a recording: {folder} (expected rgb.mp4 and frames.npz). "
                           "Make one with: python tools/record.py NAME")
@@ -447,7 +449,11 @@ def _relay_frames(port: int, stop: threading.Event, wait_s: float = 60.0) -> Ite
 class Recorder:
     """Writes raw frames to FOLDER/rgb.mp4 (colour) and FOLDER/frames.npz (depth in whole
     millimetres at its native size, plus K, pose and time for every frame), so the stream
-    can replay them. Frames are stored before rotation, so the rotation can still be changed."""
+    can replay them. Frames are stored before rotation, so the rotation can still be changed.
+
+    Depth and the per-frame numbers go to disk as they arrive (the .part files), and close()
+    packs them into frames.npz. A run that is interrupted while closing therefore loses
+    nothing: pack() finishes the job the next time the folder is opened."""
 
     def __init__(self, folder: str | Path, fps: float = 20.0, max_side: int | None = 960):
         self.folder = Path(folder)
@@ -455,7 +461,8 @@ class Recorder:
         self.fps, self.max_side = fps, max_side
         self.writer = None
         self.kind = None
-        self.depth, self.K, self.pose, self.t = [], [], [], []
+        self.frames = 0
+        self._depth = self._index = None
 
     def add(self, raw: RawFrame, t: float):
         raw = shrink(raw, self.max_side)
@@ -465,25 +472,58 @@ class Recorder:
             if not self.writer.isOpened():
                 raise SourceError(f"could not open {self.folder / 'rgb.mp4'} for writing")
             self.kind = raw.kind
+            (self.folder / "frames.npz").unlink(missing_ok=True)          # an older take in the same folder
+            (self.folder / "meta.part").write_text(json.dumps({"kind": raw.kind, "depth_shape": list(raw.depth.shape)}))
+            self._depth = open(self.folder / "depth.part", "wb")
+            self._index = open(self.folder / "index.part", "wb")
         self.writer.write(cv2.cvtColor(raw.rgb, cv2.COLOR_RGB2BGR))
-        self.depth.append(_to_mm(raw.depth))
-        self.K.append(np.array(raw.K, dtype=np.float64))
-        self.pose.append(np.full((4, 4), np.nan) if raw.pose is None else np.array(raw.pose, dtype=np.float64))
-        self.t.append(t)
+        pose = np.full((4, 4), np.nan) if raw.pose is None else np.asarray(raw.pose, dtype=np.float64)
+        self._depth.write(_to_mm(raw.depth).tobytes())
+        self._index.write(np.concatenate(([t], np.asarray(raw.K, dtype=np.float64).ravel(), pose.ravel())).tobytes())
+        self.frames += 1
+        if self.frames % 20 == 0:
+            self._depth.flush()
+            self._index.flush()
 
     def close(self) -> dict:
         if self.writer is None:
             return {"frames": 0}
         self.writer.release()
-        np.savez_compressed(self.folder / "frames.npz", depth_mm=np.stack(self.depth), K=np.stack(self.K),
-                            pose=np.stack(self.pose), t=np.array(self.t))
-        seconds = self.t[-1] - self.t[0]
-        meta = {"kind": self.kind, "frames": len(self.t), "seconds": round(seconds, 2),
-                "fps": round((len(self.t) - 1) / seconds, 1) if seconds > 0 else 0.0,
-                "depth_size": list(self.depth[0].shape[::-1]),
-                "has_pose": bool(np.isfinite(np.stack(self.pose)).all(axis=(1, 2)).any())}
-        (self.folder / "meta.json").write_text(json.dumps(meta, indent=2))
-        return meta
+        self._depth.close()
+        self._index.close()
+        self.writer = None
+        return pack(self.folder)
+
+
+_INDEX_ROW = 1 + 9 + 16         # time, K, pose: the doubles Recorder writes for each frame
+
+
+def pack(folder: str | Path) -> dict:
+    """Turn the .part files a Recorder writes as it goes into frames.npz and meta.json. The
+    .part files are removed only once the result is on disk, so this can be run again after
+    being cut short. Returns the recording's meta."""
+    folder = Path(folder)
+    info = json.loads((folder / "meta.part").read_text())
+    h, w = info["depth_shape"]
+    index = np.fromfile(folder / "index.part", dtype=np.float64)
+    depth = np.fromfile(folder / "depth.part", dtype=np.uint16)
+    n = min(index.size // _INDEX_ROW, depth.size // (h * w))             # a frame half written at the kill is dropped
+    if n == 0:
+        raise SourceError(f"Nothing to recover in {folder}: no whole frame was written.")
+    index = index[:n * _INDEX_ROW].reshape(n, _INDEX_ROW)
+    t, pose = index[:, 0], index[:, 10:].reshape(n, 4, 4)
+    np.savez_compressed(folder / "frames.part.npz", depth_mm=depth[:n * h * w].reshape(n, h, w),
+                        K=index[:, 1:10].reshape(n, 3, 3), pose=pose, t=t)
+    os.replace(folder / "frames.part.npz", folder / "frames.npz")
+    seconds = float(t[-1] - t[0])
+    meta = {"kind": info["kind"], "frames": n, "seconds": round(seconds, 2),
+            "fps": round((n - 1) / seconds, 1) if seconds > 0 else 0.0,
+            "depth_size": [w, h],
+            "has_pose": bool(np.isfinite(pose).all(axis=(1, 2)).any())}
+    (folder / "meta.json").write_text(json.dumps(meta, indent=2))
+    for name in ("depth.part", "index.part", "meta.part"):
+        (folder / name).unlink(missing_ok=True)
+    return meta
 
 
 # ---------------------------------------------------------------------------
@@ -658,10 +698,23 @@ def start(source: str | None = None, **kw) -> Stream:
     """Open the stream. Without arguments: STREAM_SOURCE (default auto) and STREAM_ROTATE."""
     global _default
     stop()
+    _exit_cleanly_when_told_to_stop()
     if "rotate" not in kw and os.environ.get("STREAM_ROTATE"):
         kw["rotate"] = int(os.environ["STREAM_ROTATE"])
     _default = Stream(source or os.environ.get("STREAM_SOURCE", "auto"), **kw).start()
     return _default
+
+
+def _exit_cleanly_when_told_to_stop():
+    """A closed terminal or a plain `kill` ends Python without running the atexit step below,
+    which leaves a recording's video unreadable. Turn both into a normal exit. Only where
+    nobody has set their own handler, and only from the main thread (signals allow no other)."""
+    import signal
+    if threading.current_thread() is not threading.main_thread():
+        return
+    for sig in (signal.SIGTERM, getattr(signal, "SIGHUP", None)):
+        if sig is not None and signal.getsignal(sig) is signal.SIG_DFL:
+            signal.signal(sig, lambda *_: sys.exit(0))
 
 
 # Join the reader thread before Python shuts down. Left running, it can be torn down in the

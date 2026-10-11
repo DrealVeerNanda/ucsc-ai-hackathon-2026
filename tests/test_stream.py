@@ -127,6 +127,22 @@ def test_recording_replays_with_exact_depth_K_and_pose(tmp_path):
     assert np.allclose(got[5].pose, _pose(tx=0.05))
 
 
+def test_a_run_killed_before_saving_is_packed_when_the_folder_is_next_opened(tmp_path):
+    rec = Recorder(tmp_path / "rec")
+    raws = [_raw(i) for i in range(8)]
+    for i, r in enumerate(raws):
+        rec.add(r, 100.0 + i * 0.05)
+    rec.writer.release()                                   # the video survives a Ctrl-C; close() never ran
+    rec._depth.flush()
+    rec._index.flush()
+    with open(tmp_path / "rec" / "depth.part", "ab") as f:
+        f.write(b"\x01" * 1000)                            # and the kill came half way through a frame
+    assert not (tmp_path / "rec" / "frames.npz").exists()
+    got = list(stream._replay_frames(tmp_path / "rec", loop=False, paced=False))
+    assert len(got) == 8 and np.abs(got[7].depth - raws[7].depth).max() < 0.0006 and np.allclose(got[3].K, raws[3].K)
+    assert (tmp_path / "rec" / "meta.json").exists() and not (tmp_path / "rec" / "depth.part").exists()
+
+
 def test_recording_keeps_frames_without_pose(tmp_path):
     rec = Recorder(tmp_path / "rec")
     rec.add(_raw(0, pose=False), 0.0)
