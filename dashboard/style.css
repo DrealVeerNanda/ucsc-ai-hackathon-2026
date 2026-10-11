@@ -310,3 +310,55 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; o
   .cam { height: auto; }
   .video { height: auto; width: min(100%, calc(82dvh * var(--aspect, 0.75))); margin-inline: auto; }
 }
+
+/* logs-only view ------------------------------------------------------------
+   A switch in the bar hides the camera and the 3D scene and leaves only text, so the
+   wearer can test by ear without seeing their own hand on a screen. */
+.bar-mode {
+  margin-left: auto;
+  padding: var(--sp2) var(--sp4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--plate);
+  color: var(--text);
+  font: 600 var(--s0)/1 var(--font);
+  cursor: pointer;
+}
+.bar-sim:not([hidden]) + .bar-mode { margin-left: 0; }
+.bar-mode:hover { border-color: var(--muted); }
+.bar-mode:focus-visible { outline: 2px solid var(--leg); outline-offset: 2px; }
+.bar-mode[aria-pressed="true"] { background: var(--leg); border-color: var(--leg); color: var(--on-leg); }
+
+.logs { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--sp4); min-height: 0; grid-column: 1 / -1; }
+.logs-k { margin: 0; color: var(--muted); max-width: 80ch; }
+.logs-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp4) var(--sp5);
+  overflow-y: auto;
+  background: var(--plate);
+  border-radius: var(--radius);
+  font-size: var(--s1);
+  line-height: 1.5;
+}
+.logs-list li { display: grid; grid-template-columns: 8ch 10ch 7ch minmax(0, 1fr); gap: var(--sp4); align-items: baseline; padding: var(--sp1) 0; }
+.logs-list li + li { border-top: 1px solid oklch(0.33 0.03 255 / 0.5); }
+.logs-t, .logs-took { color: var(--faint); }
+.logs-took { text-align: right; }
+.logs-who { font: 700 var(--s0)/1.5 var(--display); letter-spacing: 0.04em; color: var(--muted); }
+.logs-what { overflow-wrap: anywhere; }
+.is-spoken .logs-who { color: var(--grab); }
+.is-spoken .logs-what { font-weight: 600; }
+.is-model .logs-who { color: var(--leg); }
+.is-state .logs-what { color: var(--muted); }
+.logs-empty { margin: 0; color: var(--faint); }
+.logs-list:not(:empty) + .logs-empty { display: none; }
+
+body.logs-only .cam, body.logs-only .hero { display: none; }
+body.logs-only .screen { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 899px) {
+  .logs-list { font-size: var(--s0); padding: var(--sp3) var(--sp4); }
+  .logs-list li { grid-template-columns: 7ch minmax(0, 1fr); }
+  .logs-took { display: none; }
+  .logs-what { grid-column: 1 / -1; }
+}

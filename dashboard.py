@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import cv2
 import numpy as np
 
+import tracing
 import trials
 from interfaces import hand_error
 
@@ -303,6 +304,16 @@ class Dashboard:
                 path = self.path.split("?")[0]
                 if path == "/events":
                     return self._events()
+                if path == "/log":
+                    # live activity for the logs-only view: what was heard, asked, answered and said
+                    try:
+                        after = int(self.path.partition("after=")[2].split("&")[0] or 0)
+                    except ValueError:
+                        after = 0
+                    events, nxt = tracing.events_since(after)
+                    lines = [{"t": e.get("t"), "who": d[0], "took": d[1], "what": d[2]}
+                             for e in events for d in [tracing.describe(e)] if d]
+                    return self._send(json.dumps({"next": nxt, "lines": lines}).encode(), "application/json")
                 if path == "/trials.json":
                     # readable from a deck served elsewhere (?dash=...): read-only, local numbers
                     return self._send(json.dumps(_trial_stats()).encode(), "application/json", cors=True)

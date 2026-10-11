@@ -21,6 +21,7 @@
     <p class="bar-item"><span class="bar-k" id="e2e-label">Camera to earbuds</span><b class="bar-v" id="e2e">–</b></p>
     <p class="bar-item bar-net" id="net-wrap"><span class="bar-k">Internet</span><b class="bar-v" id="net">Checking…</b></p>
     <p class="bar-sim" id="sim" hidden></p>
+    <button class="bar-mode" id="mode" type="button" aria-pressed="false" title="Hide the camera and the 3D view and show only the live log (L)">Logs only</button>
   </header>
 
   <main class="screen">
@@ -64,7 +65,13 @@
       <ol class="said" id="said" aria-label="Said before, newest first"></ol>
       <p class="scene-note" id="scene-note">Waiting for lidar points…</p>
     </section>
+    <section class="logs" id="logs" aria-label="Live log" hidden>
+      <p class="logs-k">Live log: what was heard, what each model answered, what was said. No camera, so you can test by ear.</p>
+      <ol class="logs-list" id="logs-list" aria-live="polite"></ol>
+      <p class="logs-empty" id="logs-empty">Nothing yet. Ask for something.</p>
+    </section>
   </main>
   <script src="app.js"></script>
+  <script src="logs.js"></script>
 </body>
 </html>
