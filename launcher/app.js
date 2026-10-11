@@ -151,6 +151,8 @@ function draw() {
   $("stop").disabled = !s.can_control;
   $("live").hidden = !running;
   $("live").href = `http://${location.hostname}:${s.dash_port}/#camera`;
+  $("typing").hidden = !running;
+  $("typing").href = `https://${location.hostname}:${s.voice_port}/`;
 
   $("run").hidden = !running;
   for (const [id, text] of [["heard", s.heard], ["said", s.said]]) {
