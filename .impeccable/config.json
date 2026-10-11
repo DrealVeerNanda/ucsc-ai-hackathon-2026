@@ -8,6 +8,15 @@
         "value": "3.6px",
         "createdAt": "2026-10-10T22:43:02.979Z",
         "reason": "False positive: .map-text sizes text in the top-down map SVG's viewBox units (100 units wide), rendering about 13px on screen, not a CSS px size"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "dashboard/index.html"
+        ],
+        "createdAt": "2026-10-11T00:07:52.431Z",
+        "reason": "False positive: .hero is a full-bleed 3D viewport (canvas fills it by design); its HUD text is absolutely positioned with a 24-32px inset"
       }
     ]
   }

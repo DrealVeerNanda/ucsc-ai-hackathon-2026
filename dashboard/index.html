@@ -6,15 +6,25 @@
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#080f18">
   <title>Blindfold pickup, live</title>
-  <meta name="description" content="Live view of the blindfold pickup system: the chest camera, each on-device step, and what the wearer hears.">
+  <meta name="description" content="Live view: what the chest camera sees, the scene in 3D, and the word the wearer hears.">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preload" href="fonts/barlow-semi-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <a class="skip" href="#guidance">Skip to guidance</a>
+  <a class="skip" href="#hero">Skip to guidance</a>
+
+  <header class="bar">
+    <p class="bar-state" id="state">Waiting</p>
+    <p class="bar-item"><span class="bar-k">Finding</span><b class="bar-v" id="target" translate="no">nothing yet</b></p>
+    <p class="bar-item" id="clock"><span class="bar-k" id="clock-sub">Time</span><b class="bar-v" id="clock-time">0:00.0</b></p>
+    <p class="bar-item"><span class="bar-k" id="e2e-label">Camera to earbuds</span><b class="bar-v" id="e2e">–</b></p>
+    <p class="bar-item bar-net" id="net-wrap"><span class="bar-k">Internet</span><b class="bar-v" id="net">Checking…</b></p>
+    <p class="bar-sim" id="sim" hidden></p>
+  </header>
+
   <main class="screen">
-    <section class="stage" aria-label="Live chest camera">
+    <section class="cam" aria-label="Live chest camera">
       <div class="video" id="video">
         <svg id="overlay" class="overlay" aria-hidden="true" viewBox="0 0 1000 1333" preserveAspectRatio="none">
           <defs>
@@ -37,81 +47,23 @@
         <p id="obj-label" class="tag tag-obj" hidden></p>
         <p id="leg-label" class="tag tag-leg" hidden></p>
         <p id="hand-label" class="tag tag-hand" hidden></p>
-
-        <div class="bug" id="clock">
-          <p class="bug-time"><span id="clock-time">0:00.0</span></p>
-          <p class="bug-sub" id="clock-sub">Waiting for a request</p>
-          <div class="budget" id="budget" hidden><span id="budget-fill"></span></div>
-        </div>
-
-        <figure class="pip" id="pip" hidden>
-          <figcaption>Lidar depth</figcaption>
-        </figure>
-
+        <p class="cam-k">Chest camera</p>
         <p class="stale" id="stale" role="status" hidden></p>
         <p class="offline-bug" id="offline-bug" hidden>Offline</p>
-
-        <div class="captions" id="captions" aria-live="polite">
-          <p class="cap cap-prev" id="cap-prev"></p>
-          <p class="cap cap-now" id="cap-now">
-            <span class="cap-tag">Wearer hears</span>
-                        <span id="cap-text">Nothing said yet</span>
-          </p>
-        </div>
-
         <p class="notice" id="notice">Waiting for the first frame from main.py…</p>
       </div>
-      <p class="sim" id="sim" hidden></p>
     </section>
 
-    <section class="guide" id="guidance" aria-labelledby="state">
-      <h1 class="state" id="state">Waiting</h1>
-      <p class="dist" id="dist-wrap"><span id="dist">–</span><span class="dist-label">Needs both the fingertip and the object</span></p>
-
-      <dl class="moves" id="moves">
-        <div class="move" data-axis="0">
-          <dt>Side</dt>
-          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg><span class="move-text">–</span></dd>
-        </div>
-        <div class="move" data-axis="1">
-          <dt>Height</dt>
-          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg><span class="move-text">–</span></dd>
-        </div>
-        <div class="move" data-axis="2">
-          <dt>Reach</dt>
-          <dd><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg><span class="move-text">–</span></dd>
-        </div>
-      </dl>
-
-      <h2 class="ears-title">In the earbuds</h2>
-      <div class="say" aria-live="polite">
-        <p class="say-now is-quiet" id="say-now"><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg><span id="say-word">Quiet</span></p>
+    <section class="hero" id="hero" aria-labelledby="say-word">
+      <canvas class="scene" id="scene" role="img" aria-label="3D view of the scene: lidar points, the fingertip, the object and the line between them"></canvas>
+      <div class="hud" aria-live="polite">
+        <h1 class="say-now is-quiet" id="say-now"><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg><span id="say-word">Quiet</span></h1>
         <p class="say-why" id="say-why">Nothing said yet</p>
+        <p class="dist is-empty" id="dist-wrap"><span id="dist">–</span><span class="dist-label">to the object</span></p>
       </div>
       <ol class="said" id="said" aria-label="Said before, newest first"></ol>
-    </section>
-
-    <aside class="system" aria-labelledby="sys-title">
-      <h2 class="sys-title" id="sys-title">Running on <span id="host" translate="no">this machine</span></h2>
-      <p class="net" id="net">Checking the internet connection…</p>
-
-      <ol class="steps" id="steps">
-        <li data-step="camera"><span class="step-name">iPhone camera and lidar</span><span class="step-status"></span><span class="step-ms"></span></li>
-        <li data-step="object"><span class="step-name">Find the object</span><span class="step-status"></span><span class="step-ms" id="perc-ms"></span></li>
-        <li data-step="hand"><span class="step-name">Find the fingertip</span><span class="step-status"></span><span class="step-ms"></span></li>
-        <li data-step="depth"><span class="step-name">Measure in 3D</span><span class="step-status"></span><span class="step-ms"></span></li>
-        <li data-step="guide"><span class="step-name">Choose guidance</span><span class="step-status"></span><span class="step-ms"></span></li>
-        <li data-step="sound"><span class="step-name">Speak to earbuds</span><span class="step-status"></span><span class="step-ms"></span></li>
-      </ol>
-      <p class="e2e"><span class="e2e-label" id="e2e-label">Camera to earbuds</span><span class="e2e-ms" id="e2e">–</span><span class="e2e-fps" id="fps"></span></p>
-
-      <h2 class="map-title">The scene in 3D</h2>
-      <canvas class="scene" id="scene" role="img" aria-label="3D view of the lidar points, the fingertip, the object and the line between them"></canvas>
       <p class="scene-note" id="scene-note">Waiting for lidar points…</p>
-
-      <h2 class="trials-title">Timed trials</h2>
-      <p class="trials" id="trials">None yet. Run <code>trials.py baseline</code>.</p>
-    </aside>
+    </section>
   </main>
   <script src="app.js"></script>
 </body>

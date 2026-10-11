@@ -13,7 +13,6 @@
   };
   const QUIET_STATES = new Set(["idle", "listening", "searching"]);
   const LANE_NAMES = { stream: "camera", perception: "detection", guidance: "guidance", voice: "voice input" };
-  const DEAD_M = 0.03; // per-axis dead zone in the team plan
   const GRAB_M = 0.05;
   const STALE_MS = 300;
   const KEYS = {
@@ -29,10 +28,7 @@
   let latest = null;
   let scheduled = false;
   let shownImg = null;
-  let shownDepth = null;
   let aspect = 0;
-  let captionKey = "";
-  let freshTimer = 0;
   let connected = false;
 
   const cm = (m) => `${whole.format(Math.abs(m) * 100)} cm`;
@@ -182,42 +178,9 @@
 
   function renderClock(d) {
     const run = d.run || { status: "idle" };
-    const base = d.trials && d.trials.baseline;
-    const median = base && base.median_s;
-    const bug = $("clock");
-    const sub = $("clock-sub");
-    toggle(bug, "is-done", run.status === "done");
+    toggle($("clock"), "is-done", run.status === "done");
     setText($("clock-time"), clock(run.elapsed_s || 0));
-    if (run.status === "idle") {
-      setText(sub, "Waiting for a request");
-    } else if (run.status === "done") {
-      setText(sub, median ? `Grabbed. Unaided median ${clock(median)}` : "Grabbed");
-    } else {
-      setText(sub, median ? `Unaided median ${clock(median)}` : `Finding the ${d.target || "object"}`);
-    }
-    const budget = $("budget");
-    vis(budget, !(!median || run.status === "idle"));
-    if (median) $("budget-fill").style.setProperty("--p", Math.min(1, (run.elapsed_s || 0) / median));
-  }
-
-  function renderCaptions(d) {
-    const phrases = d.phrases || [];
-    const now = $("cap-now");
-    const prev = $("cap-prev");
-    const last = phrases[phrases.length - 1];
-    const before = last && [...phrases].reverse().find((p) => p.text !== last.text);
-    const key = last ? `${last.t}|${last.text}` : "";
-    if (key === captionKey) return;
-    const firstRender = captionKey === "";
-    captionKey = key;
-    toggle(now, "is-quiet", !last);
-    setText($("cap-text"), last ? `“${last.text}”` : "Nothing said yet");
-    setText(prev, before ? `“${before.text}”` : "");
-    if (last && !firstRender) {
-      now.classList.add("is-fresh");
-      clearTimeout(freshTimer);
-      freshTimer = setTimeout(() => now.classList.remove("is-fresh"), 1400);
-    }
+    setText($("clock-sub"), run.status === "done" ? "Grabbed in" : "Time");
   }
 
   function renderBanners(d) {
@@ -225,9 +188,8 @@
     const sim = $("sim");
     vis(sim, !(fake.length === 0));
     if (fake.length) {
-      const keys = d.modes.perception === "fake" ? " Arrows, W and S move the hand." : "";
-      const what = fake.length === 4 ? "Simulated input." : `Simulated ${fake.join(", ")}.`;
-      setText(sim, `${what}${keys}`);
+      setText(sim, fake.length === 4 ? "Simulated input" : `Simulated ${fake.join(", ")}`);
+      sim.title = d.modes.perception === "fake" ? "Arrow keys, W and S move the simulated hand" : "";
     }
     const stale = $("stale");
     const age = d.age_ms || 0;
@@ -237,11 +199,6 @@
 
   // guidance column -----------------------------------------------------------
 
-  const MOVES = [
-    { pos: "Right", neg: "Left" },
-    { pos: "Down", neg: "Up" },
-    { pos: "Forward", neg: "Back" },
-  ];
   // Reach gets its own glyphs (toward or away from a far edge) so it never reads as Height.
   const ARROWS = {
     Right: "M5 12h14M13 6l6 6-6 6",
@@ -265,25 +222,8 @@
     toggle(wrap, "is-empty", !hasDist);
     toggle(wrap, "is-close", hasDist && d.dist < GRAB_M);
     const thing = d.target || "object";
-    setText(wrap.querySelector(".dist-label"), hasDist ? `between fingertip and ${thing}` : `Needs both the fingertip and the ${thing}`);
-
-    document.querySelectorAll(".move").forEach((row, i) => {
-      const text = row.querySelector(".move-text");
-      const m = MOVES[i];
-      const v = d.err ? d.err[i] : null;
-      toggle(row, "is-empty", v == null);
-      toggle(row, "is-ok", v != null && Math.abs(v) <= DEAD_M);
-      if (v == null) {
-        setText(text, "–");
-      } else if (Math.abs(v) <= DEAD_M) {
-        setText(text, "On target");
-      } else {
-        const word = v > 0 ? m.pos : m.neg;
-        setText(text, `${word} ${cm(v)}`);
-        const path = row.querySelector(".arrow path");
-        if (path.getAttribute("d") !== ARROWS[word]) path.setAttribute("d", ARROWS[word]);
-      }
-    });
+    setText(wrap.querySelector(".dist-label"), hasDist ? `to the ${thing}` : `Needs the fingertip and the ${thing}`);
+    setText($("target"), d.heard ? `“${d.heard}”` : d.target || "nothing yet");
 
     renderSpoken(d);
   }
@@ -353,79 +293,15 @@
 
   // system rail ---------------------------------------------------------------
 
-  function step(name, status, msText, cls) {
-    const li = document.querySelector(`[data-step="${name}"]`);
-    setText(li.querySelector(".step-status"), status);
-    setText(li.querySelector(".step-ms"), msText);
-    li.className = cls || "";
-  }
-
   function renderSystem(d) {
-    const st = d.stages || {};
-    const modes = d.modes || {};
-    const fake = (lane) => modes[lane] === "fake";
-    const timing = (lane, v) => (fake(lane) ? "Simulated" : ms(v));
-    const anyFake = Object.values(modes).includes("fake");
-    const target = d.target || "object";
-    const age = d.age_ms;
-    step("camera", age >= STALE_MS ? "No new frames" : "Color and depth", timing("stream", age), age >= STALE_MS ? "is-warn" : "is-ok");
-
-    const obj = d.object;
-    if (obj.visible && obj.xyz) step("object", `Found the ${target}`, "", "is-ok");
-    else if (obj.xyz) step("object", "Covered by the arm, using its last position", "", "is-warn");
-    else step("object", `Looking for the ${target}`, "", "is-idle");
-
-    const hand = d.hand;
-    if (hand.xyz) step("hand", "Found", "", "is-ok");
-    else if (hand.visible) step("hand", "In view, too close for lidar", "", "is-warn");
-    else step("hand", "Not in view", "", "is-idle");
-
-    const models = d.models;
-    if (models) {
-      const names = [models.object, models.hand].filter(Boolean).join(" and ");
-      if (names) setText(document.querySelector('[data-step="object"] .step-name'), `Find the object (${names})`);
-    }
-    step("depth", d.dist != null ? `${cm(d.dist)} apart` : "Waiting for both points", timing("perception", st.perception), d.dist != null ? "is-ok" : "is-idle");
-    step("guide", STATE_WORDS[d.state] || d.state || "Waiting", timing("guidance", st.guidance), QUIET_STATES.has(d.state) ? "is-idle" : "is-ok");
-
-    const said = (d.phrases || [])[(d.phrases || []).length - 1];
-    const recent = said && (d.sent - said.t) * 1000 < FRESH_MS;
-    step("sound", recent ? `Said “${said.text}”` : "Quiet between instructions", "", recent ? "is-ok" : "is-idle");
-
+    const anyFake = Object.values(d.modes || {}).includes("fake");
     setText($("e2e"), anyFake ? "Simulated" : ms(d.e2e_ms) || "–");
-    toggle($("e2e").parentElement, "is-pending", anyFake);
     setText($("e2e-label"), d.e2e_label === "proc" && !anyFake ? "Processing only" : "Camera to earbuds");
-    setText($("fps"), d.fps ? `${tenth.format(d.fps)} fps` : "");
-
-    if (d.host) setText($("host"), d.host);
-    const net = $("net");
-    toggle(net, "is-offline", d.online === false);
-    setText(net, d.online === false ? "Internet unplugged, still running" : d.online ? "Internet connected" : "Checking the internet connection…");
+    toggle($("net-wrap"), "is-offline", d.online === false);
+    setText($("net"), d.online === false ? "Unplugged, still running" : d.online ? "Connected" : "Checking…");
     vis($("offline-bug"), d.online === false);
-
-    renderTrials(d.trials);
+    toggle($("hero"), "is-grab", d.state === "grab");
     scene3d.update(d);
-  }
-
-  function renderTrials(t) {
-    const el = $("trials");
-    if (!t || (t.baseline.n === 0 && t.guided.n === 0)) {
-      if (!el.dataset.empty) {
-        el.dataset.empty = "1";
-        el.innerHTML = "None yet. Run <code>trials.py baseline</code>.";
-      }
-      return;
-    }
-    delete el.dataset.empty;
-    const line = (name, r) => {
-      const p = document.createElement("span");
-      p.style.display = "block";
-      const b = document.createElement("strong");
-      b.textContent = name;
-      p.append(b, r.n === 0 ? " no trials yet" : ` ${r.successes} of ${r.n} found${r.median_s != null ? `, median ${clock(r.median_s)}` : ""}`);
-      return p;
-    };
-    el.replaceChildren(line("Unaided:", t.baseline), line("Guided:", t.guided));
   }
 
   // 3D scene --------------------------------------------------------------------
@@ -443,8 +319,14 @@
     const lctx = layer.getContext("2d");
     const OBJ_HALF = [0.045, 0.05, 0.045];
     const GRID = { x0: -0.4, x1: 0.4, z0: 0.1, z1: 0.9, step: 0.1 };
-    const VIEW = { az: 0.38, el: 0.6, dist: 1.05 }; // behind-right of the wearer, looking down ~34 degrees
-    const count = new Intl.NumberFormat("en-US");
+    const VIEW = { az: 0.38, el: 0.6, dist: 0.92 }; // behind-right of the wearer, looking down ~34 degrees
+    // near to far: pale blue to deep navy (sRGB, packed little-endian for the Uint32 view)
+    const pack = (r, g, b) => (255 << 24) | (b << 16) | (g << 8) | r;
+    const RAMP = Array.from({ length: 64 }, (_, i) => {
+      const t = i / 63;
+      return pack(Math.round(196 + (22 - 196) * t), Math.round(228 + (46 - 228) * t), Math.round(255 + (84 - 255) * t));
+    });
+    const OBJ_PX = pack(236, 246, 255);
 
     const probe = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
     function rgbOf(cssVar) {
@@ -453,7 +335,7 @@
       return Array.from(probe.getImageData(0, 0, 1, 1).data.slice(0, 3));
     }
     const C = {};
-    for (const k of ["plate", "text", "muted", "faint", "rule", "leg", "grab", "ground", "on-leg", "on-grab"]) {
+    for (const k of ["deep", "text", "muted", "faint", "rule", "leg", "grab", "ground", "on-leg", "on-grab"]) {
       C[k] = `rgb(${rgbOf(`--${k}`).join(",")})`;
     }
     const font = (px, weight = 600) => `${weight} ${px * dpr}px ${getComputedStyle(document.body).fontFamily}`;
@@ -530,8 +412,8 @@
       const ul = Math.hypot(ux, uy, uz);
       ux /= ul; uy /= ul; uz /= ul;
       F = 1.1 * Math.min(w, h * 1.5);
-      cx = w / 2;
-      cy = h * 0.5;
+      cx = w * 0.6;   // the spoken word sits top-left, so the scene sits right of centre
+      cy = h * 0.56;
     }
     function project(x, y, z, out) {
       const dx = x - eye[0], dy = y - eye[1], dz = z - eye[2];
@@ -559,9 +441,9 @@
     }
     function tag(text, p, bg, fg, dx = 0, dy = 0) {
       if (!p) return;
-      ctx.font = font(12);
+      ctx.font = font(15);
       const tw = ctx.measureText(text).width;
-      const pad = 5 * dpr, th = 18 * dpr;
+      const pad = 6 * dpr, th = 22 * dpr;
       const x = Math.min(Math.max(p[0] + dx * dpr - tw / 2 - pad, 2 * dpr), w - tw - 2 * pad - 2 * dpr);
       const y = Math.min(Math.max(p[1] + dy * dpr - th / 2, 2 * dpr), h - th - 2 * dpr);
       ctx.fillStyle = bg;
@@ -580,11 +462,13 @@
       const out = tmp;
       for (let i = 0; i < n; i++) {
         if (!project(world[i * 3], world[i * 3 + 1], world[i * 3 + 2], out)) continue;
-        // the tabletop recedes; anything standing on it stays bright
-        const k = height[i] < 0.02 ? 0.38 : 1;
-        const s = Math.max(1, Math.round((1.8 * dpr * VIEW.dist) / out[2]));
+        // a perception view, not a photo: the tabletop is a blue ramp that darkens with
+        // distance, and anything standing on the table is drawn near-white so it pops
+        const raised = height[i] >= 0.02;
+        const f = Math.min(1, Math.max(0, (out[2] - VIEW.dist + 0.45) / 1.1));
+        const c = raised ? OBJ_PX : RAMP[Math.round(f * 63)];
+        const s = Math.max(1, Math.round(((raised ? 2.4 : 1.8) * dpr * VIEW.dist) / out[2]));
         const x0 = Math.round(out[0] - s / 2), y0 = Math.round(out[1] - s / 2);
-        const c = (255 << 24) | ((cols[i * 3 + 2] * k) << 16) | ((cols[i * 3 + 1] * k) << 8) | (cols[i * 3] * k);
         for (let dy = 0; dy < s; dy++) {
           const yy = y0 + dy;
           if (yy < 0 || yy >= h) continue;
@@ -602,7 +486,7 @@
     function draw() {
       if (!w) return;
       setView();
-      ctx.fillStyle = C.plate;
+      ctx.fillStyle = C.deep;
       ctx.fillRect(0, 0, w, h);
       const T = -tableH;
 
@@ -615,16 +499,6 @@
       if (world) {
         drawPoints();
         ctx.drawImage(layer, 0, 0);
-      }
-
-      // you: the chest camera
-      const you = at([0, 0, 0]);
-      if (you) {
-        ctx.beginPath();
-        ctx.arc(you[0], you[1], 5 * dpr, 0, Math.PI * 2);
-        ctx.fillStyle = C.muted;
-        ctx.fill();
-        tag("You", you, C.ground, C.muted, 0, -16);
       }
 
       const o = obj && level(obj);
@@ -709,7 +583,7 @@
     });
     canvas.addEventListener("pointermove", (e) => {
       if (!dragging) return;
-      az += (e.clientX - lastX) * 0.008;
+      az -= (e.clientX - lastX) * 0.008; // the scene turns with the drag, like grabbing it
       el = Math.max(0.12, Math.min(1.45, el + (e.clientY - lastY) * 0.006));
       lastX = e.clientX;
       lastY = e.clientY;
@@ -769,12 +643,6 @@
       image("frame", "Live view from the wearer’s chest camera", video, video.firstChild, 480, 640).src = d.img;
       shownImg = d.img;
     }
-    if (d.depth && d.depth !== shownDepth) {
-      const pip = $("pip");
-      image("depth", "Lidar depth from the same frame, near is pale, far is dark", pip, pip.firstChild, 180, 240).src = d.depth;
-      shownDepth = d.depth;
-      vis(pip, true);
-    }
   }
 
   function render() {
@@ -786,7 +654,6 @@
     toggle(video, "is-grab", d.state === "grab");
     renderOverlay(d);
     renderClock(d);
-    renderCaptions(d);
     renderBanners(d);
     renderGuide(d);
     renderSystem(d);
