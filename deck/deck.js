@@ -116,7 +116,7 @@ async function loadLive() {
   const base = await findDashboard();
   if (base !== false) {
     f.addEventListener("load", () => f.classList.add("is-loaded"), { once: true });
-    f.src = `${base}/`;
+    f.src = `${base}/#demo`;
     return;
   }
   const recorded = await fetch(RECORDED, { method: "HEAD" }).then((r) => r.ok).catch(() => false);
@@ -273,6 +273,7 @@ document.addEventListener("keydown", (e) => {
     if (document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen?.();
   } else if (k === "n" || k === "N") window.open("notes.html", "deck-notes", "width=760,height=560");
+  else if (k === "h" || k === "H") cycleHand();
 });
 document.addEventListener("click", (e) => { if (e.button === 0) next(); });
 document.addEventListener("contextmenu", (e) => { e.preventDefault(); prev(); });
@@ -301,6 +302,34 @@ document.querySelectorAll("[data-tex]").forEach((el) => {
   if (window.katex) window.katex.render(el.dataset.tex, el, { throwOnError: false });
   else el.textContent = el.dataset.tex;
 });
+
+// The Proprio hand: Phosphor's solid hand (MIT) tilted toward the item, an offset shadow, a ground
+// outline, and a lock-on reticle on the tracked fingertip that closes on grab.
+const PROPRIO_HAND = "<svg class=\"hi hi-open\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-30 -30 316 316\" width=\"316\" height=\"316\"><g transform=\"rotate(26 128 128)\"><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" transform=\"translate(14 18)\" fill=\"oklch(0.34 0.05 255)\"/><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" fill=\"var(--text)\" stroke=\"var(--ground)\" stroke-width=\"12\" paint-order=\"stroke\"/><g transform=\"translate(121 40) rotate(-26)\" fill=\"none\" stroke=\"oklch(0.9 0.04 240)\" stroke-width=\"4\" stroke-linecap=\"round\"><circle r=\"17\"/><path d=\"M-23 0h-12M23 0h12M0 -23v-12M0 23v12\"/></g></g></svg><svg class=\"hi hi-grab\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-30 -30 316 316\" width=\"316\" height=\"316\"><g transform=\"rotate(26 128 128)\"><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" transform=\"translate(14 18)\" fill=\"oklch(0.36 0.07 152)\"/><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" fill=\"var(--grab)\" stroke=\"var(--ground)\" stroke-width=\"12\" paint-order=\"stroke\"/><g transform=\"translate(121 40) rotate(-26)\" fill=\"none\" stroke=\"oklch(0.9 0.04 240)\" stroke-width=\"4\" stroke-linecap=\"round\"><circle r=\"9\"/><circle r=\"3.5\" fill=\"oklch(0.9 0.04 240)\" stroke=\"none\"/></g></g></svg>";
+// hand style: ?hand=outline|fill|duotone|thin|bold, or press H to cycle while presenting
+const HAND_STYLES = ["proprio", "outline", "fill", "duotone", "thin", "bold"];
+let handStyle = HAND_STYLES.includes(params.get("hand")) ? params.get("hand") : "proprio";
+const outlineHand = $("lab-hand").innerHTML;
+async function applyHand(style) {
+  const el = $("lab-hand");
+  el.classList.toggle("ph", style !== "outline" && style !== "proprio");
+  el.classList.toggle("pp", style === "proprio");
+  if (style === "proprio") { el.innerHTML = PROPRIO_HAND; return; }
+  if (style === "outline") { el.innerHTML = outlineHand; return; }
+  const get = (n) => fetch(`vendor/phosphor/${n}-${style}.svg`).then((r) => r.text());
+  const [open, grab] = await Promise.all([get("hand"), get("hand-grabbing")]);
+  el.innerHTML = open.replace("<svg", '<svg class="hi hi-open"') + grab.replace("<svg", '<svg class="hi hi-grab"');
+}
+function cycleHand() {
+  handStyle = HAND_STYLES[(HAND_STYLES.indexOf(handStyle) + 1) % HAND_STYLES.length];
+  applyHand(handStyle);
+  const t = $("toast");
+  t.textContent = `Hand: ${handStyle}`;
+  t.classList.add("is-on");
+  clearTimeout(cycleHand.t);
+  cycleHand.t = setTimeout(() => t.classList.remove("is-on"), 1200);
+}
+applyHand(handStyle);
 
 show(...parseHash());
 if (auto) { started = Date.now(); autoplay(); }

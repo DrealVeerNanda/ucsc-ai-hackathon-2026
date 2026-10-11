@@ -221,7 +221,7 @@
     setText($("dist"), hasDist ? cm(d.dist) : "–");
     toggle(wrap, "is-empty", !hasDist);
     toggle(wrap, "is-close", hasDist && d.dist < GRAB_M);
-    const thing = d.target || "object";
+    const thing = d.target || "item";
     setText(wrap.querySelector(".dist-label"), hasDist ? `to the ${thing}` : `Needs the fingertip and the ${thing}`);
     setText($("target"), d.heard ? `“${d.heard}”` : d.target || "nothing yet");
 
@@ -235,7 +235,7 @@
 
   // Why the latest word was said, from the measured positions, so a judge can check it.
   function whyFor(text, d) {
-    const thing = d.target || "object";
+    const thing = d.target || "item";
     const e = d.err;
     const off = (axis) => (e ? cm(e[axis]) : "");
     switch (text) {
@@ -311,6 +311,9 @@
   // each mark is. Points are splatted into an offscreen canvas with a depth buffer: no
   // WebGL and no library, so it runs with the network unplugged. Drag to look around,
   // double-click to go back to the default view.
+  const HAND_OPEN = ['M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2', 'M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2', 'M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8', 'M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'].map((d) => new Path2D(d));
+  const HAND_GRAB = ['M18 11.5V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v1.4', 'M14 10V8a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2', 'M10 9.9V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v5', 'M6 14a2 2 0 0 0-2-2a2 2 0 0 0-2 2', 'M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-4a8 8 0 0 1-8-8 2 2 0 1 1 4 0'].map((d) => new Path2D(d));
+
   const scene3d = (() => {
     const canvas = $("scene");
     const note = $("scene-note");
@@ -547,17 +550,27 @@
       if (hp) {
         const p = at(hp);
         if (p) {
-          ctx.beginPath();
-          ctx.arc(p[0], p[1], Math.max(5 * dpr, (F * 0.014) / p[2]), 0, Math.PI * 2);
-          ctx.fillStyle = C.text;
-          ctx.fill();
-          ctx.lineWidth = 2 * dpr;
-          ctx.strokeStyle = C.ground;
-          ctx.stroke();
-          if (!close) tag("Hand", p, C.ground, C.text, 0, -20);
+          // the Proprio hand (same as the deck), anchored so its reticle sits on the tracked point
+          const img = close ? handGrabImg : handOpenImg;
+          if (img.complete && img.naturalWidth) {
+            const size = Math.max(56 * dpr, (F * 0.1) / p[2]);
+            ctx.drawImage(img, p[0] - size * 0.6022, p[1] - size * 0.2400, size, size);
+          }
         }
       }
     }
+
+    const handTemplate = ["<svg class=\"h\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-30 -30 316 316\" width=\"316\" height=\"316\"><g transform=\"rotate(26 128 128)\"><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" transform=\"translate(14 18)\" fill=\"__SHADE__\"/><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" fill=\"__BODY__\" stroke=\"__GROUND__\" stroke-width=\"12\" paint-order=\"stroke\"/><g transform=\"translate(121 40) rotate(-26)\" fill=\"none\" stroke=\"__RET__\" stroke-width=\"4\" stroke-linecap=\"round\"><circle r=\"17\"/><path d=\"M-23 0h-12M23 0h12M0 -23v-12M0 23v12\"/></g></g></svg>", "<svg class=\"h\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-30 -30 316 316\" width=\"316\" height=\"316\"><g transform=\"rotate(26 128 128)\"><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" transform=\"translate(14 18)\" fill=\"__GSHADE__\"/><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" fill=\"__GRAB__\" stroke=\"__GROUND__\" stroke-width=\"12\" paint-order=\"stroke\"/><g transform=\"translate(121 40) rotate(-26)\" fill=\"none\" stroke=\"__RET__\" stroke-width=\"4\" stroke-linecap=\"round\"><circle r=\"9\"/><circle r=\"3.5\" fill=\"__RET__\" stroke=\"none\"/></g></g></svg>"];
+    const handImage = (t) => {
+      const svg = t.replaceAll("__BODY__", C.text).replaceAll("__GRAB__", C.grab).replaceAll("__GROUND__", C.ground)
+        .replaceAll("__SHADE__", "rgb(36,52,78)").replaceAll("__GSHADE__", "rgb(30,82,52)").replaceAll("__RET__", "rgb(205,226,245)");
+      const im = new Image();
+      im.onload = () => { dirty = true; };
+      im.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+      return im;
+    };
+    const handOpenImg = handImage(handTemplate[0]);
+    const handGrabImg = handImage(handTemplate[1]);
 
     function tick(now) {
       requestAnimationFrame(tick);
@@ -645,10 +658,39 @@
     }
   }
 
+  // demo mode for judges: full-bleed 3D, camera picture-in-picture, poster word, distance meter
+  let startDist = 0;
+  let runKey = "";
+  function renderDemo(d) {
+    const run = d.run || {};
+    const key = `${run.target}|${run.status === "running"}`;
+    if (key !== runKey) { runKey = key; startDist = 0; }
+    if (d.dist != null) startDist = Math.max(startDist, d.dist);
+    const k = d.dist != null && startDist > 0 ? Math.max(0, Math.min(1, d.dist / startDist)) : 1;
+    $("meter-fill").style.setProperty("--k", String(k));
+    toggle($("meter"), "is-close", d.dist != null && d.dist < GRAB_M);
+    toggle(document.body, "is-grabbed", d.state === "grab");
+  }
+  function setDemo(on) {
+    document.body.classList.toggle("demo", on);
+    $("demo-btn").setAttribute("aria-pressed", String(on));
+    try { localStorage.setItem("blindfold-demo", on ? "1" : "0"); } catch (e) {}
+    window.dispatchEvent(new Event("resize"));
+  }
+  $("demo-btn").addEventListener("click", () => setDemo(!document.body.classList.contains("demo")));
+  document.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.target.tagName === "INPUT") return;
+    if (e.key === "d" || e.key === "D") setDemo(!document.body.classList.contains("demo"));
+  });
+  let demoSaved = false;
+  try { demoSaved = localStorage.getItem("blindfold-demo") === "1"; } catch (e) {}
+  setDemo(location.hash === "#demo" || (location.hash !== "#camera" && demoSaved));
+
   function render() {
     scheduled = false;
     const d = latest;
     if (!d) return;
+    renderDemo(d);
     vis($("notice"), !(true));
     renderImages(d);
     toggle(video, "is-grab", d.state === "grab");

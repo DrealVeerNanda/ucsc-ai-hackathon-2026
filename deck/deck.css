@@ -100,6 +100,15 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 .lab-hand .hi { position: absolute; inset: 0; filter: drop-shadow(0 0 0.35vh oklch(0.12 0.02 255)); transition: opacity 150ms linear; }
 .lab-hand .hi-grab, .lab-hand.is-grab .hi-open { opacity: 0; }
 .lab-hand.is-grab .hi-grab { opacity: 1; stroke: var(--grab); }
+/* Phosphor styles (vendor/phosphor, MIT) are filled shapes, not strokes */
+.lab-hand.ph .hi { fill: currentColor; stroke: none; color: var(--text); }
+.lab-hand.ph.is-grab .hi-grab { color: var(--grab); }
+/* the Proprio hand is anchored so its reticle, not its centre, sits on the tracked point */
+.lab-hand.pp { translate: -60.2% -24.0%; width: min(9vw, 16vh); height: min(9vw, 16vh); }
+.lab-hand.pp .hi { stroke: none; fill: none; filter: none; }
+.lab-hand.pp.is-grab .hi-grab { stroke: none; }
+.toast { position: fixed; left: 50%; bottom: 3vh; translate: -50% 0; margin: 0; padding: 0.5vh 1vw; border-radius: var(--radius); background: var(--text); color: var(--ground); font: 600 var(--t-small)/1.3 var(--font); opacity: 0; transition: opacity 150ms linear; pointer-events: none; z-index: 6; }
+.toast.is-on { opacity: 1; }
 
 /* why not vibration: a hand and a face, every motor rippling at once */
 .buzz-fig { position: fixed; right: 7vw; top: 50%; translate: 0 -50%; display: flex; gap: 6vw; align-items: end; pointer-events: none; }
@@ -252,3 +261,4 @@ h1, h2, p, ol, ul, figure { margin: 0; }
   color: var(--faint);
   pointer-events: none;
 }
+.nw { white-space: nowrap; }

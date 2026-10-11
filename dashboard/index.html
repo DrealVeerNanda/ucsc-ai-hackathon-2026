@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#080f18">
-  <title>Blindfold pickup, live</title>
+  <title>Proprio, live</title>
   <meta name="description" content="Live view: what the chest camera sees, the scene in 3D, and the word the wearer hears.">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preload" href="fonts/barlow-semi-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
@@ -21,6 +21,7 @@
     <p class="bar-item"><span class="bar-k" id="e2e-label">Camera to earbuds</span><b class="bar-v" id="e2e">–</b></p>
     <p class="bar-item bar-net" id="net-wrap"><span class="bar-k">Internet</span><b class="bar-v" id="net">Checking…</b></p>
     <p class="bar-sim" id="sim" hidden></p>
+    <button class="bar-mode" id="demo-btn" type="button" aria-pressed="false" title="Judge view: full-screen 3D, no developer info (D)">Demo</button>
     <button class="bar-mode" id="mode" type="button" aria-pressed="false" title="Hide the camera and the 3D view and keep only the live log (L)">Logs only</button>
   </header>
 
@@ -60,10 +61,12 @@
       <div class="hud" aria-live="polite">
         <h1 class="say-now is-quiet" id="say-now"><svg class="icon arrow" viewBox="0 0 24 24" aria-hidden="true"><path d=""/></svg><span id="say-word">Quiet</span></h1>
         <p class="say-why" id="say-why">Nothing said yet</p>
-        <p class="dist is-empty" id="dist-wrap"><span id="dist">–</span><span class="dist-label">to the object</span></p>
+        <p class="dist is-empty" id="dist-wrap"><span id="dist">–</span><span class="dist-label">to the item</span></p>
+        <div class="meter" id="meter" aria-hidden="true"><span class="meter-fill" id="meter-fill"></span><span class="meter-zone"></span></div>
       </div>
       <ol class="said" id="said" aria-label="Said before, newest first"></ol>
       <p class="scene-note" id="scene-note">Waiting for lidar points…</p>
+      <p class="grab-flash" aria-hidden="true">Grab.</p>
     </section>
     <section class="logs" id="logs" aria-label="Live log">
       <p class="logs-k">Live log, with the model each line came from. No camera in this view, so you can test by ear.</p>

@@ -1,4 +1,4 @@
-"""Blindfold pickup main loop.
+"""Proprio main loop.
 
 Every lane's module can be fake or real, so pieces swap in one at a time:
 
