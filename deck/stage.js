@@ -28,9 +28,11 @@ const SHOTS = {
   // title: the whole idea, a guided reach
   title:   { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1 } },
   // problem: the world as a blind wearer gets it, a fog of points nobody can read
-  fog:     { pos: [-0.2, 0.45, -0.15], at: [0.0, 0.1, 0.6], shift: 0.16, lv: { reveal: 0.22, dim: 0.5, hand: 1, wander: 1 } },
+  fog:     { pos: [-0.2, 0.45, -0.15], at: [0.0, 0.1, 0.6], shift: 0.22, lv: { reveal: 0.18, dim: 0.5 } },
+  query:   { pos: [-0.22, 0.4, 0.1], at: [-0.06, 0.05, 0.6], shift: 0.22, lv: { reveal: 0.8, dim: 0.4, q: 1 } },
+  phone:   { pos: [-0.55, 0.7, -0.7], at: [0.0, 0.22, 0.25], shift: 0.22, lv: { reveal: 1, dim: 0.55, frustum: 1 } },
   // the ask: low and close, the hand moving, a speech bubble with each word
-  ask:     { pos: [-0.22, 0.32, 0.12], at: [0.05, 0.08, 0.55], shift: 0.18, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
+  ask:     { pos: [-0.3, 0.4, 0.0], at: [-0.02, 0.08, 0.5], shift: 0.27, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
   // competitors: the scene sinks far back behind the list
   recede:  { pos: [-0.9, 1.6, -1.5], at: [0.0, 0.0, 0.5], shift: 0.25, lv: { reveal: 1, dim: 0.85 } },
   // how it works, one look per word
@@ -40,6 +42,9 @@ const SHOTS = {
   speak:   { pos: [-0.3, 0.35, 0.05], at: [-0.05, 0.15, 0.4], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, big: 1 } },
   // core loop: straight overhead, a coordinate gizmo at the fingertip
   plan:    { pos: [-0.02, 1.15, 0.35], at: [0.0, 0.0, 0.5], shift: 0.22, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, gizmo: 1 } },
+  buzz:    { pos: [0.02, 0.5, -0.25], at: [0.2, 0.18, 0.32], shift: 0.24, lv: { reveal: 1, dim: 0.6, hand: 1, still: 1, motors: 1 } },
+  overload:{ pos: [0.02, 0.5, -0.25], at: [0.2, 0.18, 0.32], shift: 0.24, lv: { reveal: 1, dim: 0.6, hand: 1, still: 1, motors: 1, all: 1 } },
+  finale:  { pos: [-0.5, 0.6, -0.45], at: [-0.05, 0.05, 0.55], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, still: 1, grabbed: 1 } },
   off:     { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.0, lv: { reveal: 1, dim: 1 } },
   // results: overhead on the mug, where reaches ended
   land1:   { pos: [-0.06, 0.55, 0.4], at: [-0.08, 0.0, 0.63], shift: 0.3, lv: { reveal: 1, dim: 0.85, land1: 1, ring: 1 } },
@@ -51,7 +56,7 @@ const SHOTS = {
   cut:     { pos: [-0.95, 0.8, -0.7], at: [-0.4, 0.16, 0.5], shift: 0.18, lv: { reveal: 1, gx: 1, link: 1, cut: 1, hand: 1, leg: 1, guide: 1 } },
 };
 const LEVELS = ["reveal", "dim", "hand", "leg", "guide", "wander", "words", "frustum", "sweep", "box",
-  "still", "axes", "link", "cut", "grabbed", "big", "gizmo", "land1", "land2", "ring", "dome", "gx", "fast"];
+  "still", "axes", "link", "cut", "grabbed", "big", "gizmo", "land1", "land2", "ring", "dome", "gx", "fast", "q", "motors", "all"];
 
 export function createStage(canvas, labels) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -217,7 +222,7 @@ export function createStage(canvas, labels) {
   // ?still snaps every level and the camera to the shot (screenshots, PDF export)
   const still = new URLSearchParams(location.search).has("still");
   const snap = () => reduced.matches || still;
-  let t0 = performance.now(), last = t0, sweepT = 0, word = "", wordT = 0, clear = 0;
+  let t0 = performance.now(), last = t0, sweepT = 0, word = "", wordT = 0, clear = 0, settle = 1;
   const mvp = new THREE.Matrix4();
   const handPos = START.clone();
 
@@ -273,7 +278,10 @@ export function createStage(canvas, labels) {
     const fast = snap() ? 1 : 1 - Math.exp(-dt * 3.2);
     for (const k of LEVELS) lv[k] += (goal[k] - lv[k]) * fast;
 
+    const before = camPos.clone();
     camPos.lerp(new THREE.Vector3(...shot.pos), snap() ? 1 : 1 - Math.exp(-dt * 1.6));
+    const speed = before.distanceTo(camPos) / Math.max(dt, 1e-3);
+    settle += ((speed < 0.06 ? 1 : 0) - settle) * (snap() ? 1 : 1 - Math.exp(-dt * 8));
     camAt.lerp(new THREE.Vector3(...shot.at), snap() ? 1 : 1 - Math.exp(-dt * 1.6));
     shift += (shot.shift - shift) * (snap() ? 1 : 1 - Math.exp(-dt * 1.6));
     camera.position.copy(camPos);
@@ -380,8 +388,10 @@ export function createStage(canvas, labels) {
     const place = (el, v, on, dx = 0, dy = 0) => {
       if (!el) return;
       const [x, y, inFront] = project(v);
-      el.style.opacity = on && inFront ? on : 0;
-      el.style.transform = `translate(${x + dx}px, ${y + dy}px)`;
+      el.style.opacity = on && inFront && el.textContent.trim() ? on * settle : 0;
+      // left/top, not transform: the pop and buzz effects scale the label in place
+      el.style.left = `${x + dx}px`;
+      el.style.top = `${y + dy}px`;
     };
     if (say && say !== word) { word = say; wordT = now; }
     if (L.word) {
@@ -394,9 +404,17 @@ export function createStage(canvas, labels) {
       L.word.classList.toggle("is-grab", (say || word) === "Grab");
       L.word.classList.toggle("is-big", lv.big > 0.5);
     }
-    place(L.word, handPos, lv.words * (say ? 1 : 0), lv.big > 0.5 ? -16 : 22, lv.big > 0.5 ? -150 : -70);
+    place(L.word, handPos, lv.words * (say ? 1 : 0), lv.big > 0.5 ? -16 : 26, lv.big > 0.5 ? -150 : -100);
     place(L.mug, MUG_TOP, Math.max(lv.box, lv.words * 0.9, lv.axes), -18, -34);
     place(L.you, CHEST, lv.frustum, -14, -30);
+    place(L.q, MUG_TOP, lv.q, -10, -110);
+    // four vibration motors around the wrist, buzzing one at a time (why not vibration)
+    (L.motors || []).forEach((el, k) => {
+      const [dx, dy] = [[-18, -96], [-18, 60], [60, -18], [-96, -18]][k];
+      place(el, handPos, lv.motors, dx, dy);
+      // one buzz at a time, round the wrist; on the overload build, all four at once
+      el.classList.toggle("is-on", lv.all > 0.5 ? true : still ? k === 0 : Math.floor(now / 280) % 4 === k);
+    });
     place(L.cloud, NET, lv.link, -40, -40);
     if (L.cloud) L.cloud.classList.toggle("is-cut", lv.cut > 0.5);
     place(L.gx10, GX10.clone().add(new THREE.Vector3(0, 0.06, 0)), lv.gx, -26, -34);

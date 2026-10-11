@@ -18,6 +18,8 @@
     <span class="lab lab-mug" id="lab-mug">mug</span>
     <span class="lab lab-you" id="lab-you">Chest camera</span>
     <span class="lab lab-cloud" id="lab-cloud">Internet</span>
+    <span class="lab lab-q" id="lab-q">?</span>
+    <span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span>
     <span class="lab lab-gx" id="lab-gx10">GX10</span>
     <span class="lab lab-axis" id="lab-gxx">x right</span>
     <span class="lab lab-axis" id="lab-gxy">y up</span>
@@ -35,7 +37,7 @@
       <aside class="notes">One sentence: a blind person asks for something on the table and spoken words walk their hand to it. Every model runs on the ASUS GX10.</aside>
     </section>
 
-    <section class="slide" data-id="problem" data-shots="fog,fog,fog" data-steps="2" data-trans="lights" data-dur="12">
+    <section class="slide" data-id="problem" data-shots="fog,query,phone" data-steps="2" data-trans="lights" data-dur="12">
       <div class="swap">
         <div class="stat" data-only="0"><p class="stat-n" data-count="43" data-suffix="M">43M</p><p class="stat-l">people are blind</p></div>
         <div class="stat" data-only="1"><p class="stat-n" data-count="41" data-suffix="%">41%</p><p class="stat-l">of their questions are “what is this?”</p></div>
@@ -65,6 +67,19 @@
       </ol>
       <p class="fine">Be My Eyes on Ray-Ban Meta, 2024; Microsoft Research, Find My Things; Lee et al., TACCESS 2022.</p>
       <aside class="notes">Meta glasses: hands-free; "Hey Meta, Be My Eyes" calls a sighted volunteer who talks you through it; needs internet and a person. Be My AI sends a photo to the cloud and describes it. Seeing AI's Find My Things needs four videos per item and stops at arm's reach. AIGuide guides the hand, but handheld with pre-scanned objects.</aside>
+    </section>
+
+    <section class="slide" data-id="haptics" data-shots="buzz,overload" data-steps="1" data-trans="columns" data-dur="10">
+      <h2 class="head">Why not vibration?</h2>
+      <div class="swap">
+        <div class="stat" data-only="0"><p class="stat-n">1 in 10</p><p class="stat-l">buzzes on the wrist were felt in the wrong spot</p></div>
+        <div class="stat" data-only="1"><p class="stat-n" data-count="26" data-suffix="%">26%</p><p class="stat-l">could tell which buzzes fired when they came at once</p></div>
+      </div>
+      <p class="fine swap">
+        <span data-only="0">Trant et al., Scientific Reports 2025: four motors on the wrist, 41 blind participants.</span>
+        <span data-only="1">Yeganeh, University of Iceland 2026 (forearm): 93% when one at a time.</span>
+      </p>
+      <aside class="notes">Vibration has to spread motors over the body, one per direction: the bracelet used four on the wrist and still had no forward or back. 1 in 10 buzzes was felt in the wrong place (90.6% localization), and spoken cues gave grasps about 0.6 s faster. Overload: add more motors (a face rig, a belt) and buzzes start to overlap; people picked out simultaneous buzzes 26% of the time vs 93% one at a time. Blind users' tactile working memory fell from about 5 items to 1.6 while walking with a cane in station noise. One earbud word says direction without decoding anything.</aside>
     </section>
 
     <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="3" data-trans="blinds" data-dur="10">
@@ -108,12 +123,20 @@
     <section class="slide" data-id="local" data-shots="dome,boxed,quick,cut" data-steps="3" data-trans="diagonal" data-dur="12">
       <h2 class="head">Why local</h2>
       <div class="swap">
-        <div class="stat" data-only="0"><p class="stat-n sm" data-scramble>Private</p><p class="stat-l">video of your home never leaves the room</p></div>
+        <div class="stat" data-only="0"><p class="stat-n sm">Private</p><p class="stat-l">video of your home never leaves the room</p></div>
         <div class="stat" data-only="1"><p class="stat-n sm" data-count="128" data-suffix=" GB">128 GB</p><p class="stat-l">holds every model at once: YOLO-World, MediaPipe, Whisper, Cosmos Reason 8B</p></div>
         <div class="stat" data-only="2"><p class="stat-n sm" data-count="35" data-suffix=" ms">35 ms</p><p class="stat-l">per frame, with no trip to a server</p></div>
-        <div class="stat" data-only="3"><p class="stat-n sm" data-scramble>Offline</p><p class="stat-l">works with the internet unplugged</p></div>
+        <div class="stat" data-only="3"><p class="stat-n sm">Offline</p><p class="stat-l">works with the internet unplugged</p></div>
       </div>
       <aside class="notes">Private: a camera in someone's home never streams out. 128 GB unified memory keeps YOLO-World, MediaPipe, Whisper and the 8B Cosmos Reason model loaded together; most laptops can't hold the 8B model next to the rest. 35 ms: measured perception per frame on the GX10; guidance needs a steady loop and a cloud round trip adds varying delay. Offline: in the demo we unplug the GX10's internet and it keeps guiding, because nothing needs the network. Then thank the judges.</aside>
+    </section>
+
+    <section class="slide" data-id="close" data-shots="finale" data-trans="box" data-dur="6">
+      <h2 class="poster">[Project name]</h2>
+      <p class="lede">Find it. Grab it. Eyes closed.</p>
+      <ul class="team"><li>[Name]</li><li>[Name]</li><li>[Name]</li><li>[Name]</li></ul>
+      <p class="fine">Thank you. Built in 24 hours on one ASUS Ascent GX10.</p>
+      <aside class="notes">Thank the judges, then questions. Likely ones: how you measured the numbers (simulation for 99/52, published studies for the rest), why not run it on a laptop (privacy, all models together in 128 GB, offline), glass and shiny objects (lidar struggles; falls back to hand size).</aside>
     </section>
 
   </main>
