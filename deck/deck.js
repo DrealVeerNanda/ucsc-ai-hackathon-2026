@@ -10,7 +10,12 @@ const stage = createStage($("stage"), {
   ax: $("lab-ax"), ay: $("lab-ay"), az: $("lab-az"),
 });
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("deck") : null;
-const auto = new URLSearchParams(location.search).has("auto");
+const params = new URLSearchParams(location.search);
+const auto = params.has("auto");
+// The live dashboard: this same server when main.py serves the deck, or ?dash=http://<gx10>:8642
+// when the deck runs elsewhere. Without one, the demo slide plays media/demo-run.mp4 if present.
+const DASH = (params.get("dash") || "").replace(/\/$/, "");
+const RECORDED = "media/demo-run.mp4";
 if (new URLSearchParams(location.search).has("still")) document.documentElement.classList.add("is-still");
 
 let index = 0;
@@ -77,11 +82,39 @@ channel?.addEventListener("message", (e) => {
 });
 
 // --- live pieces ----------------------------------------------------------------------------
-function loadLive() {
+let dashboard = null; // base URL of a reachable dashboard, or false
+async function findDashboard() {
+  if (dashboard !== null) return dashboard;
+  try {
+    const r = await fetch(`${DASH}/trials.json`, { cache: "no-store" });
+    dashboard = r.ok && (r.headers.get("content-type") || "").includes("json") ? DASH : false;
+  } catch {
+    dashboard = false;
+  }
+  return dashboard;
+}
+
+async function loadLive() {
   const f = $("live");
-  if (f.src) return;
-  f.addEventListener("load", () => f.classList.add("is-loaded"), { once: true });
-  f.src = f.dataset.src;
+  if (f.dataset.started) return;
+  f.dataset.started = "1";
+  const note = $("live-note");
+  const base = await findDashboard();
+  if (base !== false) {
+    f.addEventListener("load", () => f.classList.add("is-loaded"), { once: true });
+    f.src = `${base}/`;
+    return;
+  }
+  const recorded = await fetch(RECORDED, { method: "HEAD" }).then((r) => r.ok).catch(() => false);
+  if (recorded) {
+    const v = document.createElement("video");
+    Object.assign(v, { src: RECORDED, autoplay: true, muted: true, loop: true, playsInline: true });
+    v.className = "live is-loaded";
+    f.replaceWith(v);
+    note.hidden = true;
+  } else {
+    note.textContent = "Live demo runs here. Start main.py, or add media/demo-run.mp4 for the recorded run.";
+  }
 }
 
 const clock = (sec) => {
@@ -90,22 +123,36 @@ const clock = (sec) => {
   const r = t - m * 60;
   return m ? `${m}:${r < 10 ? "0" : ""}${r.toFixed(1)}` : `${r.toFixed(1)} s`;
 };
-async function loadTrials() {
-  try {
-    const r = await fetch("/trials.json", { cache: "no-store" });
-    if (!r.ok) return;
-    const t = await r.json();
-    const b = t.baseline, g = t.guided;
-    if (b.median_s != null) { $("res-base").textContent = clock(b.median_s); $("problem-base").textContent = clock(b.median_s); }
-    if (g.median_s != null) $("res-guided").textContent = clock(g.median_s);
-    if (g.n) $("res-rate").textContent = `${g.successes} of ${g.n}`;
-    const parts = [];
-    if (b.n) parts.push(`${b.n} unaided trials`);
-    if (g.n) parts.push(`${g.n} guided trials`);
-    $("res-note").textContent = parts.length ? `From trials.csv: ${parts.join(", ")}.` : "From trials.csv; fills in as trials are recorded.";
-  } catch {
-    /* deck opened without main.py: numbers stay as dashes */
+
+// Same numbers the dashboard computes, from trials.csv itself when no dashboard is running.
+function csvStats(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const head = lines.shift().split(",");
+  const col = (name) => head.indexOf(name);
+  const out = {};
+  for (const cond of ["baseline", "guided"]) {
+    const rows = lines.map((l) => l.split(",")).filter((r) => r[col("condition")] === cond);
+    const ok = rows.filter((r) => r[col("success")] === "1").map((r) => Number(r[col("time_s")])).sort((x, y) => x - y);
+    const mid = ok.length ? (ok.length % 2 ? ok[(ok.length - 1) / 2] : (ok[ok.length / 2 - 1] + ok[ok.length / 2]) / 2) : null;
+    out[cond] = { n: rows.length, successes: ok.length, median_s: mid };
   }
+  return out;
+}
+
+async function loadTrials() {
+  let t = null;
+  const base = await findDashboard();
+  if (base !== false) t = await fetch(`${base}/trials.json`, { cache: "no-store" }).then((r) => r.json()).catch(() => null);
+  if (!t) t = await fetch("../trials.csv", { cache: "no-store" }).then((r) => (r.ok ? r.text() : null)).then((x) => x && csvStats(x)).catch(() => null);
+  if (!t) return; // no trials yet: numbers stay as dashes
+  const b = t.baseline, g = t.guided;
+  if (b.median_s != null) { $("res-base").textContent = clock(b.median_s); $("problem-base").textContent = clock(b.median_s); }
+  if (g.median_s != null) $("res-guided").textContent = clock(g.median_s);
+  if (g.n) $("res-rate").textContent = `${g.successes} of ${g.n}`;
+  const parts = [];
+  if (b.n) parts.push(`${b.n} unaided trials`);
+  if (g.n) parts.push(`${g.n} guided trials`);
+  $("res-note").textContent = parts.length ? `From trials.csv: ${parts.join(", ")}.` : "From trials.csv; fills in as trials are recorded.";
 }
 
 // --- input ------------------------------------------------------------------------------------

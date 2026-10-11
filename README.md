@@ -213,3 +213,19 @@ The trace cannot see two things: the fixed camera and cable delay (the flash too
 - Pull before you start: `git pull --rebase`
 - Small commits, push often
 - Don't commit secrets. Put API keys in `.env` (it's gitignored)
+
+### Pitch deck
+
+Plain static files in `deck/` (three.js and the fonts are inside it), so any web server works:
+
+```bash
+python -m http.server 8650   # from the repo root, then open http://localhost:8650/deck/
+```
+
+`main.py` also serves it at http://localhost:8642/deck/. Then the live-demo slide embeds the
+dashboard and the results slide reads the trial numbers from it. From another machine, add
+`?dash=http://<gx10-ip>:8642`. With no dashboard reachable, the demo slide plays
+`deck/media/demo-run.mp4` if it exists, and the results slide reads `trials.csv` directly.
+
+Keys: arrows, space or click to advance; F fullscreen; N speaker notes with a timer.
+`?auto` plays it on a timer (for recording a video); `?still` skips animation (for screenshots).

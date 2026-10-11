@@ -304,7 +304,8 @@ class Dashboard:
                 if path == "/events":
                     return self._events()
                 if path == "/trials.json":
-                    return self._send(json.dumps(_trial_stats()).encode(), "application/json")
+                    # readable from a deck served elsewhere (?dash=...): read-only, local numbers
+                    return self._send(json.dumps(_trial_stats()).encode(), "application/json", cors=True)
                 if path == "/deck":
                     self.send_response(301)
                     self.send_header("Location", "/deck/")
@@ -327,9 +328,11 @@ class Dashboard:
                     ctype = "text/javascript"
                 self._send(data, ctype)
 
-            def _send(self, data, ctype):
+            def _send(self, data, ctype, cors=False):
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
+                if cors:
+                    self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
