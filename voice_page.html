@@ -1,97 +1,225 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Blindfold pickup microphone</title>
+<title>Proprio microphone</title>
 <style>
-  :root { color-scheme: dark; --bg: #0f1113; --ink: #f2f1ee; --dim: #9a9892; --line: #2a2d31; --go: #2a78d6; --rec: #d03b3b; }
+  :root { color-scheme: dark; --bg: #0f1113; --ink: #f2f1ee; --dim: #9a9892; --line: #2a2d31; --go: #2a78d6; --rec: #d03b3b; --bad: #f0a35e; }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 17px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
          display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 28px 20px 40px; }
   h1 { font-size: 20px; font-weight: 600; margin: 0; }
   p { margin: 0; color: var(--dim); text-align: center; max-width: 34ch; }
+  #hint.bad { color: var(--bad); }
   #talk { width: min(64vw, 260px); aspect-ratio: 1; border-radius: 50%; border: 0; background: var(--go); color: #fff;
-          font: 600 22px/1.2 inherit; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+          font: 600 22px/1.2 inherit; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: pointer; }
   #talk.rec { background: var(--rec); transform: scale(1.04); }
   #talk:disabled { opacity: 0.5; }
-  #talk:focus-visible, input:focus-visible, #send:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  #talk:focus-visible, input:focus-visible, button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
   dl { width: min(100%, 420px); margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; border-top: 1px solid var(--line); padding-top: 16px; }
   dt { color: var(--dim); } dd { margin: 0; min-height: 1.4em; overflow-wrap: anywhere; }
   form { width: min(100%, 420px); display: flex; gap: 8px; }
-  .opts { width: min(100%, 420px); display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 16px; }
+  .row, .opts { width: min(100%, 420px); display: grid; gap: 8px; }
+  .row { grid-template-columns: repeat(3, 1fr); }
+  .opts { border-top: 1px solid var(--line); padding-top: 16px; }
   .opts p { text-align: left; max-width: none; font-size: 15px; }
   .opts div { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-  .opts button { font: 600 18px/1 inherit; color: var(--ink); background: #23272b; border: 1px solid var(--line); border-radius: 8px; padding: 14px 0; cursor: pointer; }
-  .opts button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .row button, .opts button { font: 600 16px/1.1 inherit; color: var(--ink); background: #23272b; border: 1px solid var(--line); border-radius: 8px; padding: 14px 4px; cursor: pointer; }
+  .opts button { font-size: 18px; }
+  .opts button.on { background: var(--go); border-color: var(--go); }
   input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: #181b1e; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
   #send { font: inherit; color: var(--ink); background: #23272b; border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px; cursor: pointer; }
+  details { width: min(100%, 420px); color: var(--dim); font-size: 14px; }
+  pre { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--dim); }
 </style></head><body>
-<h1>Blindfold pickup</h1>
+<h1>Proprio</h1>
 <button id="talk" type="button">Hold to talk</button>
-<p id="hint">Hold the button, or the space bar, and say what you want: "find my mug", "what's on the table?"</p>
+<p id="hint" role="status">Hold the button, or the space bar, and say what you want: "find my mug", "what's on the table?"</p>
 <dl><dt>Heard</dt><dd id="heard"></dd><dt>Looking for</dt><dd id="target"></dd></dl>
 <form id="typed"><input id="text" autocomplete="off" placeholder="or type it" aria-label="Type a request"><button id="send" type="submit">Send</button></form>
-<section class="opts" aria-label="Way of guiding">
+<div class="row"><button type="button" data-say="stop">Stop</button><button type="button" data-say="again">Again</button><button type="button" data-say="what is on the table">What's there</button></div>
+<section class="opts" aria-label="Options">
   <p>Way of guiding: <b id="option">–</b></p>
-  <div><button type="button" data-o="1" title="Tones: ear is left and right, pitch is up and down">1</button><button type="button" data-o="2" title="One step at a time">2</button><button type="button" data-o="3" title="Combined words">3</button><button type="button" data-o="4" title="Combined words with beeps">4</button><button type="button" data-o="5" title="Clock face">5</button></div>
-  <p>1 tones · 2 one step at a time · 3 combined words · 4 combined words with beeps · 5 clock face. You can also say "option three".</p>
+  <div id="guide"></div>
+  <p id="hand-title" hidden>Hand tracking</p><div id="hand"></div>
+  <p id="grab-title" hidden>When to say grab</p><div id="grab"></div>
+  <p>You can also say "option three", "hand option two", "grab option two".</p>
 </section>
+<details open><summary>What this page did</summary><pre id="log" aria-live="off"></pre></details>
 <script>
-const talk = document.getElementById("talk"), hint = document.getElementById("hint");
-let stream = null, rec = null, chunks = [], down = false;
-function say(t) { hint.textContent = t; }
+const $ = id => document.getElementById(id);
+const talk = $("talk"), hint = $("hint"), lines = [];
+function log(msg) {                                    // everything that happens is written on the page itself
+  const t = new Date().toTimeString().slice(0, 8);
+  lines.push(t + "  " + msg);
+  while (lines.length > 14) lines.shift();
+  $("log").textContent = lines.join("\n");
+}
+function say(text, bad) { hint.textContent = text; hint.className = bad ? "bad" : ""; }
+function fail(text) {                                  // shown, kept in the log, and sent to the GX10's own log
+  say(text, true); log("! " + text);
+  try { fetch("log", { method: "POST", body: (navigator.userAgent.slice(0, 120) + " | " + text).slice(0, 300) }).catch(() => {}); } catch (e) {}
+}
+window.addEventListener("error", e => fail("Page error: " + e.message + " (line " + e.lineno + ")"));
+window.addEventListener("unhandledrejection", e => fail("Page error: " + (e.reason && e.reason.message || e.reason)));
+
+function cannotRecord() {                              // why this browser will not record, or "" if it will
+  if (!window.isSecureContext)
+    return "This page was opened without https, so the browser will not give it the microphone. Open https://" + location.host + "/ instead. Typing still works.";
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return "This browser gives pages no microphone (it may be a browser inside another app). Open the address in Safari or Chrome itself. Typing still works.";
+  if (typeof MediaRecorder === "undefined")
+    return "This browser cannot record sound (an iPhone needs iOS 14.3 or later). Typing still works.";
+  return "";
+}
+
+let stream = null, session = null, starting = false, pressedAt = 0;
+async function microphone() {
+  if (stream && stream.getAudioTracks().some(t => t.readyState === "live")) return [stream, false];
+  log("asking the browser for the microphone");
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const track = stream.getAudioTracks()[0];
+  log("microphone: " + (track && track.label || "no name given"));
+  if (track) track.addEventListener("ended", () => { log("the browser took the microphone away"); stream = null; });
+  return [stream, true];
+}
+function kind() {                                      // Chrome and Firefox record webm or ogg, Safari mp4; the GX10 reads them all
+  if (!MediaRecorder.isTypeSupported) return "";
+  return ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus", "audio/webm"].find(m => MediaRecorder.isTypeSupported(m)) || "";
+}
 async function start() {
-  if (down) return; down = true;
-  try {
-    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (e) { down = false; say("The microphone is blocked. Allow it for this page and try again."); return; }
-  if (!down) return;                                   // released while the permission prompt was up
-  chunks = [];
-  rec = new MediaRecorder(stream);
-  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-  rec.onstop = send;
-  rec.start();
+  if (session || starting) return;
+  const why = cannotRecord();
+  if (why) { fail(why); return; }
+  starting = true;
+  let s, fresh;
+  try { [s, fresh] = await microphone(); }
+  catch (e) {
+    starting = false;
+    fail(e.name === "NotAllowedError" ? "The microphone is blocked for this page. Allow it in the browser's settings for this site, then reload."
+       : e.name === "NotFoundError" ? "This device has no microphone the browser can use."
+       : "The browser would not open the microphone (" + e.name + ": " + e.message + ").");
+    return;
+  }
+  starting = false;
+  if (fresh) {                                         // the press that brought up the permission question is long over
+    say("The microphone is on. Hold the button and speak, or tap it to start and tap again to stop.");
+    return;
+  }
+  const type = kind(), chunks = [], t0 = Date.now();
+  let rec;
+  try { rec = type ? new MediaRecorder(s, { mimeType: type }) : new MediaRecorder(s); }
+  catch (e) { log("recorder refused " + type + " (" + e.name + "); using its own format"); rec = new MediaRecorder(s); }
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  rec.onerror = e => fail("The recorder failed (" + (e.error && e.error.name || "no reason given") + ").");
+  rec.onstop = () => send(new Blob(chunks, { type: rec.mimeType || type || "audio/webm" }), Date.now() - t0);
+  try { rec.start(); }
+  catch (e) { fail("The recorder would not start (" + e.name + ": " + e.message + ")."); return; }
+  session = { rec, tapped: false, timer: setTimeout(stop, 8000) };       // nobody holds it for more than a request
   talk.classList.add("rec"); talk.textContent = "Listening";
 }
 function stop() {
-  if (!down) return; down = false;
+  if (!session) return;
+  const { rec, timer } = session;
+  session = null;
+  clearTimeout(timer);
   talk.classList.remove("rec"); talk.textContent = "Hold to talk";
-  if (rec && rec.state !== "inactive") rec.stop();
+  if (rec.state !== "inactive") rec.stop();
 }
-async function send() {
-  const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
-  if (blob.size < 2000) { say("That was too short. Hold the button while you speak."); return; }
-  say("Working it out...");
+function press() {
+  if (session && session.tapped) { stop(); return; }   // the second tap
+  pressedAt = Date.now();
+  start();
+}
+function release() {
+  if (!session) return;
+  if (Date.now() - pressedAt < 350 && !session.tapped) {      // a tap, not a hold: keep recording until the next tap
+    session.tapped = true;
+    say("Recording. Tap again when you have finished.");
+    return;
+  }
+  stop();
+}
+async function post(path, body, type) {
+  const giveUp = new AbortController(), timer = setTimeout(() => giveUp.abort(), 20000), t0 = Date.now();
   try {
-    const r = await fetch("say", { method: "POST", body: blob, headers: { "Content-Type": blob.type } });
-    const d = await r.json();
-    document.getElementById("heard").textContent = d.heard || "(nothing)";
-    say(d.heard ? "Hold the button to say something else." : "I did not catch that. Try again, a little closer.");
-  } catch (e) { say("Could not reach the GX10."); }
+    const r = await fetch(path, { method: "POST", body, headers: { "Content-Type": type }, signal: giveUp.signal });
+    const text = await r.text();
+    log(path + ": answer " + r.status + " after " + (Date.now() - t0) + " ms");
+    if (!r.ok) { fail("The GX10 answered " + r.status + ": " + text.slice(0, 80)); return null; }
+    return JSON.parse(text);
+  } catch (e) {
+    fail(e.name === "AbortError" ? "The GX10 did not answer within 20 seconds."
+       : "Could not reach the GX10 (" + e.name + ": " + e.message + "). Is this device still on the same network? Reload the page; if it asks about the certificate, accept it again.");
+    return null;
+  } finally { clearTimeout(timer); }
 }
-talk.addEventListener("pointerdown", e => { e.preventDefault(); talk.setPointerCapture(e.pointerId); start(); });
-talk.addEventListener("pointerup", stop);
-talk.addEventListener("pointercancel", stop);
-document.addEventListener("keydown", e => { if (e.code === "Space" && e.target.tagName !== "INPUT" && !e.repeat) { e.preventDefault(); start(); } });
+async function send(blob, ms) {
+  log("recorded " + (ms / 1000).toFixed(1) + " s: " + blob.size + " bytes of " + (blob.type || "an unnamed format"));
+  if (blob.size < 1000 || ms < 300) {
+    say(blob.size ? "That was too short. Hold the button while you speak." : "The browser recorded nothing at all. Reload the page and allow the microphone again.", !blob.size);
+    return;
+  }
+  say("Working it out...");
+  const d = await post("say", blob, blob.type || "application/octet-stream");
+  if (!d) return;
+  $("heard").textContent = d.heard || "(nothing)";
+  if (d.error) fail(d.error);
+  else if (d.heard) say("Hold the button to say something else.");
+  else say("The GX10 got " + (d.seconds === undefined ? "the recording" : d.seconds + " s of sound, loudness " + d.level) + " but heard no words in it. Try again, closer to the microphone.");
+}
+async function sendText(text) {
+  $("heard").textContent = text;
+  const d = await post("text", JSON.stringify({ text }), "application/json");
+  if (d) say("Sent: " + text);
+}
+talk.addEventListener("pointerdown", e => { e.preventDefault(); try { talk.setPointerCapture(e.pointerId); } catch (x) {} press(); });
+talk.addEventListener("pointerup", release);
+talk.addEventListener("pointercancel", release);        // a long press that the phone took for its own gesture
+talk.addEventListener("contextmenu", e => e.preventDefault());
+document.addEventListener("keydown", e => { if (e.code === "Space" && e.target.tagName !== "INPUT" && !e.repeat) { e.preventDefault(); pressedAt = 0; start(); } });
 document.addEventListener("keyup", e => { if (e.code === "Space" && e.target.tagName !== "INPUT") { e.preventDefault(); stop(); } });
-document.getElementById("typed").addEventListener("submit", async e => {
+$("typed").addEventListener("submit", e => {
   e.preventDefault();
-  const box = document.getElementById("text"), text = box.value.trim();
+  const text = $("text").value.trim();
   if (!text) return;
-  box.value = "";
-  document.getElementById("heard").textContent = text;
-  try { await fetch("text", { method: "POST", body: JSON.stringify({ text }), headers: { "Content-Type": "application/json" } }); }
-  catch (e) { say("Could not reach the GX10."); }
+  $("text").value = "";
+  sendText(text);
 });
-document.querySelectorAll(".opts button").forEach(b => b.addEventListener("click", async () => {
-  try { await fetch("text", { method: "POST", body: JSON.stringify({ text: "option " + b.dataset.o }), headers: { "Content-Type": "application/json" } }); }
-  catch (e) { say("Could not reach the GX10."); }
-}));
+document.querySelectorAll("[data-say]").forEach(b => b.addEventListener("click", () => sendText(b.dataset.say)));
+
+// The buttons for whatever can be switched in this run. Until the GX10 says, the five ways of guiding.
+const shown = {};
+function buttons(family, titles, now) {
+  const box = $(family), key = titles.join("|");
+  if (shown[family] !== key) {
+    shown[family] = key;
+    box.textContent = "";
+    titles.forEach((title, i) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = i + 1; b.title = title;
+      b.addEventListener("click", () => sendText((family === "guide" ? "" : family + " ") + "option " + (i + 1)));
+      box.appendChild(b);
+    });
+    if ($(family + "-title")) $(family + "-title").hidden = !titles.length;
+  }
+  [...box.children].forEach((b, i) => b.classList.toggle("on", i + 1 === now));
+  if ($(family + "-title") && titles[now - 1]) $(family + "-title").textContent = (family === "hand" ? "Hand tracking: " : "When to say grab: ") + now + " " + titles[now - 1];
+}
+buttons("guide", ["tones", "one step at a time", "combined words", "combined words with beeps", "clock face"], 0);
+let silent = 0;
 setInterval(async () => {
   try {
     const d = await (await fetch("status")).json();
-    document.getElementById("target").textContent = d.target || "";
-    if (d.heard) document.getElementById("heard").textContent = d.heard;
-    if (d.option) document.getElementById("option").textContent = d.option;
-  } catch (e) {}
+    if (silent >= 3) log("the GX10 is answering again");
+    silent = 0;
+    $("target").textContent = d.target || "";
+    if (d.heard) $("heard").textContent = d.heard;
+    if (d.option) $("option").textContent = d.option;
+    for (const family of ["guide", "hand", "grab"]) if (d.options && d.options[family]) buttons(family, d.options[family].titles, d.options[family].now);
+  } catch (e) {
+    if (++silent === 3) fail("Lost touch with the GX10 (" + e.name + "). Is this device still on the same network?");
+  }
 }, 1000);
+const why = cannotRecord();
+if (why) fail(why); else log("ready: " + (kind() || "the browser's own format") + ", " + navigator.userAgent.slice(0, 70));
 </script></body></html>

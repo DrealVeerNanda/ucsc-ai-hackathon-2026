@@ -233,6 +233,8 @@ def quiet_voice(monkeypatch):
     monkeypatch.setattr(guidance, "_default", None)
     monkeypatch.setattr(voice, "last_objects", [])
     monkeypatch.setattr(voice, "_llm_ok", None)
+    monkeypatch.setattr(voice, "_stopped", False)
+    monkeypatch.setattr(voice, "_told_no_cosmos", False)
     return monkeypatch
 
 
@@ -279,7 +281,7 @@ def test_listing_explains_itself_when_it_cannot_look(quiet_voice):
     quiet_voice.setattr(stream, "_default", None)
     quiet_voice.setattr(stream, "start", no_phone)                  # the camera cannot be opened
     voice.respond("what's on the table?")
-    assert guidance.pop_phrases()[-1] == "I need the camera for that."
+    assert guidance.pop_phrases()[-1] == "I have no picture from the camera yet."
     quiet_voice.setattr(stream, "_default", _Camera())
     quiet_voice.setattr(cosmos, "available", lambda *a, **k: False)
     voice.respond("what's on the table?")
@@ -287,7 +289,7 @@ def test_listing_explains_itself_when_it_cannot_look(quiet_voice):
     quiet_voice.setattr(cosmos, "available", lambda *a, **k: True)
     quiet_voice.setattr(cosmos, "list_objects", lambda rgb, **k: [])
     voice.respond("what's on the table?")
-    assert guidance.pop_phrases()[-1] == "I don't see anything to pick up."
+    assert guidance.pop_phrases()[-1] == "I can't see anything to pick up. Turn towards the table, or step back a little."
 
 
 def test_nemotron_can_decide_it_is_a_list_request(quiet_voice):
@@ -397,7 +399,7 @@ def test_a_recording_from_the_page_becomes_the_target(mic):
     time.sleep(0.1)                                              # main.py is waiting for a request
     status, body = _https(mic.base + "/say", b"RECORDING-1", "audio/webm")
     t.join(3)
-    assert status == 200 and json.loads(body) == {"heard": "find my mug"}
+    assert status == 200 and json.loads(body)["heard"] == "find my mug"
     assert out["target"] == "mug" and mic.poked == []            # it was waiting: nothing to interrupt
     status = json.loads(_https(mic.base + "/status")[1])
     assert status["heard"] == "find my mug" and status["target"] == "mug" and status["option"] == "1: tones"
@@ -410,8 +412,9 @@ def test_a_request_during_a_reach_interrupts_it(mic):
 
 
 def test_silence_or_a_bad_recording_asks_for_nothing(mic):
-    assert json.loads(_https(mic.base + "/say", b"RECORDING-2", "audio/webm")[1]) == {"heard": ""}
-    assert json.loads(_https(mic.base + "/say", b"BROKEN", "audio/webm")[1]) == {"heard": ""}
+    assert json.loads(_https(mic.base + "/say", b"RECORDING-2", "audio/webm")[1]) == {"heard": "", "bytes": 11}
+    broken = json.loads(_https(mic.base + "/say", b"BROKEN", "audio/webm")[1])
+    assert broken["heard"] == "" and "could not read that recording (ValueError: not audio)" in broken["error"]   # the page shows why
     assert mic._requests.empty() and mic.poked == []
 
 
@@ -472,7 +475,9 @@ def test_without_cosmos_it_still_asks(quiet_voice):
     quiet_voice.setattr(stream, "_default", _Camera())
     quiet_voice.setattr(cosmos, "available", lambda *a, **k: False)
     quiet_voice.setattr("builtins.input", lambda prompt="": "mug")
-    assert voice.typed() == "mug" and guidance.pop_phrases() == ["What do you want to grab?"]
+    assert voice.typed() == "mug" and guidance.pop_phrases() == ["I can't look around right now. Tell me what you want to grab."]
+    assert voice.respond("") == "" and voice.typed() == "mug"       # said once: after the next grab it simply asks
+    assert guidance.pop_phrases() == ["What do you want to grab?"]
 
 
 @pytest.mark.parametrize("said, number, name", [("option three", 3, "combined words"), ("Option 5.", 5, "clock face"),
@@ -595,7 +600,7 @@ class _Earbuds:
     def close(self):
         self.modes.append("stereo")
 
-    def record(self, should_stop=None):
+    def record(self, should_stop=None, abandon=None):
         self.calls += 1
         return None if self.calls < 3 else np.full(16000, 0.1, np.float32)
 
@@ -619,7 +624,7 @@ def test_stray_talk_does_not_beep_again_or_switch_the_earbuds(quiet_voice, tmp_p
     heard = iter(["okay guys i am going", "each processor has its own memory", "the green can please"])
     quiet_voice.setattr(voice, "interpret", lambda text: ("pick", "green can") if "green" in text else ("none", ""))
     buds = _Earbuds()
-    buds.record = lambda should_stop=None: np.full(16000, 0.1, np.float32)
+    buds.record = lambda should_stop=None, abandon=None: np.full(16000, 0.1, np.float32)
     mic = voice.WebMic(port=0, transcribe=lambda data: "", cert_dir=tmp_path / "c", typed=False,
                        headset=buds, hear=lambda audio: next(heard))
     try:

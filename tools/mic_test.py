@@ -4,6 +4,9 @@ records, and then tells you what it heard. Stop the live run first; both want th
   python tools/mic_test.py                  # three rounds through the earbuds (or the default microphone)
   python tools/mic_test.py --rounds 1 --seconds 6
   python tools/mic_test.py --silent         # no prompts, no beep: just record and measure
+  python tools/mic_test.py --wav out/mic_test_1.wav out/mic_test_2.wav --listed "water bottle, blue cup"
+                                            # no microphone and no sound: put recordings through what the live
+                                            # run does to them (cut, drop what is not the wearer, Whisper, meaning)
 
 Each round prints how loud the voice was against the room, whether any sound was lost on the
 way in, whether the live run's own speech detector would have caught it, and what Whisper
@@ -87,15 +90,16 @@ def measure(blocks: list, seconds: float) -> dict:
     voice against the room, and would voice.cut_speech have started on it."""
     if not blocks:
         return {"arrived_s": 0.0, "wanted_s": seconds, "floor": 0.0, "voice": 0.0, "peak": 0.0,
-                "threshold": 0.012, "caught": False, "caught_s": 0.0}
+                "threshold": voice.voice_level([]), "caught": False, "caught_s": 0.0, "level": 0.0}
     level = np.array([float(np.sqrt(np.mean(np.square(b)))) for b in blocks])
-    first = level[: max(1, int(round(0.3 / BLOCK_S)))]
-    cut = voice.cut_speech(iter(blocks), start_wait_s=seconds, max_s=seconds)
+    info = {}
+    cut = voice.cut_speech(iter(blocks), start_wait_s=seconds, max_s=seconds, info=info)
     return {"arrived_s": round(sum(len(b) for b in blocks) / SR, 2), "wanted_s": seconds,
             "floor": round(float(np.percentile(level, 10)), 4), "voice": round(float(np.percentile(level, 95)), 4),
             "peak": round(float(max(np.max(np.abs(b)) for b in blocks)), 3),
-            "threshold": round(max(0.012, 2.5 * float(np.median(first))), 4),
-            "caught": cut is not None, "caught_s": round(len(cut) / SR, 2) if cut is not None else 0.0}
+            "threshold": info.get("threshold", round(voice.voice_level(level), 4)),
+            "caught": cut is not None, "caught_s": round(len(cut) / SR, 2) if cut is not None else 0.0,
+            "level": round(voice.loudness(cut), 4) if cut is not None else 0.0}       # what the live run calls the voice's level
 
 
 def verdict(m: dict, lost: int, text: str, want: str) -> str:
@@ -119,23 +123,61 @@ def save_wav(path: Path, samples: np.ndarray):
         w.writeframes((np.clip(samples, -1, 1) * 32767).astype(np.int16).tobytes())
 
 
+def through_the_live_path(path: Path, whisper, pad_s: float = 0.5) -> dict:
+    """One recording, treated as the live run treats what the earbuds hear: cut out the speech,
+    drop what is too long or too quiet to be the wearer, let Whisper write it, read the request."""
+    with wave.open(str(path)) as w:
+        if w.getframerate() != SR or w.getnchannels() != 1:
+            raise SystemExit(f"{path}: needs to be mono at {SR} Hz")
+        audio = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32) / 32768.0
+    audio = np.concatenate([np.zeros(int(pad_s * SR), np.float32), audio, np.zeros(SR, np.float32)])   # the room before and after
+    n = int(SR * BLOCK_S)
+    info = {}
+    cut = voice.cut_speech((audio[i:i + n] for i in range(0, audio.size - n + 1, n)), info=info)
+    out = {"file": path.name, "cut_s": 0.0, "level": 0.0, "ended": info.get("ended"), "heard": "", "kept": False, "meant": ""}
+    if cut is None:
+        return dict(out, why="nobody spoke")
+    out.update(cut_s=round(cut.size / SR, 2), level=round(voice.loudness(cut), 4))
+    if cut.size / SR > voice.REQUEST_MAX_S:
+        return dict(out, why="too long to be a request")
+    t = time.perf_counter()
+    out["heard"] = whisper(cut)
+    out["whisper_s"] = round(time.perf_counter() - t, 3)
+    if not out["heard"] or not voice.worth_hearing(out["heard"]):
+        return dict(out, why="no words, or what Whisper writes for noise")
+    if not voice.from_the_wearer(out["heard"], out["level"]):
+        return dict(out, why="too quiet to be the wearer, and not about what was listed")
+    intent, target = voice.interpret(out["heard"])
+    return dict(out, kept=True, meant=f"{intent} {target}".strip(), why="")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--seconds", type=float, default=4.0, help="how long to record after the beep")
     ap.add_argument("--silent", action="store_true", help="no prompts and no beep")
     ap.add_argument("--model", default=None, help="Whisper size; the live run's choice if not given")
+    ap.add_argument("--wav", nargs="+", type=Path, help="put these recordings through the live path instead of recording")
+    ap.add_argument("--listed", default="", help="with --wav: the names it had just listed, separated by commas")
     a = ap.parse_args()
 
     whisper = voice.load_whisper(a.model)                 # the same one the live run uses
     print(f"whisper on the {whisper.on.upper()}", flush=True)
     out = ROOT / "out"
     out.mkdir(exist_ok=True)
+    if a.wav:
+        voice.last_objects = [name.strip() for name in a.listed.split(",") if name.strip()]
+        results = [through_the_live_path(path, whisper) for path in a.wav]
+        for r in results:
+            print(f"{r['file']}: cut {r['cut_s']} s at level {r['level']} ({r['ended']}); whisper {r['heard']!r} -> "
+                  + (f"KEPT, {r['meant']}" if r["kept"] else f"dropped: {r['why']}"), flush=True)
+        (out / "mic_test_wav.json").write_text(json.dumps({"listed": voice.last_objects, "results": results}, indent=1))
+        return
     report = {"microphones_before": sources(), "rounds": []}
 
     buds = voice.Headset.find()
     if buds is not None:
-        buds._profile(buds.headset)
+        buds.open()                                       # waits until the microphone is really there
         report["earbuds"] = buds.name
         report["microphone_ready_s"] = wait_for_microphone(buds.name)
         print(f"earbuds: {buds.name}; microphone ready after {report['microphone_ready_s']} s", flush=True)
