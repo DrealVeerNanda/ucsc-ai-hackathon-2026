@@ -188,6 +188,13 @@ GUIDANCE_MODE=tones python main.py --guidance real  # original spatial beeps, no
 - Slower, lower Daniel clips in `audio/calm/` override the original clips when present. Generate them
   on a Mac with `python tools/make_calm_audio.py`; copy the WAVs to the GX10 for offline playback.
   Use `--voice Samantha --rate 140` to regenerate the earlier voice instead.
+- The complete Brian voice set in `audio/elevenlabs/` takes precedence over both older sets.
+  These are local 48 kHz mono 16-bit WAVs: no ElevenLabs account, API key, or network is needed
+  for playback. Missing or unreadable clips fall back to `audio/calm/`, then `audio/`.
+  To reconvert the downloaded MP3s in `audio/eleven_labs_raw/`, run
+  `python tools/convert_elevenlabs.py` (needs PyAV, installed with faster-whisper).
+  It trims excess silence and matches speech levels, and writes a combined preview to
+  `out/elevenlabs_preview_all.wav`. Arbitrary sentences still use local Piper/macOS speech.
 - Hybrid mode guides one hand movement at a time: sideways, then up/down, then forward/back.
   It says the direction once, then uses fixed-pitch beeps that speed up as that axis gets aligned.
   Beeps stop and a chime plays once after staying within 2.5 cm on that axis for 0.2 seconds.
@@ -200,7 +207,7 @@ GUIDANCE_MODE=tones python main.py --guidance real  # original spatial beeps, no
   Hybrid and words modes are quiet during that short confirmation wait; tones mode uses a steady tone.
   This means the fingertip is near the target; it doesn't detect an actual pickup.
   The next request waits for the spoken audio to finish.
-- The clips in `audio/` are placeholders made with the macOS voice. Replace them with ElevenLabs clips of the same file names.
+- The clips in `audio/` remain the original macOS voice fallback.
 - If the loop stalls for half a second the tone goes quiet, so an old position never keeps steering.
 - `voice.py` asks for a typed target unless a microphone is present. Then it is push-to-talk: Enter, speak, Enter. `VOICE_MODE=type` forces typing.
 - The GX10 has no speakers or microphone of its own, only HDMI. Pair the earbuds, then set `GUIDANCE_DEVICE` and `VOICE_DEVICE` if they are not the default.

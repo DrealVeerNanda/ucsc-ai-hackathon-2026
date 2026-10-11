@@ -185,6 +185,7 @@ def load_clips(folder: str | Path | None = None, sr: int = 48000) -> dict:
         # Original clips remain the fallback if the optional calm set is incomplete.
         clips = load_clips(CLIPS_DIR, sr)
         clips.update(load_clips(CLIPS_DIR / "calm", sr))
+        clips.update(load_clips(CLIPS_DIR / "elevenlabs", sr))
         return clips
     clips = {}
     for p in sorted(Path(folder).glob("*.wav")):
