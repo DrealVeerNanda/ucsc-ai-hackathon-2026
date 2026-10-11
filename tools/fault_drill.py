@@ -1503,7 +1503,8 @@ audio_out.open_sink = lambda *a, **k: audio_out.PrintSink(quiet=True)
 import voice
 
 class Buds:
-    name, calls, device = "fake earbuds", 0, 1
+    name, calls, device, headset, stereo = "fake earbuds", 0, 1, 2, 3
+    def mode(self): return self.headset
     def open(self): pass
     def close(self): pass
     def record(self, should_stop=None, **kw):
