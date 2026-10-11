@@ -377,7 +377,9 @@ class Bridge:
     # Between attempts while the phone is not answering. Tonight's logs suggest PathOn keeps
     # its door open for only about three seconds after its client is gone (a new client 2.7 s
     # later was served, one 3.8 s later was refused), so after a blip every moment counts.
-    RETRY_S = 0.25
+    # Once the stream has been gone for a while there is no hurry left: then once a second,
+    # which still picks up a tap on Start within a second.
+    RETRY_S, HURRY_S, PATIENT_RETRY_S = 0.25, 15.0, 1.0
 
     def __init__(self, folder: str | Path | None = None, port: int = 8888, phone_ip: str | None = None,
                  usb: bool = True, stall_s: float = stream.STALL_S, redial_s: float = 10.0,
@@ -398,6 +400,7 @@ class Bridge:
         self._decode_ms = 0.0
         self._stop = threading.Event()
         self._changed = threading.Event()
+        self._wake = threading.Event()       # cuts the wait between attempts short: the phone is back on the port
         self._lock_fd = None
         self.board = None
         self._server = None
@@ -623,8 +626,10 @@ class Bridge:
                 last, at = line, time.monotonic()
 
     def _watch_usb(self):
-        while not self._stop.wait(0.25):
-            self.usb_watch.poll()
+        while not self._stop.wait(0.1):
+            was = self.usb_watch.present
+            if self.usb_watch.poll() and not was:
+                self._wake.set()                     # it is back: dial now, not at the next turn
 
     def _dial_usb(self):
         """(socket, None) or (None, (state, message)). Nothing here opens a connection to the
@@ -841,15 +846,18 @@ class Bridge:
                 th.start()
             log.info("phone bridge up: pid %d, board %s, port %d, usb %s, wifi %s", os.getpid(), self.board.name,
                      self.port, "on" if self.usb else "off", self.phone_ip or "off")
+            lost = time.monotonic()                  # when the stream was last there
             while not self._stop.is_set():
+                self._wake.clear()
                 conn = self._dial()
                 if conn is None:
-                    self._stop.wait(self.RETRY_S)
+                    self._wake.wait(self.RETRY_S if time.monotonic() - lost < self.HURRY_S else self.PATIENT_RETRY_S)
                     continue
                 why, got = self._receive(*conn)
                 if self._stop.is_set():
                     break
                 if got:
+                    lost = time.monotonic()
                     self.reconnects += 1
                     log.warning("lost the stream after %d frames: %s. Dialling again.", got, why)
                     self._set("connecting", f"The stream from the iPhone stopped ({why}). Connecting again.")
@@ -857,7 +865,7 @@ class Bridge:
                     if "closed" in why:
                         self._set("app_not_streaming", "The iPhone hangs up as soon as it is called: PathOn is not "
                                                        "streaming. Open PathOn on the phone and tap Start Streaming.")
-                    self._stop.wait(self.RETRY_S)    # connected, and not one picture: do not hammer it
+                    self._wake.wait(self.RETRY_S)    # connected, and not one picture: do not hammer it
         finally:
             self._stop.set()
             self._changed.set()
@@ -880,6 +888,7 @@ class Bridge:
     def stop(self):
         self._stop.set()
         self._changed.set()
+        self._wake.set()
 
 
 # ---------------------------------------------------------------------------
