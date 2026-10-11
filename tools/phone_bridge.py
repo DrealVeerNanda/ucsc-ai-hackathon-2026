@@ -232,6 +232,7 @@ class DemoRecorder:
                 raw = None
             if not self.want:
                 self._finish()
+                self.error = None                # nobody is asking any more
                 continue
             if raw is None:
                 continue
