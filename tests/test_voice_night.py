@@ -1197,3 +1197,26 @@ def test_the_new_target_key_goes_to_the_dashboard_main_was_started_with(quiet):
     quiet.setenv("DASHBOARD_PORT", "8700")
     quiet.real_poke()
     assert asked == ["http://127.0.0.1:8655/key", "http://127.0.0.1:8700/key"]
+
+
+def test_no_earbuds_on_a_machine_that_would_use_them_shows_in_the_status(quiet, tmp_path):
+    quiet.setenv("VOICE_AUTO_LIST", "0")
+    quiet.setattr(voice, "_wants_earbuds", lambda: True)
+    found = []
+    quiet.setattr(voice.Headset, "find", staticmethod(lambda: found[0] if found else None))
+    mic = web_mic(tmp_path, hear=lambda audio: "the mug")
+    mic._find_headset = True
+    out, thread = listen_in_background(mic)
+    assert until(lambda: voice.status()["ok"] is False) and "No earbuds are connected" in voice.status()["message"]
+    assert voice.status()["state"] == "waiting" and voice.status()["mic"] == "page or keyboard"
+    found.append(Buds(("the mug",)))                        # they are put in: used at once, and the status clears
+    thread.join(5)
+    assert out["target"] == "mug" and voice.status()["ok"] is True
+
+
+def test_a_way_of_guiding_from_before_the_options_is_named_as_such(quiet):
+    quiet.setenv("GUIDANCE_MODE", "words")
+    assert voice.respond("which option") == ""
+    assert guidance.pop_phrases() == ["This is words, which is not one of the 5 options."]
+    assert voice.option_families()["option"] == "words"
+    assert voice.respond("next option") == "" and guidance.option()[0] == 1

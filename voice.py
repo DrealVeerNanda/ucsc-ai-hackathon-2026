@@ -102,7 +102,7 @@ CLIP_MAX_S = 8.0            # no recording runs longer than this, however long t
 LOUD_ROOM = 0.025           # a voice has to be 2.5 times the room; in a loud room, no more than this (or 1.5 times the room)
 WEARER_LEVEL = 0.015        # quieter than this is trusted only when it names something that was just listed
 COVERED_NEAR_M = 0.30       # the camera counts as covered when this much of the depth picture is nearer than this.
-COVERED_SHARE = 0.10        # (in recordings/live_2025 a clear view of the table never had more than 2% that near)
+COVERED_SHARE = 0.05        # (in recordings/live_2025 a clear view of the table never had more than 2% that near)
 FIND_EARBUDS_S = 3.0        # without earbuds, look for them this often; twice as long after each failure, up to...
 FIND_EARBUDS_MAX_S = 30.0
 CHECK_EARBUDS_S = 10.0      # while listening, make sure they are still there and still in headset mode
@@ -522,7 +522,7 @@ def switch_option(text: str) -> str | None:
             _say(f"{said}s are not available here.")
         elif which:
             number, _, title = current()
-            _say(f"{said} {number}: {title}.")
+            _say(f"{said} {number}: {title}." if number else f"This is {title}, which is not one of the {count} {name}s.")
         else:
             if m.re is _OPTION_STEP:
                 number = (current()[0] - 1 + (1 if m.group(1) == "next" else -1)) % count + 1
@@ -919,6 +919,12 @@ _switch_lock = threading.RLock()         # one change of the earbuds' mode at a 
 _switch_t = -1e9                         # when the last one was asked for
 _repair_t = -1e9
 _stereo_volume: float | None = None      # how loud the wearer has the earbuds in stereo, read before leaving it
+
+
+def _wants_earbuds() -> bool:
+    """Would this machine use Bluetooth earbuds as the microphone if there were any?"""
+    import shutil
+    return os.environ.get("VOICE_HEADSET", "auto") != "off" and bool(shutil.which("wpctl") and shutil.which("pw-cli"))
 
 
 def _stays() -> bool:
@@ -1326,6 +1332,9 @@ class WebMic:
             self.headset = Headset.find()
             if self.headset is not None:
                 print(f"[voice] Using {self.headset.name} as the microphone: answer after the beep.")
+            elif "earbuds" not in _trouble and _wants_earbuds():
+                with _status_lock:                        # quietly: this is asked every few seconds
+                    _trouble["earbuds"] = "No earbuds are connected: only the page and the keyboard can ask for something."
         return self.headset
 
     def _open(self, buds) -> bool:
@@ -1649,11 +1658,12 @@ def option_families() -> dict:
         try:
             name, options, choose, current = _family(kind)
             if options and choose is not None:
-                out[kind or "guide"] = {"now": current()[0], "titles": [o[1] if isinstance(o, (tuple, list)) else str(o) for o in options]}
+                number, _, title = current()
+                out[kind or "guide"] = {"now": number, "titles": [o[1] if isinstance(o, (tuple, list)) else str(o) for o in options]}
+                if not kind:
+                    out["option"] = f"{number}: {title}" if number else title      # 0: a way of guiding from before the options
         except Exception:
             pass
-    if "guide" in out:
-        out["option"] = "%d: %s" % (out["guide"]["now"], out["guide"]["titles"][out["guide"]["now"] - 1])
     return {"option": out.pop("option", ""), "options": out}
 
 
