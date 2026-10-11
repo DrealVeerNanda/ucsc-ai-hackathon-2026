@@ -3,6 +3,8 @@
 Standard library only and no CDN, so it keeps working with the network unplugged.
 
     GET  /          the page (dashboard/index.html)
+    GET  /deck/     the pitch deck (deck/index.html), which embeds the dashboard for the demo
+    GET  /trials.json  baseline and guided trial stats from trials.csv
     GET  /events    server-sent events: one JSON snapshot per frame, JPEG inlined
     POST /key       {"key": "left"} from the page, for the fake hand and retargeting
 
@@ -27,6 +29,7 @@ import trials
 from interfaces import hand_error
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard")
+DECK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deck")
 MAX_IMG_H = 720
 DEPTH_H = 240
 # Depth picture in the page's own blue (hue 255): near is pale, far is dark. Yellow and
@@ -300,16 +303,33 @@ class Dashboard:
                 path = self.path.split("?")[0]
                 if path == "/events":
                     return self._events()
-                if path == "/":
-                    path = "/index.html"
-                full = os.path.normpath(os.path.join(STATIC_DIR, path.lstrip("/")))
-                if not full.startswith(STATIC_DIR + os.sep) or not os.path.isfile(full):
+                if path == "/trials.json":
+                    return self._send(json.dumps(_trial_stats()).encode(), "application/json")
+                if path == "/deck":
+                    self.send_response(301)
+                    self.send_header("Location", "/deck/")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                root = STATIC_DIR
+                if path.startswith("/deck/"):
+                    root, path = DECK_DIR, path[len("/deck"):]
+                if path.endswith("/"):
+                    path += "index.html"
+                full = os.path.normpath(os.path.join(root, path.lstrip("/")))
+                if not full.startswith(root + os.sep) or not os.path.isfile(full):
                     self.send_error(404)
                     return
                 with open(full, "rb") as f:
                     data = f.read()
+                ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+                if full.endswith((".js", ".mjs")):
+                    ctype = "text/javascript"
+                self._send(data, ctype)
+
+            def _send(self, data, ctype):
                 self.send_response(200)
-                self.send_header("Content-Type", mimetypes.guess_type(full)[0] or "application/octet-stream")
+                self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()

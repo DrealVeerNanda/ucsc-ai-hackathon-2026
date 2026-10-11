@@ -1,0 +1,180 @@
+/* Pitch deck. Same world as the dashboard (DESIGN.md): blue-black ground, telestrator yellow
+   only for the fingertip-to-object line, grab green only for success, Barlow. Sizes are
+   viewport-based so it fills any screen the GX10 drives. */
+
+@font-face { font-family: "Barlow"; font-weight: 400; font-display: swap; src: url("/fonts/barlow-400.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 500; font-display: swap; src: url("/fonts/barlow-500.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: swap; src: url("/fonts/barlow-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; font-display: swap; src: url("/fonts/barlow-semi-condensed-700.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Fallback"; src: local("Arial"), local("Helvetica"), local("Liberation Sans"); size-adjust: 93%; ascent-override: 100%; descent-override: 20%; }
+@font-face { font-family: "Barlow Display Fallback"; src: local("Arial Narrow"), local("Arial"), local("Liberation Sans Narrow"); size-adjust: 88%; ascent-override: 100%; descent-override: 20%; }
+
+:root {
+  color-scheme: dark;
+  --ground: oklch(0.165 0.022 255);
+  --plate: oklch(0.215 0.026 255);
+  --rule: oklch(0.33 0.03 255);
+  --text: oklch(0.965 0.005 255);
+  --muted: oklch(0.76 0.02 255);
+  --faint: oklch(0.6 0.022 255);
+  --leg: oklch(0.88 0.165 96);
+  --on-leg: oklch(0.21 0.04 96);
+  --grab: oklch(0.82 0.16 152);
+  --scrim: oklch(0.12 0.02 255 / 0.82);
+
+  --font: "Barlow", "Barlow Fallback", sans-serif;
+  --display: "Barlow Semi Condensed", "Barlow Display Fallback", sans-serif;
+
+  --t-poster: min(11vw, 19vh);
+  --t-head: min(5.4vw, 9.5vh);
+  --t-stat: min(6.2vw, 11vh);
+  --t-lede: min(2.5vw, 4.4vh);
+  --t-body: min(2vw, 3.6vh);
+  --t-small: min(1.35vw, 2.4vh);
+  --t-fine: min(0.95vw, 1.7vh);
+
+  --gx: 5vw;
+  --gy: 7vh;
+  --col: min(46vw, 82vh);
+  --radius: 3px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--ground); color: var(--text); }
+body {
+  overflow: hidden;
+  font: 400 var(--t-body)/1.35 var(--font);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  cursor: default;
+}
+body.is-idle { cursor: none; }
+::selection { background: var(--text); color: var(--ground); }
+h1, h2, p, ol, ul, figure { margin: 0; }
+
+.stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+
+/* labels that track points in the 3D scene */
+.labels { position: fixed; inset: 0; pointer-events: none; }
+.lab {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  font: 600 var(--t-small)/1.25 var(--font);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 250ms var(--ease);
+  will-change: transform;
+}
+.lab-word { background: var(--leg); color: var(--on-leg); font: 700 var(--t-lede)/1.1 var(--display); padding: 2px 10px; }
+.lab-word.is-grab { background: var(--grab); }
+.lab-mug { background: var(--text); color: var(--ground); }
+.lab-you { background: var(--scrim); color: var(--muted); font-weight: 500; }
+.lab-cloud { background: var(--scrim); color: var(--muted); font-weight: 500; }
+.lab-cloud.is-cut { text-decoration: line-through; }
+.lab-axis { background: var(--scrim); color: var(--text); font-weight: 500; }
+
+/* slides */
+.deck { position: fixed; inset: 0; pointer-events: none; }
+.slide {
+  position: absolute;
+  inset: 0;
+  padding: var(--gy) var(--gx);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3.2vh;
+  max-width: calc(var(--col) + 2 * var(--gx));
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 320ms var(--ease), visibility 0s linear 320ms;
+}
+.is-still .slide, .is-still [data-step], .is-still .lab { transition: none !important; }
+.slide.is-on { opacity: 1; visibility: visible; transition: opacity 420ms var(--ease) 120ms, visibility 0s; pointer-events: auto; }
+.slide-full { max-width: none; }
+.slide .notes { display: none; }
+
+[data-step] { transition: opacity 420ms var(--ease), translate 420ms var(--ease); }
+[data-step].is-later { opacity: 0; translate: 0 1.2vh; }
+@media (prefers-reduced-motion: reduce) { [data-step].is-later { translate: none; } }
+
+.poster { font: 700 var(--t-poster)/0.95 var(--display); }
+.poster.small { font-size: min(9vw, 15vh); color: var(--grab); }
+.head { font: 700 var(--t-head)/1 var(--display); }
+.lede { font-size: var(--t-lede); line-height: 1.3; color: var(--text); max-width: 34ch; }
+.lede q { quotes: "“" "”"; }
+.fine { font-size: var(--t-fine); color: var(--faint); max-width: 70ch; line-height: 1.4; }
+
+.points { list-style: none; padding: 0; display: grid; gap: 2.4vh; }
+.points li { font-size: var(--t-body); font-weight: 500; line-height: 1.3; padding-left: 1.2em; position: relative; max-width: 30ch; }
+.points li::before { content: ""; position: absolute; left: 0; top: 0.5em; width: 0.45em; height: 0.45em; border-radius: 50%; background: var(--muted); }
+.points.big li { font: 700 var(--t-lede)/1.15 var(--display); }
+.points b { font: 700 1.15em/1 var(--display); }
+
+.stats { list-style: none; padding: 0; display: grid; gap: 3.4vh; }
+.stats li { display: grid; gap: 0.6vh; }
+.stat-n { font: 700 var(--t-stat)/0.95 var(--display); }
+.stat-l { font-size: var(--t-body); color: var(--muted); max-width: 30ch; line-height: 1.3; }
+
+.flow { list-style: none; padding: 0; display: grid; gap: 2.6vh; }
+.flow li { font-size: var(--t-body); line-height: 1.3; color: var(--muted); max-width: 34ch; }
+.flow b { color: var(--text); font: 700 1.25em/1 var(--display); margin-right: 0.3em; }
+
+.ph {
+  display: grid;
+  place-items: center;
+  width: min(30vw, 52vh);
+  aspect-ratio: 4 / 3;
+  border: 2px dashed var(--rule);
+  border-radius: var(--radius);
+  color: var(--faint);
+  font-size: var(--t-small);
+  text-align: center;
+  padding: 2vh;
+  background: oklch(0.165 0.022 255 / 0.6);
+}
+
+/* competitor table */
+.compare { border-collapse: collapse; width: 100%; font-size: var(--t-small); background: var(--scrim); }
+.compare th, .compare td { text-align: left; padding: 1.15vh 1vw; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.compare thead th { color: var(--muted); font-weight: 500; }
+.compare tbody th { font-weight: 600; white-space: nowrap; }
+.compare td { color: var(--muted); }
+.compare .yes { color: var(--text); font-weight: 600; }
+.compare .no { color: var(--faint); }
+.compare .mid { color: var(--muted); }
+.compare tr.us th, .compare tr.us td { color: var(--ground); background: var(--grab); font-weight: 700; border-bottom: 0; }
+
+/* results */
+.results { display: grid; gap: 3.6vh; }
+.res { display: grid; gap: 0.6vh; }
+.res-n { font: 700 var(--t-stat)/0.95 var(--display); }
+.res-n.is-leg { color: var(--leg); }
+.res-l { font-size: var(--t-body); color: var(--muted); }
+
+.team { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 1.2vh 2.4vw; font: 600 var(--t-body)/1.2 var(--font); }
+
+/* live demo: the dashboard, full screen */
+.slide-live { padding: 0; max-width: none; background: var(--ground); }
+.live { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; background: var(--ground); }
+.live-note {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  font: 700 var(--t-lede)/1.2 var(--display);
+  color: var(--muted);
+}
+.live.is-loaded + .live-note { display: none; }
+
+.counter {
+  position: fixed;
+  right: 1.6vw;
+  bottom: 1.6vh;
+  font-size: var(--t-fine);
+  color: var(--faint);
+  pointer-events: none;
+}

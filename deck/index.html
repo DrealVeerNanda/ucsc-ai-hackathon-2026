@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#080f18">
+  <title>Pitch, [Project name]</title>
+  <meta name="description" content="Three-minute pitch: spoken directions guide a blind person's hand to an object, all on an ASUS Ascent GX10.">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/barlow-semi-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="deck.css">
+</head>
+<body>
+  <canvas id="stage" class="stage" aria-hidden="true"></canvas>
+  <div class="labels" aria-hidden="true">
+    <span class="lab lab-word" id="lab-word"></span>
+    <span class="lab lab-mug" id="lab-mug">mug</span>
+    <span class="lab lab-you" id="lab-you">Chest camera</span>
+    <span class="lab lab-cloud" id="lab-cloud">Cloud</span>
+    <span class="lab lab-axis" id="lab-ax"></span>
+    <span class="lab lab-axis" id="lab-ay"></span>
+    <span class="lab lab-axis" id="lab-az"></span>
+  </div>
+
+  <main class="deck" id="deck">
+
+    <section class="slide" data-id="title" data-shots="title" data-dur="6">
+      <h1 class="poster">[Project name]</h1>
+      <p class="lede">Say what you want. Spoken directions guide your hand to it, with your eyes closed.</p>
+      <p class="fine">UCSC AI Hackathon, ASUS Local AI track. Everything runs on one ASUS Ascent GX10.</p>
+      <aside class="notes">Open on the scene: lidar points of a table, a mug, a fingertip, and the yellow line between them. One sentence: we help a blind person pick up the thing they asked for.</aside>
+    </section>
+
+    <section class="slide" data-id="problem" data-shots="dark,dark,dark" data-steps="3" data-dur="7">
+      <h2 class="head">The big problem</h2>
+      <ol class="stats" id="problem-stats">
+        <li data-step="1"><span class="stat-n">43 million</span><span class="stat-l">people worldwide are blind, rising to 61 million by 2050</span></li>
+        <li data-step="2"><span class="stat-n">41%</span><span class="stat-l">of questions blind people asked for help with were “what is this?”</span></li>
+        <li data-step="3"><span class="stat-n" id="problem-base">–</span><span class="stat-l">for a blindfolded teammate to find a mug on our table, unaided (median)</span></li>
+      </ol>
+      <p class="fine">Lancet Global Health, 2020 (GBD Vision Loss Expert Group). Brady et al., CHI 2013: 40,748 questions from 5,329 blind users of VizWiz Social. Our baseline: trials.csv.</p>
+      <aside class="notes">The lights go out: points dim, the hand wanders. Hit each number. Last one is ours: how long a blindfolded teammate took with no help.</aside>
+    </section>
+
+    <section class="slide" data-id="provide" data-shots="provide,provide,provide,provide" data-steps="4" data-dur="8">
+      <h2 class="head">What it does</h2>
+      <p class="lede">Say <q>find my mug</q>. It guides your hand there, one word at a time.</p>
+      <ol class="points">
+        <li data-step="1">Hands-free: the phone rides on your chest</li>
+        <li data-step="2">Plain words in your earbuds: right, down, forward, grab</li>
+        <li data-step="3">Any object you name, no setup or scanning first</li>
+        <li data-step="4">Private and offline: nothing leaves the GX10</li>
+      </ol>
+      <aside class="notes">Watch the hand: it moves one axis at a time and the word above it is what the wearer hears.</aside>
+    </section>
+
+    <section class="slide" data-id="who" data-shots="wide,wide" data-steps="2" data-dur="6">
+      <h2 class="head">Who it's for</h2>
+      <ol class="points">
+        <li data-step="1"><b>1 million</b> Americans who are blind, and <b>7 million</b> with vision loss</li>
+        <li data-step="2">At home, at work, at school: anywhere the thing you need is on a table</li>
+      </ol>
+      <p class="fine" data-step="1">CDC, Vision Loss Facts.</p>
+      <figure class="ph" data-step="1"><span>Photo: wearer at a table with the chest mount</span></figure>
+      <aside class="notes">Keep it to the person. If time: the second line is a stretch, say it only if it lands.</aside>
+    </section>
+
+    <section class="slide slide-full" data-id="others" data-shots="recede" data-dur="9">
+      <h2 class="head">What exists today</h2>
+      <table class="compare">
+        <thead>
+          <tr><th scope="col">Today</th><th scope="col">What it does</th><th scope="col">Guides your hand to grab</th><th scope="col">Hands-free</th><th scope="col">Works offline</th><th scope="col">No setup per object</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Be My Eyes</th><td>A sighted volunteer on a video call</td><td class="mid">A person talks you through it</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Be My AI</th><td>Describes a photo with GPT-4</td><td class="no">No</td><td class="no">No</td><td class="no">No, cloud</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Seeing AI, Find My Things</th><td>Leads you to arm's reach of an item</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td><td class="no">Four videos per item</td></tr>
+          <tr><th scope="row">Apple Magnifier</th><td>Detects doors and people, reads text under your finger</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Envision Glasses</th><td>Beeps when a preset object is in view; $1,899</td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Preset list only</td></tr>
+          <tr><th scope="row">Aira</th><td>Paid agents on video; $65 a month for 20 minutes</td><td class="mid">A person talks you through it</td><td class="mid">With a worn camera</td><td class="no">No</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">AIGuide (research, 2022)</th><td>Guides the hand with speech and tones</td><td class="yes">Yes</td><td class="no">No, handheld</td><td class="yes">Yes</td><td class="no">Objects pre-scanned</td></tr>
+          <tr class="us"><th scope="row">[Project name]</th><td>Guides your hand by spoken words</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+        </tbody>
+      </table>
+      <p class="fine">Sources: Be My Eyes and Be My AI support pages; Microsoft Research, Find My Things; Apple iPhone User Guide, Magnifier; Envision Glasses 2.2 release notes and shop; aira.io/plans; Lee et al., AIGuide, ACM TACCESS 15(2), 2022.</p>
+      <aside class="notes">Most tools describe or read. None guide your hand to the thing, hands-free, offline.</aside>
+    </section>
+
+    <section class="slide" data-id="differ" data-shots="differ,differ,differ,differ" data-steps="4" data-dur="8">
+      <h2 class="head">How we're different</h2>
+      <ol class="points big">
+        <li data-step="1">It guides the hand to grab, it doesn't just describe</li>
+        <li data-step="2">Hands-free, the phone is on your chest</li>
+        <li data-step="3">Name any object by voice</li>
+        <li data-step="4">Runs on one box with no internet</li>
+      </ol>
+      <aside class="notes">Four lines, one breath each.</aside>
+    </section>
+
+    <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="4" data-dur="10">
+      <h2 class="head">How it works</h2>
+      <ol class="flow">
+        <li data-step="1"><b>See.</b> The iPhone streams color and lidar depth to the GX10.</li>
+        <li data-step="2"><b>Find.</b> A detector finds the mug, a hand tracker the fingertip.</li>
+        <li data-step="3"><b>Measure.</b> Depth turns both into 3D points. Subtract them.</li>
+        <li data-step="4"><b>Speak.</b> The biggest gap becomes one word: right, down, forward, grab.</li>
+      </ol>
+      <aside class="notes">The scene does the explaining: sweep, box, the line splits into right / down / forward, then the words.</aside>
+    </section>
+
+    <section class="slide slide-live" data-id="live" data-shots="off" data-dur="12">
+      <iframe class="live" id="live" title="Live dashboard" tabindex="-1" data-src="/"></iframe>
+      <p class="live-note" id="live-note">Live demo: the dashboard runs here.</p>
+      <aside class="notes">Blindfold on. "Find my mug." Talk over the screen: box, fingertip, the word, the distance. Then move the mug and repeat. Then pull the network cable and run it again. Fallback: play the recorded run.</aside>
+    </section>
+
+    <section class="slide" data-id="results" data-shots="off" data-dur="8">
+      <h2 class="head">Results</h2>
+      <div class="results" id="results">
+        <div class="res"><span class="res-n" id="res-base">–</span><span class="res-l">Unaided, median time to grab</span></div>
+        <div class="res"><span class="res-n is-leg" id="res-guided">–</span><span class="res-l">With guidance, median time to grab</span></div>
+        <div class="res"><span class="res-n" id="res-rate">–</span><span class="res-l">Guided trials that ended in a grab</span></div>
+      </div>
+      <p class="fine" id="res-note">From trials.csv; fills in as trials are recorded.</p>
+      <aside class="notes">Read the three numbers. They update live from trials.csv.</aside>
+    </section>
+
+    <section class="slide" data-id="local" data-shots="local,local,cut" data-steps="3" data-dur="8">
+      <h2 class="head">Why it runs locally</h2>
+      <ol class="points big">
+        <li data-step="1">Fast: words follow the hand with no round trip</li>
+        <li data-step="2">Private: a camera on your body never streams out</li>
+        <li data-step="3">Offline: we just pulled the cable, and it still worked</li>
+      </ol>
+      <aside class="notes">On the third build the line to the cloud is cut, matching what they just saw live.</aside>
+    </section>
+
+    <section class="slide" data-id="close" data-shots="grab" data-dur="6">
+      <h2 class="poster small">Grab.</h2>
+      <p class="lede">[Project name]. Built in 24 hours on an ASUS Ascent GX10.</p>
+      <ul class="team">
+        <li>[Name]</li><li>[Name]</li><li>[Name]</li><li>[Name]</li>
+      </ul>
+      <p class="fine">Prior work we build on: AIGuide (Lee et al., Penn State, ACM TACCESS 2022) guided a hand with a handheld phone and pre-scanned objects.</p>
+      <aside class="notes">End on the green line. Thank the judges; open for questions.</aside>
+    </section>
+
+  </main>
+
+  <p class="counter" id="counter" aria-live="polite"></p>
+  <script type="module" src="deck.js"></script>
+</body>
+</html>

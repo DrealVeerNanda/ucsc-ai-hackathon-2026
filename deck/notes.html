@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Speaker notes</title>
+  <link rel="stylesheet" href="deck.css">
+  <style>
+    body { overflow: auto; padding: 24px 28px; font-size: 1.2rem; }
+    .row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+    .now { font: 700 34px/1.1 var(--display); }
+    .timer { font: 700 44px/1 var(--display); }
+    .timer.is-over { color: var(--leg); }
+    .meta { color: var(--muted); font-size: 0.833rem; margin-top: 4px; }
+    .text { margin-top: 20px; font-size: 1.2rem; line-height: 1.45; max-width: 60ch; }
+    .next { margin-top: 24px; color: var(--muted); }
+    .keys { margin-top: 28px; display: flex; gap: 10px; }
+    button {
+      font: 600 16px/1 var(--font); color: var(--ground); background: var(--text);
+      border: 0; border-radius: var(--radius); padding: 12px 24px; cursor: pointer;
+    }
+    button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+    @media (hover: hover) { button:hover { background: var(--muted); } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="row"><h1 class="now" id="title">Open the deck in the other window</h1><p class="timer" id="timer">0:00</p></div>
+    <p class="meta" id="meta"></p>
+    <p class="text" id="notes"></p>
+    <p class="next" id="next"></p>
+    <div class="keys"><button type="button" id="prev">Back</button><button type="button" id="fwd">Next</button></div>
+  </main>
+  <script>
+    const ch = new BroadcastChannel("deck");
+    let started = null, budget = 180;
+    ch.onmessage = (e) => {
+      const d = e.data;
+      if (typeof d !== "object") return;
+      started = d.started;
+      budget = d.dur || 180;
+      document.getElementById("title").textContent = d.title;
+      document.getElementById("meta").textContent = `Slide ${d.index + 1} of ${d.total}` + (d.steps ? `, build ${d.step} of ${d.steps}` : "");
+      document.getElementById("notes").textContent = d.notes;
+      document.getElementById("next").textContent = `Next: ${d.next}`;
+    };
+    ch.postMessage("hello");
+    document.getElementById("fwd").onclick = () => ch.postMessage("next");
+    document.getElementById("prev").onclick = () => ch.postMessage("prev");
+    document.addEventListener("keydown", (e) => {
+      if (["ArrowRight", " ", "PageDown"].includes(e.key)) { e.preventDefault(); ch.postMessage("next"); }
+      if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); ch.postMessage("prev"); }
+    });
+    setInterval(() => {
+      const el = document.getElementById("timer");
+      if (!started) return;
+      const s = Math.floor((Date.now() - started) / 1000);
+      el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+      el.classList.toggle("is-over", s > budget);
+    }, 250);
+  </script>
+</body>
+</html>
