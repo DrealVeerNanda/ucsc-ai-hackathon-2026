@@ -180,8 +180,10 @@ def test_heartbeat_reports_a_step_that_keeps_failing_and_a_missing_camera(tmp_pa
     beat.faults.since["perception"] = time.monotonic() - 30
     s = beat.snapshot()
     assert s["state"] == "failing" and s["failing"]["perception"] >= 30 and "cuda gone" in s["message"]
+    beat.at = ("listening", time.monotonic())          # a voice module that keeps failing is not "waiting for the wearer"
+    assert beat.snapshot()["state"] == "failing"
     beat.faults.ok("perception")
-    assert beat.snapshot()["state"] == "running"
+    assert beat.snapshot()["state"] == "listening"
 
 
 def test_heartbeat_file_is_written_while_the_loop_waits_for_the_wearer(tmp_path):
@@ -691,6 +693,26 @@ def test_a_new_keeper_carries_on_with_the_running_pipeline(keeper, tmp_path):
     keeper.pipeline.popen.wait()                         # (in real life its parent is gone and init does this)
     assert tick_until(second, lambda: second.pipeline.pid not in (None, pid) and second.heartbeat() is not None)
     second.pipeline.stop(signal.SIGKILL, 0.5)
+    keeper.pipeline.forget()
+
+
+def test_a_run_killed_together_with_its_keeper_is_started_again_but_an_old_one_is_not(keeper, tmp_path):
+    keeper.start(anyway=True)
+    assert tick_until(keeper, lambda: keeper.heartbeat() is not None)
+    os.kill(keeper.pipeline.pid, signal.SIGKILL)         # someone's `pkill python` took everything
+    keeper.pipeline.popen.wait()
+
+    def new_keeper():
+        k = launcher.Supervisor(root=tmp_path, env=keeper.env, run=Machine(), pipeline_argv=keeper.pipeline.argv, home=tmp_path / "home")
+        k.resume()
+        return k
+    second = new_keeper()
+    assert second.mode == "running" and second.pipeline.pid is None
+    assert tick_until(second, lambda: second.heartbeat() is not None) and second.restarts == 1
+    second.pipeline.stop(signal.SIGKILL, 0.5)
+    status = tmp_path / "out" / "status" / "supervisor.json"
+    status.write_text(json.dumps(dict(json.loads(status.read_text()), t=time.time() - 3600)))     # the power went an hour ago
+    assert new_keeper().mode == "checklist"
     keeper.pipeline.forget()
 
 

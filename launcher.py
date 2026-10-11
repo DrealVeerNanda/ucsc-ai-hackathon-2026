@@ -13,6 +13,8 @@ server that died, and only stops when Stop is pressed on the page.
 The page is http://localhost:8640 (PROPRIO_PORT), on this machine only unless PROPRIO_HOST=0.0.0.0;
 even then its buttons only work from the GX10 itself. The keeper is one detached process, logging to
 out/supervisor.log; starting it twice, closing the browser or refreshing the page changes nothing.
+It runs as a service of the desktop session (systemd-run --user), which starts it again if it is
+killed; the new one carries on with the pipeline and phone bridge that are already running.
 The pipeline is started through tools/live.sh, so a run from the button and a run by hand are
 the same thing; its output goes to out/pipeline.log.
 
@@ -265,8 +267,13 @@ class Supervisor:
         self.events.append({"t": time.time(), "text": text})
 
     def note(self, id: str, ok: bool, message: str):
+        before = self.notes.get(id) or {}
         self.notes[id] = {"t": time.time(), "ok": ok, "message": message}
-        self.event(message)
+        if before.get("message") != message or time.time() - before.get("said", 0) > 300:
+            self.notes[id]["said"] = time.time()     # the same outcome again and again is said once in five minutes
+            self.event(message)
+        else:
+            self.notes[id]["said"] = before.get("said", 0)
 
     # --- the checklist -------------------------------------------------------------------
 
@@ -370,8 +377,8 @@ class Supervisor:
                         f"{free:.0f} GB left on the disk.", required=False, fix=("toggle_record", "Do not record"))
         folder = self.record_dir
         if self.mode == "checklist" or folder is None:
-            return line("record", "Recording", GREEN, f"Every session is recorded into recordings/demo_DATE_TIME (colour and depth, "
-                        f"10 frames a second). {free:.0f} GB left on the disk.", required=False, fix=("toggle_record", "Do not record"))
+            return line("record", "Recording", GREEN, f"On: colour and depth from Start to Stop, into recordings/. {free:.0f} GB left "
+                        "on the disk.", required=False, fix=("toggle_record", "Do not record"))
         size = sum(f.stat().st_size for f in folder.glob("*") if f.is_file()) / 1e6 if folder.exists() else 0.0
         if size == 0 and time.time() - self.pipeline.started > 90 and (self.heartbeat() or {}).get("frames"):
             return line("record", "Recording", RED, f"Nothing has been written to {folder.relative_to(self.root)} although frames "
@@ -560,11 +567,16 @@ class Supervisor:
     def resume(self):
         """A keeper that was killed while the demo was running carries on with that run."""
         before = checks.read_status(self.status_dir / "supervisor.json") or {}
-        if self.pipeline.adopt():
-            self.mode, self.since = "running", before.get("since") or self.pipeline.started
+        adopted = self.pipeline.adopt()
+        # Killed together with its pipeline (someone's `pkill python`): the demo was running a
+        # moment ago, so it is started again. An old "running" left by a power cut is not.
+        just_now = before.get("state") == "running" and (checks.age_of(before) or 1e9) < 120
+        if adopted or just_now:
+            self.mode, self.since = "running", before.get("since") or self.pipeline.started or time.time()
             self.restarts, self.dash_shown = int(before.get("restarts") or 0), True
             self.record = bool(before.get("record", self.record))
-            self.event(f"Carrying on with the pipeline that is already running (pid {self.pipeline.pid}).")
+            self.event(f"Carrying on with the pipeline that is already running (pid {self.pipeline.pid})." if adopted
+                       else "The demo was running when the keeper was killed: starting the pipeline again.")
 
     # --- the buttons ---------------------------------------------------------------------------
 
@@ -615,6 +627,11 @@ class Supervisor:
             self.stop_bridge()
             self.mode = "checklist"
             self.write_status(time.time())
+            # As a service this would be started again the moment it ended: tell the session it is meant.
+            try:
+                subprocess.run(["systemctl", "--user", "stop", unit_name(self.port)], env=self.env, capture_output=True, timeout=10)
+            except (OSError, subprocess.SubprocessError):
+                pass                                      # not a service here: simply end
             self.stopped.set()
             if self.server is not None:
                 self.server.shutdown()
@@ -626,7 +643,8 @@ class Supervisor:
         if again:
             self.s.run(["bluetoothctl", "disconnect", pods["addr"]], 10.0)
             time.sleep(2.0)
-        rc, out = self.s.run(["bluetoothctl", "connect", pods["addr"]], 40.0)     # Bluetooth itself gives up after about 25 s
+        # With the AirPods out of reach, Bluetooth itself takes about 50 s to give up (measured on the GX10).
+        rc, out = self.s.run(["bluetoothctl", "connect", pods["addr"]], 60.0)
         ok = rc == 0 and "successful" in out.lower()
         self.next_try["airpods"] = time.time() + 10.0      # the next try counts from the end of this one
         if ok and again:
@@ -859,6 +877,33 @@ def ask(port: int, action: str | None = None, timeout_s: float = 3.0):
         return None
 
 
+def unit_name(port: int) -> str:
+    return f"proprio-keeper-{port}.service"
+
+
+def start_keeper(port: int, env: dict, log: Path):
+    """Start the keeper detached from this program. As a service of the desktop session when that
+    is possible, because then it is started again if something kills it; KillMode=process so that
+    restarting the keeper never takes the pipeline or the phone bridge down with it."""
+    me = [sys.executable, str(ROOT / "launcher.py"), "serve"]
+    unit = unit_name(port)
+    try:
+        subprocess.run(["systemctl", "--user", "reset-failed", unit], env=env, capture_output=True, timeout=10)
+        got = subprocess.run(["systemd-run", "--user", "--quiet", "--collect", f"--unit={unit}",
+                              "--description=Proprio keeper (launcher.py)", f"--working-directory={ROOT}",
+                              "-p", "Restart=always", "-p", "RestartSec=3", "-p", "KillMode=process",
+                              "-p", f"StandardOutput=append:{log}", "-p", f"StandardError=append:{log}",
+                              *[f"--setenv={k}={env[k]}" for k in ("DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS") if k in env],
+                              *me], env=env, capture_output=True, text=True, timeout=15)
+        if got.returncode == 0:
+            return
+        print(f"not as a service ({got.stderr.strip() or got.returncode}); starting it plainly", file=sys.stderr)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"not as a service ({e}); starting it plainly", file=sys.stderr)
+    with open(log, "ab") as f:
+        subprocess.Popen(me, cwd=ROOT, env=env, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+
+
 def serve(port: int):
     """The keeper, in this process. Only one at a time: a second one leaves at once."""
     out = ROOT / "out"
@@ -880,6 +925,7 @@ def serve(port: int):
         pass
     # Ending the keeper leaves the pipeline and the phone bridge running: the next keeper carries
     # on with them. `python launcher.py quit` is the way to stop everything.
+    sup.event("Keeper ending.")
 
 
 def open_page(port: int) -> int:
@@ -890,9 +936,7 @@ def open_page(port: int) -> int:
     with open(out / "open.lock", "w") as one_at_a_time:      # two double-clicks: the second waits for the first
         fcntl.flock(one_at_a_time, fcntl.LOCK_EX)
         if ask(port) is None:
-            with open(out / "supervisor.log", "ab") as log:
-                subprocess.Popen([sys.executable, str(ROOT / "launcher.py"), "serve"], cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
-                                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            start_keeper(port, env, out / "supervisor.log")
             end = time.monotonic() + 15.0
             while ask(port) is None and time.monotonic() < end:
                 time.sleep(0.2)

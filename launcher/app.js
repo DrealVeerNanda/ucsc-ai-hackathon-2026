@@ -54,7 +54,9 @@ function clock(seconds) {
 
 function drawLine(line, canControl) {
   let li = document.querySelector(`[data-id="${line.id}"]`);
-  const home = $("g-" + (GROUP[line.id] || "computer"));
+  // while it runs, where the session is being saved belongs with the run, not down among the checks
+  const group = line.id === "record" && state.mode !== "checklist" ? "run" : GROUP[line.id] || "computer";
+  const home = $("g-" + group);
   if (!li) {
     li = document.createElement("li");
     li.dataset.id = line.id;

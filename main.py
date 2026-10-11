@@ -153,13 +153,13 @@ class Heartbeat:
         age = None if self.last_frame is None else now - self.last_frame
         failing = {k: v for k, v in self.faults.failing(now).items() if v >= FAILING_S}
         what = f"the {self.target}" if self.target else "nothing yet"
-        if step == "listening":
+        if failing:
+            worst = max(failing, key=failing.get)
+            state, message = "failing", f"{worst.capitalize()} has been failing for {failing[worst]:.0f} s ({self.faults.last})."
+        elif step == "listening":
             state, message = "listening", "Waiting for the wearer to say what to pick up."
         elif now - since > (STUCK_S if self.warm else STARTING_S):
             state, message = "stuck", f"Stuck in {step} for {now - since:.0f} s."
-        elif failing:
-            worst = max(failing, key=failing.get)
-            state, message = "failing", f"{worst.capitalize()} has been failing for {failing[worst]:.0f} s ({self.faults.last})."
         elif not self.warm:
             state, message = "starting", "Starting: loading the models and waiting for the first frame."
         elif age is not None and age > NO_CAMERA_S:
