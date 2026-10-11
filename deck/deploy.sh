@@ -12,6 +12,7 @@ touch "$tmp/.nojekyll"
 # left out of the page.
 mkdir -p "$tmp/readme"
 body=$(sed -E 's/ \([^()]*@[^()]*\.[a-z]+\)//' README.md | gh api markdown -F mode=gfm -F context=DrealVeerNanda/ucsc-ai-hackathon-2026 -F text=@-)
+python3 tools/writeup_page.py "$tmp"     # the Devpost write-up, from docs/devpost.md, at writeup/
 cat > "$tmp/readme/index.html" <<HTML
 <!doctype html>
 <html lang="en">
@@ -25,7 +26,7 @@ cat > "$tmp/readme/index.html" <<HTML
   <link rel="stylesheet" href="../readme.css">
 </head>
 <body>
-  <nav class="top" aria-label="Site"><a href="../">Presentation</a><span></span></nav>
+  <nav class="top" aria-label="Site"><a href="../">Presentation</a><a href="../writeup/">Write-up</a></nav>
   <main class="doc">
 $body
   </main>
@@ -37,4 +38,4 @@ git init -q -b gh-pages
 git add -A
 git commit -q -m "Deck from $(git -C "$OLDPWD" rev-parse --short HEAD)"
 git push -q -f "$(git -C "$OLDPWD" remote get-url origin)" gh-pages
-echo "Published: https://drealveernanda.github.io/ucsc-ai-hackathon-2026/ and .../readme/"
+echo "Published: https://drealveernanda.github.io/ucsc-ai-hackathon-2026/ .../readme/ and .../writeup/"
