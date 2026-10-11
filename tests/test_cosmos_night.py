@@ -14,3 +14,8 @@ def test_names_are_made_plain_and_not_repeated():
 def test_different_things_with_a_shared_word_are_both_kept():
     assert cosmos.tidy(["blue cup", "green cup", "cupcake"]) == ["blue cup", "green cup", "cupcake"]
     assert cosmos.tidy(["a", "b", "c", "d", "e", "f"], n=5) == ["a", "b", "c", "d", "e"]
+
+
+def test_the_wearers_own_limbs_are_not_offered():
+    assert cosmos.tidy(["laptop", "foot", "Hand", "blue cup", "person"]) == ["laptop", "blue cup"]
+    assert cosmos.tidy(["hand cream", "foot stool"]) == ["hand cream", "foot stool"]

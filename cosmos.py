@@ -104,6 +104,11 @@ _PLAIN = {"laptop computer": "laptop", "orange fruit": "orange", "computer mouse
           "smartphone": "phone", "cell phone": "phone", "mobile phone": "phone"}
 
 
+# Things Cosmos lists from a chest camera that nobody is going to pick up: the wearer's own limbs.
+_NOT_OBJECTS = {"foot", "feet", "hand", "hands", "arm", "arms", "leg", "legs", "knee", "knees", "finger", "fingers",
+                "person", "people", "man", "woman", "human hand", "human arm", "bare foot"}
+
+
 def tidy(names, n: int = 5) -> list[str]:
     """The list as it should be spoken: plain names, no repeats, and no bare "cup" beside "blue cup"
     (heard as two choices, it is one object named twice, or a choice the wearer cannot tell apart)."""
@@ -111,7 +116,7 @@ def tidy(names, n: int = 5) -> list[str]:
     for name in names:
         name = " ".join(str(name).lower().replace(".", " ").split())
         name = _PLAIN.get(name, name)
-        if name and name not in out:
+        if name and name not in out and name not in _NOT_OBJECTS:
             out.append(name)
     out = [a for a in out if not any(b != a and b.endswith(" " + a) for b in out)]
     return out[:n]
