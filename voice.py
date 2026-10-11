@@ -667,6 +667,35 @@ def load_whisper(model: str | None = None):
     return hear
 
 
+def _whisper_straight_to_gpu(name: str):
+    """Whisper with its weights read from the file directly onto the GPU: 0.7 s on the GX10,
+    against 13 to 17 s for loading them into memory first and moving them (large-v3). That is
+    most of the time the pipeline takes to come back after a restart. None if anything about
+    it is not exactly as expected; the caller then loads the ordinary way."""
+    try:
+        import torch
+        from accelerate import init_empty_weights
+        from safetensors.torch import load_file
+        from transformers import GenerationConfig, WhisperConfig, WhisperForConditionalGeneration
+        from transformers.utils import cached_file
+        path = cached_file(name, "model.safetensors", local_files_only=True)
+        with init_empty_weights():
+            net = WhisperForConditionalGeneration(WhisperConfig.from_pretrained(name, local_files_only=True))
+        weights = {k: v.to(torch.float16) for k, v in load_file(path, device="cuda").items()}
+        missing, unexpected = net.load_state_dict(weights, strict=False, assign=True)
+        net.tie_weights()
+        # The output layer shares the word table's weights and so is not in the file. Anything
+        # else missing, or anything left over, means this is not the model we think it is.
+        tied = net.proj_out.weight is net.model.decoder.embed_tokens.weight
+        if set(missing) - {"proj_out.weight"} or unexpected or not tied:
+            raise ValueError(f"missing {missing[:3]}, unexpected {unexpected[:3]}, tied {tied}")
+        net.generation_config = GenerationConfig.from_pretrained(name, local_files_only=True)
+        return net
+    except Exception as e:
+        print(f"[voice] Whisper will load the slow way ({e.__class__.__name__}: {e})", file=sys.stderr)
+        return None
+
+
 def _gpu_whisper(model: str):
     import torch
     if not torch.cuda.is_available():
@@ -676,10 +705,13 @@ def _gpu_whisper(model: str):
     name = model if "/" in model else f"openai/whisper-{model}"
     try:
         proc = WhisperProcessor.from_pretrained(name, local_files_only=_offline())
-        net = WhisperForConditionalGeneration.from_pretrained(name, torch_dtype=torch.float16, local_files_only=_offline())
+        net = _whisper_straight_to_gpu(name)
+        if net is None:
+            net = WhisperForConditionalGeneration.from_pretrained(name, torch_dtype=torch.float16, local_files_only=_offline())
+            net = net.to("cuda")
     except OSError as e:
         raise _not_here(f"Whisper {model}", e) from e
-    net = net.to("cuda").eval()
+    net = net.eval()
     fixed = {} if name.endswith(".en") else {"language": "en", "task": "transcribe"}
 
     def write(audio: np.ndarray, hint: str | None) -> str:

@@ -5,6 +5,7 @@ pytest
 sounddevice
 faster-whisper
 transformers       # Whisper on the GPU through PyTorch (faster-whisper has no GPU build for the GX10)
+accelerate         # lets Whisper's weights go straight onto the GPU: 0.7 s instead of 15 s at start
 piper-tts          # speaks sentences locally; voice file: bash tools/fetch_models.sh piper
 # Lane 2 (perception). Install torch first so it matches the GX10's CUDA 13:
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
