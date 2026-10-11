@@ -618,6 +618,22 @@ class Supervisor:
         self.event(f"Pipeline started (pid {self.pipeline.pid})"
                    + (f", recording into {self.record_dir.relative_to(self.root)}." if self.record_dir else "."))
 
+    def new_request(self) -> tuple[bool, str]:
+        """Drop what is being reached for and ask the wearer what they want, without stopping
+        anything: for when the table was rearranged, or it went for the wrong thing. The same as
+        T on the live view. Whatever was remembered of the old object's place goes with it."""
+        import urllib.request
+        if self.mode != "running" or not self.pipeline.alive():
+            return False, "Nothing is running: press Start."
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{self.s.dash_port}/key", json.dumps({"key": "t"}).encode(),
+                                         {"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=3.0).close()
+        except Exception as e:
+            return False, f"The pipeline did not answer ({e.__class__.__name__}). Stop and Start does the same, more slowly."
+        self.event("New request was pressed: asking the wearer what to grab.")
+        return True, "Asking what to grab."
+
     def stop(self) -> tuple[bool, str]:
         with self.lock:
             if self.mode != "running":
@@ -752,6 +768,7 @@ class Supervisor:
 
     def do(self, action: str) -> tuple[bool, str]:
         quick = {"start": self.start, "start_anyway": lambda: self.start(anyway=True), "stop": self.stop,
+                 "new_request": self.new_request,
                  "toggle_record": self.toggle_record, "show_dashboard": self.show_dashboard, "quit": self.quit,
                  "default_options": self.default_options}
         slow = {"connect_airpods": self.connect_airpods, "reconnect_airpods": lambda: self.connect_airpods(again=True),

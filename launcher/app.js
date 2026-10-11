@@ -201,6 +201,8 @@ function draw() {
   $("anyway").hidden = running || s.ready;
   $("anyway").disabled = !s.can_control;
   $("stop").hidden = s.mode !== "running";
+  $("again").hidden = s.mode !== "running";
+  $("again").disabled = !s.can_control;
   $("stop").disabled = !s.can_control;
   $("live").hidden = !running;
   $("live").href = `http://${location.hostname}:${s.dash_port}/#camera`;
@@ -278,6 +280,7 @@ $("anyway").addEventListener("click", () => {
   const waiting = state.lines.filter((l) => l.required && l.level !== "green").map((l) => l.title);
   if (confirm(`Start although these are not green?\n\n${waiting.join("\n")}`)) act("start_anyway");
 });
+$("again").addEventListener("click", () => act("new_request"));
 $("stop").addEventListener("click", () => {
   if (confirm("Stop the demo?\n\nThe pipeline stops. The phone bridge and the model servers stay as they are.")) act("stop");
 });

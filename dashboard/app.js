@@ -739,6 +739,8 @@
     }).catch(() => {});
   }
 
+  $("new-btn").addEventListener("click", () => sendKey("t"));
+
   document.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "t") return sendKey("t");

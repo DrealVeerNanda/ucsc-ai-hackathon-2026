@@ -888,3 +888,43 @@ def test_the_bridge_says_whether_the_phone_trusts_us(tmp_path):
     got = by_id(checks.phone(setup(tmp_path, m)))
     assert got["phone_trust"]["level"] == GREEN and got["phone_stream"]["level"] == RED
     assert not any(a.startswith("idevicepair") for a in m.asked)
+
+
+def test_new_request_presses_t_on_the_running_pipeline_and_stops_nothing(keeper):
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    got = []
+
+    class Dash(BaseHTTPRequestHandler):
+        def do_POST(self):
+            got.append((self.path, json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    assert keeper.do("new_request") == (False, "Nothing is running: press Start.")
+    keeper.start(anyway=True)
+    assert tick_until(keeper, lambda: keeper.heartbeat() is not None)
+    pid = keeper.pipeline.pid
+    ok, message = keeper.do("new_request")              # the pipeline's own page is not up: said, not hidden
+    assert not ok and "did not answer" in message
+    server = HTTPServer(("127.0.0.1", keeper.s.dash_port), Dash)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        assert keeper.do("new_request") == (True, "Asking what to grab.")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert got == [("/key", {"key": "t"})]
+    assert keeper.mode == "running" and keeper.pipeline.pid == pid and keeper.pipeline.alive()
+
+
+def test_both_pages_have_the_new_request_button():
+    root = Path(launcher.__file__).parent
+    assert 'id="again"' in (root / "launcher" / "index.html").read_text()
+    assert 'act("new_request")' in (root / "launcher" / "app.js").read_text()
+    assert 'id="new-btn"' in (root / "dashboard" / "index.html").read_text()
+    assert '$("new-btn").addEventListener("click", () => sendKey("t"))' in (root / "dashboard" / "app.js").read_text()
