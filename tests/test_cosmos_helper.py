@@ -610,6 +610,23 @@ def test_a_spoken_answer_through_the_earbuds_becomes_the_target(quiet_voice, tmp
         mic.close()
 
 
+def test_stray_talk_does_not_beep_again_or_switch_the_earbuds(quiet_voice, tmp_path):
+    quiet_voice.setattr(voice, "_poke_main", lambda: None)
+    beeps = []
+    quiet_voice.setattr(voice, "_beep", lambda: beeps.append(1))
+    heard = iter(["okay guys i am going", "each processor has its own memory", "the green can please"])
+    quiet_voice.setattr(voice, "interpret", lambda text: ("pick", "green can") if "green" in text else ("none", ""))
+    buds = _Earbuds()
+    buds.record = lambda should_stop=None: np.full(16000, 0.1, np.float32)
+    mic = voice.WebMic(port=0, transcribe=lambda data: "", cert_dir=tmp_path / "c", typed=False,
+                       headset=buds, hear=lambda audio: next(heard))
+    try:
+        assert mic.listen() == "green can"
+        assert beeps == [1] and buds.modes == ["headset", "stereo"]      # two sentences from the room changed nothing
+    finally:
+        mic.close()
+
+
 def test_typing_still_wins_while_the_earbuds_listen(quiet_voice, tmp_path):
     quiet_voice.setattr(voice, "_poke_main", lambda: None)
     mic = voice.WebMic(port=0, transcribe=lambda data: "", cert_dir=tmp_path / "c", typed=False,

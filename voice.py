@@ -161,7 +161,12 @@ def understand(text: str) -> str:
     return target if intent == "pick" else ""
 
 
+_said = 0               # how many sentences have been spoken, so the listener knows when it has just said something
+
+
 def _say(text: str):
+    global _said
+    _said += 1
     print(f"[voice] {text}")
     try:
         import guidance
@@ -649,7 +654,15 @@ class WebMic:
                 buds.open()               # before the question: an answer given at once must not fall in the switch
             invite(pending=not self._requests.empty())
             self._waiting = True
-            text = self._next_request()
+            beeped, target = -1, None
+            while target is None:
+                # The beep means "your turn", so it comes once at the start and after anything
+                # said to the wearer, not after every stray sentence from the room.
+                text = self._next_request(beep=beeped != _said)
+                beeped = _said
+                if self.headset is None:
+                    break                 # no earbuds: answer below, and main.py asks again if need be
+                target = respond(text) or None    # with earbuds, stay in headset mode until there is something to reach for
         finally:
             self._waiting = False
             for b in {buds, self.headset} - {None}:       # the one opened here, or one that connected during the wait
@@ -657,7 +670,8 @@ class WebMic:
                     b.close()
                 except Exception:
                     pass
-        target = respond(text)
+        if target is None:
+            target = respond(text)
         self.status["target"] = target or self.status["target"]
         try:
             import guidance
@@ -667,7 +681,7 @@ class WebMic:
         print(f"[voice] heard {text!r} -> target {target!r}")
         return target
 
-    def _next_request(self) -> str:
+    def _next_request(self, beep: bool = True) -> str:
         """Whatever comes first: something typed or sent from the page, or, with earbuds as the
         microphone, something said aloud."""
         while self.headset is None:
@@ -678,7 +692,8 @@ class WebMic:
                     self.headset.open()
         buds = self.headset
         try:
-            _beep()                                       # "your turn": the microphone is open from here
+            if beep:
+                _beep()                                   # "your turn": the microphone is open from here
             while True:
                 try:
                     return self._requests.get(timeout=0.05)
