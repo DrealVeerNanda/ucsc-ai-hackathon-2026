@@ -10,7 +10,7 @@ point to guide. The helpers for that live here too, so they can be tested withou
     hand_points_3d   the 21 keypoints in the camera frame, from the hand's shape alone
     palm_depth       lidar depth of the palm, read over the whole palm rather than one fingertip
     HandDepth        the two fused into one depth that never jumps when the lidar comes or goes
-    arm_exit         which edge of the picture the forearm leaves by (the top: not the wearer's)
+    arm_from_above   does the forearm hang from the top of the picture (then it is not the wearer's)
     guided_point     which point of the hand is "the hand" (index tip, palm, knuckles, nearest)
     OneEuro, Kalman  smoothing for the guided point
 
@@ -52,11 +52,15 @@ PALM = (0, 5, 9, 13, 17)            # the part of the hand that does not bend
 TIPS = (4, 8, 12, 16, 20)
 POINTS = ("index_tip", "palm", "knuckles", "nearest")
 
-# The palm of an average adult hand, metres, flat in its own plane: x across the knuckles
-# toward the little finger, y from the wrist toward the fingers. For trackers that give
-# keypoints in the picture but no 3D shape. The knuckle row is 6 cm from joint to joint.
-PALM_SHAPE = np.array([[0.0, 0.0, 0.0], [-0.022, 0.089, 0.0], [0.0, 0.091, 0.0],
-                       [0.019, 0.085, 0.0], [0.035, 0.074, 0.0]])
+# An average adult hand, metres, joint to joint. The palm does not bend, so the distances
+# between its points give the hand's distance from the camera; the knuckle row is 6 cm, not
+# the 8 cm a hand measures across the outside.
+_PALM_XY = {0: (0.0, 0.0), 5: (-0.022, 0.089), 9: (0.0, 0.091), 13: (0.019, 0.085), 17: (0.035, 0.074)}
+PALM_SPANS = [(a, b, math.dist(_PALM_XY[a], _PALM_XY[b]))
+              for a, b in ((0, 5), (0, 9), (0, 13), (0, 17), (5, 17), (5, 13), (9, 17))]
+FINGERS = [((1, 2, 3, 4), (0.045, 0.033, 0.028)), ((5, 6, 7, 8), (0.040, 0.025, 0.022)),
+           ((9, 10, 11, 12), (0.045, 0.028, 0.024)), ((13, 14, 15, 16), (0.041, 0.026, 0.023)),
+           ((17, 18, 19, 20), (0.032, 0.019, 0.021))]
 
 
 def weights_path(name: str, url: str | None = None) -> Path:
@@ -274,8 +278,7 @@ class DepthArm:
     anything far and dark; the hole counts as arm only where the colour could be skin.
     What it cannot tell apart from an arm: anything else near that crosses the bottom or a
     side edge with a free end, such as the wearer's knee when sitting. So on its own it is
-    an option to try, and its main use is inside Hybrid, which only asks it where the hand it
-    was already following has gone."""
+    an option to try, not one to rely on."""
 
     name = "Depth arm"
     uses_depth = True                # perception.py hands detect() the depth picture as well
@@ -325,10 +328,11 @@ class DepthArm:
             # floor crossing the border further away is not an arm.
             if de.size and float(np.median(de)) > self.enter_m:
                 continue
-            out.append({"label": i, "area": area, "enter": (float(eu.mean()), float(ev.mean())), "mask": m})
+            out.append({"label": i, "area": area, "enter": (float(eu.mean()), float(ev.mean())), "mask": m,
+                        "enter_z": float(np.median(de)) if de.size else self.too_near_m})
         return labels, d, out
 
-    def _hand(self, blob, d, shape) -> Hand:
+    def _hand(self, blob, d, shape) -> Hand | None:
         s = self.STEP
         m = blob["mask"]
         vv, uu = np.nonzero(m)
@@ -336,6 +340,15 @@ class DepthArm:
         far = (uu - eu) ** 2 + (vv - ev) ** 2
         k = int(np.argmax(far))
         tu, tv = float(uu[k]), float(vv[k])
+        # An arm ends: past the hand there is something farther away, or nothing. A table top
+        # or a wall that was only cut off by the range limit carries on at the same depth.
+        z_tip = float(d[int(tv), int(tu)])
+        if z_tip > DEPTH_MIN:
+            y1, y2, x1, x2 = max(0, int(tv) - 8), int(tv) + 9, max(0, int(tu) - 8), int(tu) + 9
+            ring, inside = d[y1:y2, x1:x2], m[y1:y2, x1:x2]
+            beyond = ring[~inside & (ring > DEPTH_MIN)]
+            if beyond.size >= 8 and float(np.mean(np.abs(beyond - z_tip) < self.edge_m)) > 0.5:
+                return None
         # The end of the arm: the part of the blob within a hand's length of its far point.
         length = math.sqrt(float(far[k]))
         end = (uu - tu) ** 2 + (vv - tv) ** 2 <= max(6.0, 0.35 * length) ** 2
@@ -354,64 +367,109 @@ class DepthArm:
                     score=round(0.3 + 0.5 * solid, 2), box=_box_of(to_px(pts), (h, w)), z=z, source=self.name,
                     ours=True)
 
-    def detect(self, rgb: np.ndarray, t_ms: int = 0, depth=None, K=None, near=None) -> list[Hand]:
-        """`near` = (u, v, radius) px: only the arm whose hand end is within that circle."""
+    def detect(self, rgb: np.ndarray, t_ms: int = 0, depth=None, K=None) -> list[Hand]:
         if depth is None or not np.any(depth > DEPTH_MIN):
             return []                                    # no lidar at all: nothing to go by
         _, d, blobs = self.blobs(rgb, depth)
-        hands = [self._hand(b, d, rgb.shape) for b in sorted(blobs, key=lambda b: -b["area"])]
-        if near is not None:
-            u, v, r = near
-            hands = [k for k in hands if (k.tip[0] - u) ** 2 + (k.tip[1] - v) ** 2 <= r * r
-                     or np.min(np.sum((k.points - (u, v)) ** 2, axis=1)) <= r * r]
-        return hands[:1]
+        # Of several, the one that comes in nearest: the forearm is closer to the chest than a
+        # table edge or a knee.
+        hands = [self._hand(b, d, rgb.shape) for b in sorted(blobs, key=lambda b: b["enter_z"])]
+        return [k for k in hands if k is not None][:1]
+
+
+class DepthFollow:
+    """Keeps hold of a hand the keypoint model has just lost, in the lidar picture: the patch
+    of skin-coloured surface at the depth the hand had, next to where it was. No model, half a
+    millisecond. It only ever continues a hand that was already found, and for a second at
+    most, so it cannot start following a table or a knee by itself; and it gives up when the
+    patch shrinks to nothing (the hand left) or stops being skin."""
+
+    name = "Depth follow"
+    STEP = 4
+
+    def __init__(self, band_m: float = 0.08, min_share: float = 0.12):
+        self.band_m, self.min_share = band_m, min_share
+        self.state = None            # (u, v, z, half-size px, offset of the guided point from the patch's middle)
+
+    def start(self, hand: Hand, z: float | None, depth: np.ndarray, rgb: np.ndarray):
+        """The keypoint model has the hand: remember where it is and what its skin looks like."""
+        if hand.box is None or z is None:
+            self.state = None
+            return
+        x1, y1, x2, y2 = hand.box
+        half = float(np.clip(0.5 * max(x2 - x1, y2 - y1), 40, 0.45 * min(rgb.shape[:2])))
+        c = np.array([0.5 * (x1 + x2), 0.5 * (y1 + y2)])
+        self.state = (c[0], c[1], float(z), half, np.asarray(hand.tip, float) - c)
+
+    def step(self, rgb: np.ndarray, depth: np.ndarray) -> Hand | None:
+        if self.state is None:
+            return None
+        u, v, z, half, off = self.state
+        s = self.STEP
+        h, w = depth.shape[:2]
+        x1, x2 = int(max(0, u - 1.5 * half)), int(min(w, u + 1.5 * half))
+        y1, y2 = int(max(0, v - 1.5 * half)), int(min(h, v + 1.5 * half))
+        if x2 - x1 < 2 * s or y2 - y1 < 2 * s:
+            self.state = None
+            return None
+        d = depth[y1:y2:s, x1:x2:s]
+        like_skin = skin(rgb[y1:y2:s, x1:x2:s])
+        at_depth = (np.abs(d - z) < max(self.band_m, 0.2 * z)) & (d > DEPTH_MIN)
+        # Closer than lidar ranges, the hand is a hole in the depth picture.
+        hole = (d <= DEPTH_MIN) if z < 0.30 else np.zeros_like(at_depth)
+        m = (at_depth | hole) & like_skin
+        hand_px = (2 * half / s) ** 2
+        if m.sum() < self.min_share * hand_px:
+            self.state = None
+            return None
+        vv, uu = np.nonzero(m)
+        c = np.array([x1 + uu.mean() * s, y1 + vv.mean() * s])
+        zs = d[m & at_depth]
+        z_new = float(np.median(zs)) if zs.size >= 5 else z
+        self.state = (c[0], c[1], z_new, half, off)
+        tip = c + off
+        pts = np.stack([x1 + uu * s, y1 + vv * s], 1).astype(np.float32)
+        hull = cv2.convexHull(pts).reshape(-1, 2) if len(pts) >= 3 else pts
+        return Hand(tip=(float(tip[0]), float(tip[1])), points=hull, samples=[(float(tip[0]), float(tip[1]))],
+                    score=round(0.3 + 0.4 * min(1.0, float(m.sum()) / hand_px), 2), box=_box_of(pts, (h, w)), z=z_new,
+                    source=self.name, ours=True)
 
 
 class Hybrid:
     """A keypoint model while it sees the hand; when it does not, the lidar picture carries on
-    from where the hand was. The keypoint model gives the pose and tells the wearer's hand from
-    anyone else's; the depth blob needs neither a sharp picture nor a whole hand, so it covers
-    exactly the moments the model drops out: the hand too close, smeared, or wrapped round the
-    object. It is only asked about the arm that ends where the hand was last seen, for
-    bridge_s at most, so the knee and the table never start a track."""
+    from where the hand was (DepthFollow). The keypoint model gives the pose and tells the
+    wearer's hand from anyone else's; the depth patch needs neither a sharp picture nor a
+    whole hand, so it covers the moments the model drops out: the hand too close, smeared,
+    or wrapped round the object. It follows for bridge_s at most."""
 
     uses_depth = True
 
-    def __init__(self, learned, arm: DepthArm | None = None, bridge_s: float = 1.5, grow_px_s: float = 900.0):
-        self.learned, self.arm = learned, arm or DepthArm()
-        self.bridge_s, self.grow_px_s = bridge_s, grow_px_s
-        self.name = f"{learned.name} + depth arm"
-        self._last = None            # (t_ms, u, v, size px) of the wearer's hand when the model last had it
-        self._offset = np.zeros(2)   # from the arm's far end to the guided point, learnt while both are seen
+    def __init__(self, learned, bridge_s: float = 1.0):
+        self.learned, self.follow, self.bridge_s = learned, DepthFollow(), bridge_s
+        self.name = f"{learned.name} + depth"
+        self._seen_ms = None         # when the model last had the wearer's hand
+        self._frame = None
 
-    def chosen(self, hand: Hand | None, t_ms: int):
-        """perception.py reports which hand it took as the wearer's (None: none of them)."""
-        if hand is None or hand.source == self.arm.name:
+    def chosen(self, hand: Hand | None, t_ms: int, z: float | None = None):
+        """perception.py reports which hand it took as the wearer's (None: none of them), and its depth."""
+        if hand is None or hand.source == self.follow.name or self._frame is None:
             return
-        size = 120.0 if hand.box is None else max(hand.box[2] - hand.box[0], hand.box[3] - hand.box[1])
-        self._last = (t_ms, float(hand.tip[0]), float(hand.tip[1]), float(size))
+        rgb, depth = self._frame
+        self.follow.start(hand, z, depth, rgb)
+        self._seen_ms = t_ms
 
     def detect(self, rgb: np.ndarray, t_ms: int, depth=None, K=None) -> list[Hand]:
         hands = self.learned.detect(rgb, t_ms, depth=depth, K=K)
-        if self._last is None or depth is None:
+        self._frame = (rgb, depth)
+        if depth is None or self._seen_ms is None:
             return hands
-        t0, u, v, size = self._last
-        age = (t_ms - t0) / 1000.0
-        if not 0 <= age <= self.bridge_s:
-            self._last = None
+        if not 0 <= t_ms - self._seen_ms <= self.bridge_s * 1000:
+            self.follow.state, self._seen_ms = None, None
             return hands
-        radius = size + self.grow_px_s * age                 # a hand moves; look further the longer it is gone
-        here = [k for k in hands if (k.tip[0] - u) ** 2 + (k.tip[1] - v) ** 2 <= radius * radius and k.kp is not None]
-        arm = self.arm.detect(rgb, t_ms, depth=depth, near=(u, v, radius))
-        if here:
-            if arm:      # both see it: remember where the guided point sits relative to the arm's end
-                k = min(here, key=lambda k: (k.tip[0] - u) ** 2 + (k.tip[1] - v) ** 2)
-                self._offset = 0.7 * self._offset + 0.3 * (np.array(k.tip) - np.array(arm[0].tip))
-            return hands
-        for k in arm:
-            tip = np.array(k.tip) + self._offset
-            k.tip, k.samples = (float(tip[0]), float(tip[1])), [k.tip]
-        return hands + arm
+        # perception.py takes a hand from the model over this one whenever the model has the
+        # wearer's; this one is for when it has not.
+        kept = self.follow.step(rgb, depth)
+        return hands + ([kept] if kept is not None else [])
 
 
 # ---------------------------------------------------------------------------
@@ -422,52 +480,41 @@ def back_project(u: float, v: float, d: float, K: np.ndarray) -> np.ndarray:
 
 
 def hand_points_3d(hand: Hand, K: np.ndarray) -> np.ndarray | None:
-    """The 21 keypoints in the camera frame, metres, for an average-sized hand, from the hand's
-    shape alone (no lidar). None if the hand has no keypoints or the fit fails.
+    """The 21 keypoints in the camera frame, metres, for an average-sized hand, from the
+    keypoints alone (no lidar). None if the hand has no keypoints.
 
-    With MediaPipe's 3D shape of the hand: the pose of that shape which puts its 21 points on
-    the 21 pixels. Without it: the same for the palm, which is flat and does not bend, and the
-    fingers are taken to lie in the palm's plane. Either way a tilted hand comes out at the
-    right distance, which measuring one span in the picture does not give."""
+    Distance: every pair of palm points has a known length on a real hand, and looks
+    shorter the more it is tilted away. The pair that looks longest is the one facing the
+    camera, so it gives the scale. (Measured against lidar this beat fitting the hand's 3D
+    pose to the picture, which is thrown by one bad keypoint.)
+
+    Depth within the hand: a bone that looks shorter than it is points out of the picture.
+    Seen from the chest the fingers are the far end, so each bone adds depth going from the
+    wrist to the fingertips."""
     if hand.kp is None:
         return None
     kp = np.asarray(hand.kp, np.float64)
-    Kd = np.asarray(K, np.float64)
-    if hand.world is not None:
-        try:
-            ok, rvec, tvec = cv2.solvePnP(np.asarray(hand.world, np.float64), kp, Kd, None, flags=cv2.SOLVEPNP_SQPNP)
-        except cv2.error:
-            return None
-        if not ok or not np.all(np.isfinite(tvec)) or tvec[2, 0] <= 0.02:
-            return None
-        R, _ = cv2.Rodrigues(rvec)
-        return np.asarray(hand.world, np.float64) @ R.T + tvec.ravel()
-    try:
-        n, rvecs, tvecs, _ = cv2.solvePnPGeneric(PALM_SHAPE, kp[list(PALM)], Kd, None, flags=cv2.SOLVEPNP_IPPE)
-    except cv2.error:
+    fx = float(K[0, 0])
+    scale = max(float(np.linalg.norm(kp[a] - kp[b])) / m for a, b, m in PALM_SPANS)      # px per metre
+    if scale <= 1e-6:
         return None
-    best = None
-    for rvec, tvec in zip(rvecs, tvecs):
-        if not np.all(np.isfinite(tvec)) or tvec[2, 0] <= 0.02:
-            continue
-        R, _ = cv2.Rodrigues(rvec)
-        # A flat shape fits two ways, tilted toward the camera or away. The wearer's fingers
-        # point away from the chest, so take the fit whose fingers are the farther end.
-        if best is None or R[2, 1] > best[0][2, 1]:
-            best = (R, tvec.ravel())
-    if best is None:
-        return None
-    R, t = best
-    normal = R[:, 2]
-    rays = np.column_stack([(kp[:, 0] - Kd[0, 2]) / Kd[0, 0], (kp[:, 1] - Kd[1, 2]) / Kd[1, 1], np.ones(len(kp))])
-    along = rays @ normal
-    z_palm = float(np.mean((PALM_SHAPE @ R.T + t)[:, 2]))
-    with np.errstate(divide="ignore", invalid="ignore"):
-        z = np.where(np.abs(along) > 0.15, float(normal @ t) / along, z_palm)
-    # A palm seen nearly edge-on makes the plane's far end run away: fingers are within a
-    # hand's length of the palm, whatever the fit says.
-    z = np.clip(z, z_palm - 0.06, z_palm + 0.12)
-    return rays * z[:, None]
+    z = fx / scale
+
+    def out_of_picture(a: int, b: int, length: float) -> float:
+        seen = float(np.linalg.norm(kp[a] - kp[b])) / scale / length
+        # Up to a tenth shorter is this hand's own proportions, not tilt.
+        return length * math.sqrt(max(0.0, 1.0 - min(1.0, seen / 0.9) ** 2))
+
+    dz = np.zeros(21)
+    tilt = out_of_picture(0, 9, PALM_SPANS[1][2])
+    dz[0] = -0.8 * tilt                      # the palm's depth is that of its middle: the wrist is
+    dz[list(KNUCKLES)] = 0.2 * tilt          # nearer than that, the knuckles a little farther
+    dz[1] = -0.5 * tilt
+    for chain, bones in FINGERS:
+        for (a, b), length in zip(zip(chain, chain[1:]), bones):
+            dz[b] = min(dz[a] + out_of_picture(a, b, length), dz[chain[0]] + 0.10)
+    zs = z + dz
+    return np.column_stack([(kp[:, 0] - K[0, 2]) * zs / fx, (kp[:, 1] - K[1, 2]) * zs / K[1, 1], zs])
 
 
 def palm_depth(hand: Hand, depth: np.ndarray, min_valid: float = 0.4):
@@ -563,29 +610,15 @@ class HandDepth:
         return z_sized + self._corr, self._weight
 
 
-def arm_exit(kp: np.ndarray, shape) -> str:
-    """Which edge of the picture the forearm leaves by: "bottom", "left", "right" or "top".
-    The forearm runs from the knuckles through the wrist and on. A chest camera sees the
-    wearer's own arm come in over the bottom or a side; an arm hanging from the top of the
-    picture belongs to someone facing the wearer."""
-    h, w = shape[:2]
-    wrist = np.asarray(kp[WRIST], float)
-    d = wrist - np.asarray(kp[9], float)
+def arm_from_above(kp: np.ndarray) -> bool:
+    """Does the forearm come down from the top of the picture? The forearm runs from the
+    knuckles through the wrist and on. A chest camera sees the wearer's own arm come up from
+    below or in from a side, never down from above: an arm that does belongs to someone
+    facing the wearer. "Down from above" is steeper than 37 degrees: a wearer's arm raised
+    to shoulder height still comes in flatter than that."""
+    d = np.asarray(kp[WRIST], float) - np.asarray(kp[9], float)
     n = float(np.linalg.norm(d))
-    if n < 1e-6:
-        return "bottom"
-    d /= n
-    best, edge = math.inf, "bottom"
-    for name, axis, limit in (("left", 0, 0.0), ("right", 0, w - 1.0), ("top", 1, 0.0), ("bottom", 1, h - 1.0)):
-        if abs(d[axis]) < 1e-6:
-            continue
-        s = (limit - wrist[axis]) / d[axis]
-        if 0 <= s < best:
-            best, edge = s, name
-    if not (0 <= wrist[0] < w and 0 <= wrist[1] < h):     # the wrist itself is already outside
-        over = {"left": -wrist[0], "right": wrist[0] - (w - 1), "top": -wrist[1], "bottom": wrist[1] - (h - 1)}
-        edge = max(over, key=over.get)
-    return edge
+    return n > 1e-6 and d[1] / n < -0.6
 
 
 def guided_point(kind: str, kp: np.ndarray, xyz: np.ndarray | None = None, goal: np.ndarray | None = None):
@@ -608,9 +641,11 @@ def guided_point(kind: str, kp: np.ndarray, xyz: np.ndarray | None = None, goal:
 class OneEuro:
     """The One Euro filter: smooths hard while the hand is still, where jitter is all there is
     to hear, and lets go as it speeds up, where lag is what hurts. A plain average cannot do
-    both. min_cutoff (Hz) sets the smoothing at rest, beta how fast it opens up with speed."""
+    both. min_cutoff (Hz) sets the smoothing at rest, beta how fast it opens up with speed.
+    As set here (tools/compare_hand_filters.py, 30 frames a second): a still hand's jitter
+    down to 22%, 13 ms behind a moving one. The 3-frame average it replaces: 35% and 33 ms."""
 
-    def __init__(self, min_cutoff: float = 1.2, beta: float = 12.0, d_cutoff: float = 1.5, gap_s: float = 0.5):
+    def __init__(self, min_cutoff: float = 0.8, beta: float = 15.0, d_cutoff: float = 1.5, gap_s: float = 0.5):
         self.min_cutoff, self.beta, self.d_cutoff, self.gap_s = min_cutoff, beta, d_cutoff, gap_s
         self.clear()
 
@@ -641,9 +676,10 @@ class Kalman:
     """Constant-velocity Kalman filter on the 3D point: no lag at a steady speed, and it can
     say where the hand should be for the few frames a tracker drops out (ahead()). It
     overshoots when the hand stops dead. accel (m/s^2) is how hard a hand is expected to
-    change speed, noise_m the tracker's jitter."""
+    change speed, noise_m the tracker's jitter. As set here: jitter down to 45%, 4 ms behind,
+    6 mm past the place the hand stops."""
 
-    def __init__(self, accel: float = 6.0, noise_m: float = 0.006, gap_s: float = 0.5):
+    def __init__(self, accel: float = 2.5, noise_m: float = 0.012, gap_s: float = 0.5):
         self.accel, self.noise_m, self.gap_s = accel, noise_m, gap_s
         self.clear()
 
@@ -702,8 +738,6 @@ def make(kind: str, device: str | None = None):
         return DepthArm()
     if kind == "hybrid":
         return Hybrid(YoloHand("small", device=device))
-    if kind == "hybrid_mediapipe":
-        return Hybrid(MediaPipeHand(min_conf=0.3, track_conf=0.3, pad=160, name="MediaPipe (wide)"))
     if kind == "sticker":
         hsv = os.environ.get("PERCEPTION_STICKER_HSV")
         v = [int(x) for x in hsv.split(",")] if hsv else [35, 80, 80, 85, 255, 255]

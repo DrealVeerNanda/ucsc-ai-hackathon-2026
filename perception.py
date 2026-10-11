@@ -42,7 +42,6 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -96,28 +95,58 @@ def to_xyz(u: float, v: float, depth: np.ndarray, K: np.ndarray, r: int = 4, nea
     return back_project(u, v, d, K)
 
 
-def box_xyz(box, depth: np.ndarray, K: np.ndarray, exclude: np.ndarray | None = None):
-    """3D point of an object: its box centre, at the median depth of the box's centre third.
-    With `exclude` (a mask of pixels that are hand, not object) the whole box is used minus
-    those pixels, leaning to the near side so the background behind the object does not win."""
+def surface_depth(vals: np.ndarray, share: float = 0.25, least: int = 5) -> float:
+    """The depth of the nearest surface of some size among these lidar readings.
+
+    Readings of one surface lie within a few centimetres of each other. Going from the
+    nearest reading outward, the first such group that holds `share` of all the readings is
+    the object's front; its median is the answer. A solid object filling the patch gives the
+    plain median. A clear bottle gives the label and the water, not the table and wall seen
+    through it; a few stray near readings (a finger, lidar noise at an edge) are passed over."""
+    v = np.sort(np.asarray(vals, np.float64))
+    end = np.searchsorted(v, v + np.maximum(0.03, 0.06 * v), side="right")
+    count = end - np.arange(len(v))
+    big = np.nonzero(count >= max(float(least), share * len(v)))[0]
+    i = int(big[0]) if len(big) else int(np.argmax(count))
+    return float(np.median(v[i:end[i]]))
+
+
+def box_xyz(box, depth: np.ndarray, K: np.ndarray, exclude: np.ndarray | None = None, loose: bool = True):
+    """3D point of an object: its box centre, at the depth of its front surface.
+
+    The surface is looked for in the box's centre third, where a solid object is all there
+    is to see. Lidar goes through clear plastic and glass, so a water bottle can have no
+    reading at all there: then (unless loose=False) the whole box is used, where the label,
+    the water or the foot of the bottle still give one. That reading is less sure: now and
+    then it is the table seen through the bottle. With `exclude` (a mask of pixels that are
+    hand, not object) the whole box minus those pixels is used from the start."""
     x1, y1, x2, y2 = box
     cx, cy = 0.5 * (x1 + x2), 0.5 * (y1 + y2)
-    part = 2.0 if exclude is not None else 6.0
-    hw, hh = max(2.0, (x2 - x1) / part), max(2.0, (y2 - y1) / part)
     h, w = depth.shape[:2]
-    xa, xb = int(max(0, cx - hw)), int(min(w, cx + hw + 1))
-    ya, yb = int(max(0, cy - hh)), int(min(h, cy + hh + 1))
-    if xb <= xa or yb <= ya:
+
+    def readings(part: float):
+        hw, hh = max(2.0, (x2 - x1) / part), max(2.0, (y2 - y1) / part)
+        xa, xb = int(max(0, cx - hw)), int(min(w, cx + hw + 1))
+        ya, yb = int(max(0, cy - hh)), int(min(h, cy + hh + 1))
+        if xb <= xa or yb <= ya:
+            return np.empty(0), 1
+        vals = depth[ya:yb, xa:xb]
+        ok = (vals > DEPTH_MIN) & (vals < DEPTH_MAX)
+        if exclude is not None:
+            ok &= ~exclude[ya:yb, xa:xb].astype(bool)
+        return vals[ok], vals.size
+
+    if exclude is None:
+        vals, area = readings(6.0)
+        if vals.size >= max(5, 0.3 * area):      # the middle is mostly there: a solid object
+            return back_project(cx, cy, surface_depth(vals), K)
+        if not loose:
+            return None
+    vals, area = readings(2.2)                   # a little inside the box: its edge is background
+    if vals.size < 30:
         return None
-    vals = depth[ya:yb, xa:xb]
-    ok = (vals > DEPTH_MIN) & (vals < DEPTH_MAX)
-    if exclude is not None:
-        ok &= ~exclude[ya:yb, xa:xb].astype(bool)
-    vals = vals[ok]
-    if vals.size < (30 if exclude is not None else 5):
-        return None
-    d = np.percentile(vals, 40) if exclude is not None else np.median(vals)
-    return back_project(cx, cy, float(d), K)
+    # One lidar reading is a dozen pixels here, so 40 pixels are three readings that agree.
+    return back_project(cx, cy, surface_depth(vals, share=0.10, least=40), K)
 
 
 def hand_mask(shape, points: np.ndarray, grow: float = 0.25, min_px: int = 41) -> np.ndarray:
@@ -272,8 +301,6 @@ class PerceptionConfig:
     own_arm: bool = False        # a hand whose forearm leaves by the top of the picture is somebody else's
     hand_coast_s: float = 0.0    # hand not found for less than this: carry on along its path (kalman only)
     stick_s: float = 0.5         # of several hands in reach, stay with the one followed this recently
-    # The object.
-    seen_blink_s: float = 0.25   # detector missed it for less than this: a blink, the box is still good
 
 
 # Settings that go with each of HAND_OPTIONS: (tracker in hands.make, config).
@@ -414,6 +441,7 @@ class Perception:
         self._anchored = False       # is _anchor in world coordinates?
         self._from_helper = False    # did _anchor come from the helper rather than the detector?
         self._unseen_t = None        # since when the detector has found nothing
+        self._blocked_t = None       # since when something nearer has stood in front of the object
         self._helper_t = -1e9        # when the helper was last asked
         self._helper_gap = self.cfg.helper_every_s
         self._score = 0.0
@@ -448,6 +476,20 @@ class Perception:
         p = hand.points
         return bool(np.any((p[:, 0] >= box[0] - mx) & (p[:, 0] <= box[2] + mx) &
                            (p[:, 1] >= box[1] - my) & (p[:, 1] <= box[3] + my)))
+
+    def _blocked(self, box, z: float, depth: np.ndarray) -> bool:
+        """Is something nearer than the object standing in front of its box? An arm reaching
+        for it, whether or not the hand tracker has found the hand. Then what lidar reads there
+        is the arm, and the detector not seeing the object means hidden, not gone."""
+        if box is None:
+            return False
+        h, w = depth.shape[:2]
+        xa, xb = int(max(0, box[0])), int(min(w, box[2] + 1))
+        ya, yb = int(max(0, box[1])), int(min(h, box[3] + 1))
+        if xb <= xa or yb <= ya:
+            return False
+        vals = depth[ya:yb:2, xa:xb:2]
+        return float(np.mean((vals > DEPTH_MIN) & (vals < z - 0.06))) >= 0.3
 
     def _hand_xyz(self, hand: Hand, frame: Frame):
         """(fingertip position or None, where its depth came from, in reach?).
@@ -501,14 +543,14 @@ class Perception:
         z_sized = hd.sized(z_shape)
         if hand.ours is not None:
             return z_lidar, z_shape, pts, hand.ours
-        if cfg.own_arm and hand.kp is not None and trackers.arm_exit(hand.kp, frame.rgb.shape) == "top":
+        if cfg.own_arm and hand.kp is not None and trackers.arm_from_above(hand.kp):
             return z_lidar, z_shape, pts, False
         # Lidar far beyond what the hand's size allows is reading past the hand, not the hand.
         past = z_lidar is not None and z_sized is not None and z_lidar > 1.5 * z_sized + 0.05
         if z_lidar is not None and not past:
             return z_lidar, z_shape, pts, z_lidar <= cfg.max_hand_m
         if z_sized is not None:
-            return z_lidar, z_shape, pts, z_sized <= 1.3 * cfg.max_hand_m
+            return z_lidar, z_shape, pts, z_sized <= cfg.max_hand_m
         return z_lidar, z_shape, pts, True               # nothing to judge by: may be ours, held too close
 
     def _fused_hand(self, hands: list, frame: Frame):
@@ -520,6 +562,8 @@ class Perception:
         plus how much nearer or farther the shape says the keypoint is than the palm."""
         cfg, hd = self.cfg, self._hand_depth
         cands = [(k, m) for k, m in ((k, self._measure(k, frame)) for k in hands) if m[3]]
+        # A hand the model sees beats one that is only being followed in the depth picture.
+        cands = [c for c in cands if c[0].kp is not None] or cands
         if not cands:
             return None, None, None, "none", None
         last = self._hand_last
@@ -655,7 +699,7 @@ class Perception:
             tracing.put(hand_depth=src)
             self._hand_last = (frame.t, hand.tip[0], hand.tip[1])
         if hasattr(self.hands, "chosen"):
-            self.hands.chosen(hand, int(frame.t * 1000))
+            self.hands.chosen(hand, int(frame.t * 1000), None if hand_raw is None else float(hand_raw[2]))
 
         # Object position. Measured only when the detector sees it and the hand is not over it.
         pose = frame.pose if (cfg.use_pose and frame.pose is not None) else None
@@ -666,8 +710,26 @@ class Perception:
         if self.helper is not None:
             self._ask_helper(frame, target, seen, pose)
         covered = self._covered(self._box, hand)
-        measured = box_xyz(self._box, frame.depth, frame.K) if seen and not covered else None
-        if measured is None and seen and covered and self._anchor is None:
+        if not covered and self._anchor is not None and not self._anchored:
+            # ...for hold_covered_s at most. Past that it is not an arm passing: the object
+            # itself has come nearer, and its depth has to be read again.
+            if not self._blocked(self._box, float(self._anchor[2]), frame.depth):
+                self._blocked_t = None
+            elif self._blocked_t is None:
+                self._blocked_t = frame.t
+            covered = self._blocked_t is not None and frame.t - self._blocked_t <= cfg.hold_covered_s
+        measured = box_xyz(self._box, frame.depth, frame.K, loose=False) if seen and not covered else None
+        if measured is None and seen and not covered:
+            # Nothing to read in the middle of the box (a clear bottle). The reading from the
+            # whole box is good enough to start from, or to confirm what is remembered, but
+            # not to move the object somewhere else.
+            guess = box_xyz(self._box, frame.depth, frame.K)
+            if guess is not None and self._anchor is not None:
+                z = self._anchor[2] if pose is None else (pose[:3, :3].T @ (self._anchor - pose[:3, 3]))[2]
+                if abs(guess[2] - z) > max(0.06, 0.12 * z):
+                    guess = None
+            measured = guess
+        if measured is None and seen and covered and self._anchor is None and hand is not None:
             # First sight of the object with the hand already on it: nothing is remembered yet,
             # so read the depth from the part of the box the hand does not cover.
             measured = box_xyz(self._box, frame.depth, frame.K, exclude=hand_mask(frame.depth.shape, hand.points))
@@ -677,9 +739,10 @@ class Perception:
             self._anchor = self._obj_avg.add(p)
             self._anchor_t = frame.t
             self._from_helper = False
-        elif self._anchor is not None and seen and covered:
-            # Still detected under the hand, but the depth there is the hand's: keep the
-            # remembered depth and only follow the box sideways.
+        elif self._anchor is not None and seen:
+            # Still detected, but its depth cannot be read: the hand is over it and the depth
+            # there is the hand's, or it is a clear bottle and lidar goes through it. Keep the
+            # remembered depth and only follow the box sideways. It is not lost: it is in view.
             if not self._anchored:
                 b = self._box
                 self._anchor = self._obj_avg.add(
