@@ -386,9 +386,9 @@ def test_a_sentence_with_stop_in_it_and_whispers_noise_are_not_commands(quiet, w
 
 def test_whispers_inventions_on_noise_never_reach_a_request():
     for words in ("Thank you.", " you", "Thanks for watching!", "Thank you for watching.", "Oh.", "I'm sorry.", "Oh my God.",
-                  "Bye.", "So", "Subtitles by the Amara.org community", "Okay."):
+                  "Bye.", "So", "Subtitles by the Amara.org community", "Okay.", "and", "And the", "Well, so...", "It is"):
         assert not voice.worth_hearing(words), words
-    for words in ("stop", "again", "help", "blue cup", "option three"):
+    for words in ("stop", "again", "help", "blue cup", "option three", "yes", "no", "the cup", "and the orange"):
         assert voice.worth_hearing(words), words
 
 

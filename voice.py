@@ -856,8 +856,15 @@ def _keep_rejected(audio: np.ndarray, text: str):
         pass
 
 
+# Words that name nothing. On 11 October a stray "and" from the room was taken for an object
+# and searched for for forty seconds.
+_NO_NAME = {"and", "a", "an", "the", "but", "or", "so", "well", "right", "it", "is", "its", "this", "that", "i", "to", "of",
+            "in", "on", "uh", "um", "hmm", "mm", "mhm", "huh", "oh", "wow", "hi", "hey", "hello", "alright", "then", "now"}
+
+
 def worth_hearing(text: str) -> bool:
-    return plausible(text) and re.sub(r"[^a-z ]+", "", text.lower()).strip() not in _NOT_SPEECH
+    clean = re.sub(r"[^a-z ]+", "", text.lower()).strip()
+    return plausible(text) and clean not in _NOT_SPEECH and not all(w in _NO_NAME for w in clean.split())
 
 
 def loudness(audio: np.ndarray) -> float:
