@@ -514,6 +514,26 @@ def test_nobody_speaking_gives_nothing():
     assert voice.cut_speech(_blocks((1.0, 0.004), (0.06, 0.2), (7.0, 0.004))) is None     # a click
 
 
+def test_a_soft_voice_through_earbuds_is_still_caught():
+    # Measured through AirPods in the hall: room 0.0003, a soft "blue cup" 0.006 to 0.010, people nearby 0.003.
+    assert voice.cut_speech(_blocks((1.0, 0.0003), (0.6, 0.008), (2.0, 0.0003))) is not None
+    assert voice.cut_speech(_blocks((1.0, 0.0003), (0.6, 0.003), (6.0, 0.0003))) is None
+
+
+def test_whisper_is_told_the_names_that_were_just_listed(monkeypatch):
+    monkeypatch.setattr(voice, "last_objects", ["water bottle", "blue cup"])
+    assert voice.expected_words() == "water bottle, blue cup"
+    monkeypatch.setattr(voice, "last_objects", [])
+    assert voice.expected_words() is None
+
+
+def test_the_listening_beep_is_short_and_not_the_chime():
+    m = Mixer(ToneConfig(), clips={})
+    assert 0.1 < len(m.clips["listen"]) / m.cfg.sr < 0.4 and len(m.clips["listen"]) < len(m.clips["aligned"])
+    m.say("listen")
+    assert m.log == ["(beep: listening)"]
+
+
 def test_listening_stops_when_a_typed_request_arrives():
     seen = []
     out = voice.cut_speech(_blocks((5.0, 0.004)), should_stop=lambda: seen.append(1) or len(seen) > 20)

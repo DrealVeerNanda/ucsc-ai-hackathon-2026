@@ -181,6 +181,8 @@ def describe(e: dict):
                                                                 else f'lost the {e.get("target", "object")}')
     if name == "hand":
         return str(e.get("model", "hand")).upper(), "", "sees your hand" if e.get("seen") else "lost your hand"
+    if name == "mic":
+        return "MIC", "", f'sound was lost on the way in ({e.get("lost", "?")} gaps)'
     if name == "say":
         return "SPOKEN", "", f'"{e.get("text", "")}"'
     if name == "state":

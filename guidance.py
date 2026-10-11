@@ -425,6 +425,14 @@ def say_text(text: str, wait: bool = False) -> None:
         sink.wait_quiet()
 
 
+def say_clip(name: str, wait: bool = False) -> None:
+    """Play one of the short sounds outside a reach (voice.py's "listening" beep)."""
+    sink = _get().sink
+    sink.say(name)
+    if wait:
+        sink.wait_quiet()
+
+
 def pop_phrases() -> list:
     """Everything said since the last call, as words. main.py shows these on the dashboard."""
     log = _get().sink.log

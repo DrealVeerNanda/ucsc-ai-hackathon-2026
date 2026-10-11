@@ -32,7 +32,7 @@ CLIPS_DIR = Path(__file__).resolve().parent / "audio"
 PIPER_VOICE = Path(os.environ.get("PIPER_VOICE") or
                    Path(__file__).resolve().parent / "models" / "piper" / "en_US-lessac-medium.onnx")
 # What each clip says, for the dashboard and the printed log.
-CLIP_TEXT = {"looking": "Looking", "found_it": "Found it", "show_me_your_hand": "Show me your hand", "grab": "Grab",
+CLIP_TEXT = {"listen": "(beep: listening)", "looking": "Looking", "found_it": "Found it", "show_me_your_hand": "Show me your hand", "grab": "Grab",
              "i_lost_it": "I lost it", "i_cant_see_that": "I can't see that"}
 
 
@@ -209,6 +209,14 @@ def success_chime(sr: int) -> np.ndarray:
     return np.concatenate((out, np.zeros(round(0.12 * sr), dtype=np.float32)))
 
 
+def listen_beep(sr: int) -> np.ndarray:
+    """One short high note: the microphone is open, speak now. Unlike the two-note chime."""
+    t = np.arange(round(0.16 * sr)) / sr
+    envelope = np.minimum(t / 0.01, 1.0) * np.clip((0.16 - t) / 0.03, 0.0, 1.0)
+    return np.concatenate(((0.22 * envelope * np.sin(2 * np.pi * 1175.0 * t)).astype(np.float32),
+                           np.zeros(round(0.08 * sr), dtype=np.float32)))
+
+
 class Mixer:
     """Tone plus clips, rendered block by block. Holds no sound device."""
 
@@ -217,6 +225,7 @@ class Mixer:
         self.synth = ToneSynth(self.cfg)
         self.clips = dict(clips) if clips is not None else load_clips(sr=self.cfg.sr)
         self.clips["aligned"] = success_chime(self.cfg.sr)
+        self.clips["listen"] = listen_beep(self.cfg.sr)
         self._grab_clip = (np.concatenate((success_chime(self.cfg.sr), self.clips["grab"]))
                            if "grab" in self.clips else None)
         self.stale_s = stale_s

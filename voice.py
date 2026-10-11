@@ -166,6 +166,15 @@ def _say(text: str):
         print(f"[voice] could not speak ({e})", file=sys.stderr)
 
 
+def _beep():
+    """The short sound that means "I am listening now"."""
+    try:
+        import guidance
+        guidance.say_clip("listen", wait=True)
+    except Exception:
+        pass
+
+
 def _camera_frame(wait_s: float = 2.0):
     """A fresh frame from the stream main.py is using, or None if it is not the real stream."""
     module = sys.modules.get("stream")
@@ -287,7 +296,7 @@ def typed() -> str:
 class Listener:
     """Records between two presses of Enter and transcribes with faster-whisper."""
 
-    def __init__(self, model: str = "base.en", device=None):
+    def __init__(self, model: str = "small.en", device=None):
         import sounddevice as sd
         from faster_whisper import WhisperModel
 
@@ -311,7 +320,7 @@ class Listener:
     def transcribe(self, audio: np.ndarray) -> str:
         if audio.size < SR // 4:
             return ""
-        segments, _ = self.whisper.transcribe(audio, language="en", beam_size=1, vad_filter=True)
+        segments, _ = self.whisper.transcribe(audio, language="en", beam_size=1, vad_filter=True, hotwords=expected_words())
         return " ".join(s.text for s in segments).strip()
 
     def listen(self) -> str:
@@ -353,16 +362,23 @@ def _my_address() -> str:
 _NOT_SPEECH = {"", "you", "thank you", "thanks", "thanks for watching", "bye", "okay", "ok", "so", "the", "uh", "um", "hmm"}
 
 
+def expected_words() -> str | None:
+    """The names Whisper should expect: what was just listed. Without them the small models
+    hear "blue cup" as "look up"."""
+    return ", ".join(last_objects) if last_objects else None
+
+
 def worth_hearing(text: str) -> bool:
     return re.sub(r"[^a-z ]+", "", text.lower()).strip() not in _NOT_SPEECH
 
 
 def cut_speech(blocks, sr: int = SR, block_s: float = 0.03, start_wait_s: float = 6.0, max_s: float = 8.0,
-               quiet_s: float = 0.9, should_stop=None) -> np.ndarray | None:
+               quiet_s: float = 0.9, should_stop=None, min_level: float = 0.005) -> np.ndarray | None:
     """Take audio blocks as they arrive and return the stretch that holds speech: from a little
     before the voice starts until it has been quiet for `quiet_s`. None if nobody spoke within
     `start_wait_s`, or `should_stop()` said to give up. The level that counts as a voice is set
-    from the first third of a second, so it adapts to a noisy hall."""
+    from the first third of a second, so it adapts to a noisy hall, and is never below
+    `min_level`: earbuds silence the room, and a soft voice measured 0.006 to 0.010 through them."""
     kept, lead, floor, loud, quiet, started, t = [], [], [], 0, 0.0, False, 0.0
     for block in blocks:
         t += block_s
@@ -371,7 +387,7 @@ def cut_speech(blocks, sr: int = SR, block_s: float = 0.03, start_wait_s: float 
             floor.append(level)
             lead.append(block)
             continue
-        threshold = max(0.012, 2.5 * (float(np.median(floor)) if floor else 0.0))
+        threshold = max(min_level, 2.5 * (float(np.median(floor)) if floor else 0.0))
         if not started:
             lead = (lead + [block])[-10:]                 # keep 0.3 s from before the voice
             loud = loud + 1 if level > threshold else 0
@@ -439,15 +455,23 @@ class Headset:
         import sounddevice as sd
         blocks: queue.Queue = queue.Queue()
         n = int(SR * 0.03)
-        with sd.InputStream(samplerate=SR, channels=1, dtype="float32", blocksize=n,
-                            callback=lambda data, frames, t, status: blocks.put(data[:, 0].copy())):
+        lost = [0]
+
+        def arrived(data, frames, t, status):
+            lost[0] += bool(status)                       # the sound server dropped some on the way in
+            blocks.put(data[:, 0].copy())
+        with sd.InputStream(samplerate=SR, channels=1, dtype="float32", blocksize=n, callback=arrived):
             def incoming():
                 while True:
                     try:
                         yield blocks.get(timeout=1.0)
                     except queue.Empty:
+                        lost[0] += 1                      # a whole second without sound
                         return
-            return cut_speech(incoming(), should_stop=should_stop)
+            audio = cut_speech(incoming(), should_stop=should_stop)
+        if lost[0]:
+            tracing.event("mic", lost=lost[0], heard=audio is not None)
+        return audio
 
 
 def decode_recording(data: bytes) -> np.ndarray:
@@ -472,7 +496,7 @@ class WebMic:
     where Whisper transcribes it. Browsers only allow the microphone over HTTPS, so the page is
     served with a certificate made on the spot; the browser asks once whether to trust it."""
 
-    def __init__(self, port: int = 8644, transcribe=None, model: str = "base.en", cert_dir: str | Path = "out/voice_cert",
+    def __init__(self, port: int = 8644, transcribe=None, model: str = "small.en", cert_dir: str | Path = "out/voice_cert",
                  typed: bool = True, headset=None, hear=None):
         self.port = port
         self.status = {"heard": "", "target": ""}
@@ -488,9 +512,10 @@ class WebMic:
                 if audio.size < SR // 4:
                     return ""
                 t = time.perf_counter()
-                segments, _ = whisper.transcribe(audio, language="en", beam_size=1, vad_filter=True)
+                segments, _ = whisper.transcribe(audio, language="en", beam_size=1, vad_filter=True, hotwords=expected_words())
                 text = " ".join(s.text for s in segments).strip()
-                tracing.event("whisper", (time.perf_counter() - t) * 1000, audio_s=round(audio.size / SR, 2), text=text)
+                tracing.event("whisper", (time.perf_counter() - t) * 1000, audio_s=round(audio.size / SR, 2), text=text,
+                              level=round(float(np.sqrt(np.mean(np.square(audio)))), 4))
                 return text
 
             def transcribe(data: bytes) -> str:
@@ -524,12 +549,20 @@ class WebMic:
             _poke_main()
 
     def listen(self) -> str:
-        invite(pending=not self._requests.empty())
-        self._waiting = True
+        buds = self.headset
         try:
+            if buds is not None:
+                buds.open()               # before the question: an answer given at once must not fall in the switch
+            invite(pending=not self._requests.empty())
+            self._waiting = True
             text = self._next_request()
         finally:
             self._waiting = False
+            if buds is not None:
+                try:
+                    buds.close()
+                except Exception:
+                    pass
         target = respond(text)
         self.status["target"] = target or self.status["target"]
         try:
@@ -547,7 +580,7 @@ class WebMic:
             return self._requests.get()
         buds = self.headset
         try:
-            buds.open()
+            _beep()                                       # "your turn": the microphone is open from here
             while True:
                 try:
                     return self._requests.get(timeout=0.05)
@@ -562,11 +595,6 @@ class WebMic:
             print(f"[voice] the earbuds' microphone failed ({e}); use the page or type", file=sys.stderr)
             self.headset = None
             return self._requests.get()
-        finally:
-            try:
-                buds.close()
-            except Exception:
-                pass
 
     def _serve(self, cert_dir: Path):
         mic = self
@@ -666,7 +694,7 @@ def listen_for_target() -> str:
     global _listener, _mode
     if _mode is None:
         want = os.environ.get("VOICE_MODE", "auto")
-        model = os.environ.get("VOICE_MODEL", "base.en")
+        model = os.environ.get("VOICE_MODEL", "small.en")
         _mode = "type"
         why = "none is plugged in or paired"
         if want == "speech" or (want == "auto" and (os.environ.get("VOICE_DEVICE") or has_microphone())):
