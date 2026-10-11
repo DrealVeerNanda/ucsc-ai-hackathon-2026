@@ -62,9 +62,15 @@ class Tracer:
                 self._f.write(json.dumps({"type": "meta", "started": time.time(), "pid": os.getpid(),
                                           **self._meta}) + "\n")
                 atexit.register(self.close)
-            self._f.write(json.dumps(record, separators=(",", ":")) + "\n")
-            if record["type"] != "frame" or self._n % 30 == 0:
-                self._f.flush()
+            try:
+                self._f.write(json.dumps(record, separators=(",", ":")) + "\n")
+                if record["type"] != "frame" or self._n % 30 == 0:
+                    self._f.flush()
+            except OSError as e:
+                # A full disk must cost the trace, not the run: this is called from the main loop
+                # and from the sound callback, and neither has anything to catch it.
+                print(f"[tracing] stopped writing {self.path} ({e})")
+                self.enabled = False
 
     def meta(self, **fields):
         """Facts about the run (source, models, audio latency). Written once the file exists."""
@@ -186,6 +192,10 @@ def describe(e: dict):
         return str(e.get("model", "hand")).upper(), "", "sees your hand" if e.get("seen") else "lost your hand"
     if name == "whisper.rejected":
         return "WHISPER", "", f'wrote nonsense ("{e.get("text", "")[:24]}...") for {e.get("audio_s", "?")} s of sound: ignored'
+    if name == "camera":
+        return "CAMERA", "", "lost the picture" if e.get("lost") else "the picture is back"
+    if name == "resume":
+        return "MAIN", "", f'carrying on with "{e.get("target", "")}" after a restart'
     if name == "mic":
         return "MIC", "", f'sound was lost on the way in ({e.get("lost", "?")} gaps)'
     if name == "say":

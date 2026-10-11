@@ -45,3 +45,18 @@ def test_only_a_run_started_by_the_keeper_carries_on(tmp_path, monkeypatch):
 
 def test_a_first_run_with_no_status_left_behind_asks(tmp_path, monkeypatch):
     assert _asked(tmp_path, monkeypatch) == (1, "mug")
+
+
+def test_the_wearer_is_told_when_the_camera_goes_and_when_it_is_back(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "CAMERA_LOST_S", 0.05)
+    mods = fake_mods()
+    said = []
+    mods.guidance.say_text = lambda text, wait=False: said.append(text)
+    real, calls = mods.get_frame, [0]
+
+    def get_frame():
+        calls[0] += 1
+        return None if 4 <= calls[0] < 60 else real()        # the picture goes for a while mid-reach
+    mods.get_frame = get_frame
+    main.run(loop_args(tmp_path, "--frames", "8"), mods, main.Heartbeat("off"))
+    assert said == ["I have lost the camera. Hold still.", "The camera is back."]

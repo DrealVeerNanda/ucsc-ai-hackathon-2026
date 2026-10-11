@@ -94,7 +94,7 @@ def test_searching_then_found_then_waiting_for_the_hand():
 
 
 def test_says_it_cannot_see_the_object_once():
-    g = guide()
+    g = guide(give_up_s=0)
     for t in (1.0, 5.0, 9.0, 12.0, 30.0):
         assert g.update(scene(obj=None, hand=None), now=t) == "searching"
     assert g.sink.spoken == ["looking", "i_cant_see_that"]

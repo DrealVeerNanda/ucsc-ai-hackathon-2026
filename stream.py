@@ -385,11 +385,13 @@ def _replay_frames(folder: str | Path, loop: bool = True, paced: bool = True) ->
     while True:
         cap = cv2.VideoCapture(str(video))
         start = time.perf_counter()
+        read = 0
         try:
             for i in range(len(ts)):
                 ok, bgr = cap.read()
                 if not ok:
                     break
+                read += 1
                 if paced:
                     wait = start + float(ts[i] - ts[0]) - time.perf_counter()
                     if wait > 0:
@@ -398,6 +400,10 @@ def _replay_frames(folder: str | Path, loop: bool = True, paced: bool = True) ->
                                Ks[i], _valid_pose(poses[i]), kind)
         finally:
             cap.release()
+        if read == 0:
+            # A video cut off by a hard kill opens but gives no pictures. Looping over it would
+            # spin a core for ever and say nothing.
+            raise SourceError(f"The video in {folder} cannot be read: it was probably cut short when its run was killed.")
         if not loop:
             return
 

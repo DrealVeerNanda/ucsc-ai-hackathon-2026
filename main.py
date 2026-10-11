@@ -63,6 +63,7 @@ STUCK_S = 30.0
 STARTING_S = 120.0      # before the first frame is through: importing torch and loading the models, cold
 NO_CAMERA_S = 2.0       # this long without a frame while it should be guiding: say so
 FAILING_S = 5.0         # a step that has failed on every try for this long is not a blip
+CAMERA_LOST_S = 1.5      # no picture for this long in the middle of a reach: tell the wearer
 RESUME_S = 90.0         # a run that died mid-reach at most this long ago is carried on with, not asked again
 
 
@@ -363,6 +364,10 @@ def main(argv=None):
     # A plain `kill` ends Python without the summary below or the last status; make it a normal exit.
     if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    if signal.getsignal(signal.SIGINT) is signal.SIG_IGN:
+        # Started with & or nohup by a script: the shell told us to ignore Ctrl-C, and
+        # tools/stop_live.sh, which sends it, would wait for nothing. Take it as usual.
+        signal.signal(signal.SIGINT, signal.default_int_handler)
     beat = Heartbeat(args.status_dir).start()        # before the modules load: that can take a while
     try:
         mods = load_modules(args)
@@ -421,6 +426,29 @@ def run(args, mods, beat: Heartbeat | None = None):
         if dash:
             attempt("dashboard", dash.publish, frame, scene, info)
         return attempt("view", debug_view.show, frame, scene, info) if view else None
+
+    class Camera:
+        """Tells the wearer when the picture has gone and when it is back. Mid-reach, silence
+        after the camera drops is the worst thing to hear: they cannot know to hold still."""
+        since, told, had = None, False, False
+
+        def missing(self, now: float):
+            self.since = now if self.since is None else self.since
+            say = getattr(mods.guidance, "say_text", None)
+            if not self.told and self.had and target and say and now - self.since >= CAMERA_LOST_S:
+                self.told = True
+                tracing.event("camera", lost=True, after_s=round(now - self.since, 1))
+                attempt("guidance", say, "I have lost the camera. Hold still.")
+
+        def arrived(self):
+            if self.told:
+                say = getattr(mods.guidance, "say_text", None)
+                tracing.event("camera", lost=False)
+                if say:
+                    attempt("guidance", say, "The camera is back.")
+            self.since, self.told, self.had = None, False, True
+
+    camera = Camera()
 
     def resume_target() -> str | None:
         """The object the run before this one was guiding to, if that run died in the middle of
@@ -515,6 +543,7 @@ def run(args, mods, beat: Heartbeat | None = None):
                 if frame is not None and getattr(frame, "t_recv", None) is not None:
                     t0 = time.perf_counter() - (time.monotonic() - frame.t_recv)
             if frame is None:
+                camera.missing(time.monotonic())
                 # A source that cannot wait (the fakes, a camera that is not open yet) came back
                 # at once: sleep here, so a missing frame never spins the loop.
                 spent = time.perf_counter() - t0
@@ -522,6 +551,7 @@ def run(args, mods, beat: Heartbeat | None = None):
                 if not handle_key(redraw()) or not handle_web_keys():
                     break
                 continue
+            camera.arrived()
             t1 = time.perf_counter()
 
             # Prefer lane 1's arrival stamp; otherwise stamp it here (misses transport time).

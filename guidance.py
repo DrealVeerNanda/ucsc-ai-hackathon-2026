@@ -133,6 +133,9 @@ class GuidanceConfig:
     lost_s: float = 1.0          # hand missing for longer than this: back to waiting_hand
     remind_s: float = 6.0        # repeat "show me your hand" this often while waiting
     cant_see_s: float = 8.0      # searching for this long: say "I can't see that"
+    give_up_s: float = 20.0      # searching this long without ever seeing it: go idle, so the wearer is asked
+                                 # again. Misheard or simply not there, they could otherwise say nothing more:
+                                 # the microphone is only open while a request is awaited. 0 = search for ever
     far_hold_s: float = 1.0      # the object has been out of arm's reach this long: say so...
     far_repeat_s: float = 8.0    # ...and again this often while it stays there
     words: bool = False          # fallback: spoken single words instead of tones
@@ -690,7 +693,9 @@ class Guidance:
         err = hand_error(scene)
         away = err is not None and scene.object_visible and float(np.linalg.norm(err)) > cfg.miss_m
         self._miss_t = (self._miss_t if self._miss_t is not None else now) if away else None
-        if now - self._grab_t >= cfg.grab_state_s and not self.sink.saying():
+        # "Grab" takes about a second to say. A sink that still claims to be speaking long after
+        # is not being played (the sound card has gone): move on rather than wait for ever.
+        if now - self._grab_t >= cfg.grab_state_s and (not self.sink.saying() or now - self._grab_t >= 4 * cfg.grab_state_s):
             if self._miss_t is not None and now - self._miss_t >= cfg.miss_s:
                 self._near_t = self._out_t = self._phrase = None
                 self._zone_log.clear()
@@ -752,6 +757,8 @@ class Guidance:
                 self.sink.say("i_cant_see_that")
             self.state = SEARCHING
             self._tone(self._silent)
+            if cfg.give_up_s and not self._had_object and now - self._search_t > cfg.give_up_s and not self.sink.saying():
+                self.state = IDLE
             return self.state
         self._object_gone_t = None
         if not self._had_object:
@@ -848,7 +855,10 @@ def _get() -> Guidance:
                              + ", ".join(k for k, _, _ in GRAB_OPTIONS))
         tone = ToneConfig()
         sink = open_sink(os.environ.get("GUIDANCE_AUDIO", "auto"), os.environ.get("GUIDANCE_DEVICE") or None, tone)
-        _default = Guidance(sink, GuidanceConfig(), tone)
+        cfg = GuidanceConfig()
+        if os.environ.get("GUIDANCE_GIVE_UP_S"):
+            cfg.give_up_s = float(os.environ["GUIDANCE_GIVE_UP_S"])
+        _default = Guidance(sink, cfg, tone)
         _default.set_option(key)
         _default.set_grab_option(grab)
         tracing.meta(option=key, grab_option=grab)
