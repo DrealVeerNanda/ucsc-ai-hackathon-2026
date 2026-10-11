@@ -25,125 +25,91 @@
 
   <main class="deck" id="deck">
 
-    <section class="slide" data-id="title" data-shots="title" data-dur="6">
+    <section class="slide" data-id="title" data-shots="title" data-enter="rise" data-dur="6">
       <h1 class="poster">[Project name]</h1>
-      <p class="lede">Say what you want. Spoken directions guide your hand to it, with your eyes closed.</p>
-      <p class="fine">UCSC AI Hackathon, ASUS Local AI track. Everything runs on one ASUS Ascent GX10.</p>
-      <aside class="notes">Open on the scene: lidar points of a table, a mug, a fingertip, and the yellow line between them. One sentence: we help a blind person pick up the thing they asked for.</aside>
+      <p class="lede">Find it. Grab it. Eyes closed.</p>
+      <aside class="notes">One sentence: a blind person asks for something on the table and spoken words walk their hand to it. Every model runs on the ASUS GX10.</aside>
     </section>
 
-    <section class="slide" data-id="problem" data-shots="dark,dark,dark" data-steps="3" data-dur="7">
-      <h2 class="head">The big problem</h2>
-      <ol class="stats" id="problem-stats">
-        <li data-step="1"><span class="stat-n">43 million</span><span class="stat-l">people worldwide are blind, rising to 61 million by 2050</span></li>
-        <li data-step="2"><span class="stat-n">41%</span><span class="stat-l">of questions blind people asked for help with were “what is this?”</span></li>
-        <li data-step="3"><span class="stat-n" id="problem-base">–</span><span class="stat-l">for a blindfolded teammate to find a mug on our table, unaided (median)</span></li>
-      </ol>
-      <p class="fine">Lancet Global Health, 2020 (GBD Vision Loss Expert Group). Brady et al., CHI 2013: 40,748 questions from 5,329 blind users of VizWiz Social. Our baseline: trials.csv.</p>
-      <aside class="notes">The lights go out: points dim, the hand wanders. Hit each number. Last one is ours: how long a blindfolded teammate took with no help.</aside>
-    </section>
-
-    <section class="slide" data-id="provide" data-shots="provide,provide,provide,provide" data-steps="4" data-dur="8">
-      <h2 class="head">What it does</h2>
-      <p class="lede">Say <q>find my mug</q>. It guides your hand there, one word at a time.</p>
-      <ol class="points">
-        <li data-step="1">Hands-free: the phone rides on your chest</li>
-        <li data-step="2">Plain words in your earbuds: right, down, forward, grab</li>
-        <li data-step="3">Any object you name, no setup or scanning first</li>
-        <li data-step="4">Private and offline: nothing leaves the GX10</li>
-      </ol>
-      <aside class="notes">Watch the hand: it moves one axis at a time and the word above it is what the wearer hears.</aside>
-    </section>
-
-    <section class="slide" data-id="who" data-shots="wide,wide" data-steps="2" data-dur="6">
-      <h2 class="head">Who it's for</h2>
-      <ol class="points">
-        <li data-step="1"><b>1 million</b> Americans who are blind, and <b>7 million</b> with vision loss</li>
-        <li data-step="2">At home, at work, at school: anywhere the thing you need is on a table</li>
-      </ol>
-      <p class="fine" data-step="1">CDC, Vision Loss Facts.</p>
-      <figure class="ph" data-step="1"><span>Photo: wearer at a table with the chest mount</span></figure>
-      <aside class="notes">Keep it to the person. If time: the second line is a stretch, say it only if it lands.</aside>
-    </section>
-
-    <section class="slide slide-full" data-id="others" data-shots="recede" data-dur="9">
-      <h2 class="head">What exists today</h2>
-      <table class="compare">
-        <thead>
-          <tr><th scope="col">Today</th><th scope="col">What it does</th><th scope="col">Guides your hand to grab</th><th scope="col">Hands-free</th><th scope="col">Works offline</th><th scope="col">No setup per object</th></tr>
-        </thead>
-        <tbody>
-          <tr><th scope="row">Be My Eyes</th><td>A sighted volunteer on a video call</td><td class="mid">A person talks you through it</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
-          <tr><th scope="row">Be My AI</th><td>Describes a photo with GPT-4</td><td class="no">No</td><td class="no">No</td><td class="no">No, cloud</td><td class="yes">Yes</td></tr>
-          <tr><th scope="row">Seeing AI, Find My Things</th><td>Leads you to arm's reach of an item</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td><td class="no">Four videos per item</td></tr>
-          <tr><th scope="row">Apple Magnifier</th><td>Detects doors and people, reads text under your finger</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-          <tr><th scope="row">Envision Glasses</th><td>Beeps when a preset object is in view; $1,899</td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Preset list only</td></tr>
-          <tr><th scope="row">Aira</th><td>Paid agents on video; $65 a month for 20 minutes</td><td class="mid">A person talks you through it</td><td class="mid">With a worn camera</td><td class="no">No</td><td class="yes">Yes</td></tr>
-          <tr><th scope="row">AIGuide (research, 2022)</th><td>Guides the hand with speech and tones</td><td class="yes">Yes</td><td class="no">No, handheld</td><td class="yes">Yes</td><td class="no">Objects pre-scanned</td></tr>
-          <tr class="us"><th scope="row">[Project name]</th><td>Guides your hand by spoken words</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-        </tbody>
-      </table>
-      <p class="fine">Sources: Be My Eyes and Be My AI support pages; Microsoft Research, Find My Things; Apple iPhone User Guide, Magnifier; Envision Glasses 2.2 release notes and shop; aira.io/plans; Lee et al., AIGuide, ACM TACCESS 15(2), 2022.</p>
-      <aside class="notes">Most tools describe or read. None guide your hand to the thing, hands-free, offline.</aside>
-    </section>
-
-    <section class="slide" data-id="differ" data-shots="differ,differ,differ,differ" data-steps="4" data-dur="8">
-      <h2 class="head">How we're different</h2>
-      <ol class="points big">
-        <li data-step="1">It guides the hand to grab, it doesn't just describe</li>
-        <li data-step="2">Hands-free, the phone is on your chest</li>
-        <li data-step="3">Name any object by voice</li>
-        <li data-step="4">Runs on one box with no internet</li>
-      </ol>
-      <aside class="notes">Four lines, one breath each.</aside>
-    </section>
-
-    <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="4" data-dur="10">
-      <h2 class="head">How it works</h2>
-      <ol class="flow">
-        <li data-step="1"><b>See.</b> The iPhone streams color and lidar depth to the GX10.</li>
-        <li data-step="2"><b>Find.</b> A detector finds the mug, a hand tracker the fingertip.</li>
-        <li data-step="3"><b>Measure.</b> Depth turns both into 3D points. Subtract them.</li>
-        <li data-step="4"><b>Speak.</b> The biggest gap becomes one word: right, down, forward, grab.</li>
-      </ol>
-      <aside class="notes">The scene does the explaining: sweep, box, the line splits into right / down / forward, then the words.</aside>
-    </section>
-
-    <section class="slide slide-live" data-id="live" data-shots="off" data-dur="12">
-      <iframe class="live" id="live" title="Live dashboard" tabindex="-1" data-src="/"></iframe>
-      <p class="live-note" id="live-note">Live demo: the dashboard runs here.</p>
-      <aside class="notes">Blindfold on. "Find my mug." Talk over the screen: box, fingertip, the word, the distance. Then move the mug and repeat. Then pull the network cable and run it again. Fallback: play the recorded run.</aside>
-    </section>
-
-    <section class="slide" data-id="results" data-shots="off" data-dur="8">
-      <h2 class="head">Results</h2>
-      <div class="results" id="results">
-        <div class="res"><span class="res-n" id="res-base">–</span><span class="res-l">Unaided, median time to grab</span></div>
-        <div class="res"><span class="res-n" id="res-guided">–</span><span class="res-l">With guidance, median time to grab</span></div>
-        <div class="res"><span class="res-n" id="res-rate">–</span><span class="res-l">Guided trials that ended in a grab</span></div>
+    <section class="slide" data-id="problem" data-shots="dark,dark,dark" data-steps="3" data-enter="wipe" data-dur="12">
+      <div class="swap">
+        <div class="stat" data-only="1"><p class="stat-n">43M</p><p class="stat-l">people are blind</p></div>
+        <div class="stat" data-only="2"><p class="stat-n">41%</p><p class="stat-l">of their questions are “what is this?”</p></div>
+        <div class="stat" data-only="3"><p class="stat-n">56%</p><p class="stat-l">success with Meta glasses</p></div>
       </div>
-      <p class="fine" id="res-note">From trials.csv; fills in as trials are recorded.</p>
-      <aside class="notes">Read the three numbers. They update live from trials.csv.</aside>
+      <p class="fine swap">
+        <span data-only="1">Lancet Global Health, 2020</span>
+        <span data-only="2">Brady et al., CHI 2013</span>
+        <span data-only="3">Sridhar et al., ASSETS 2025: blind users retrieving objects. Be My AI: 86%.</span>
+      </p>
+      <aside class="notes">43M blind worldwide, 61M by 2050. 41%: VizWiz Social, 40,748 questions from 5,329 blind users. 56%: NaviSense study (ASSETS 2025, 12 blind or low-vision participants); Meta glasses 55.9% accuracy, Be My AI 85.7%.</aside>
     </section>
 
-    <section class="slide" data-id="local" data-shots="local,local,cut" data-steps="3" data-dur="8">
-      <h2 class="head">Why it runs locally</h2>
-      <ol class="points big">
-        <li data-step="1">Fast: words follow the hand with no round trip</li>
-        <li data-step="2">Private: a camera on your body never streams out</li>
-        <li data-step="3">Offline: we just pulled the cable, and it still worked</li>
+    <section class="slide" data-id="provide" data-shots="provide" data-enter="scale" data-dur="8">
+      <p class="poster quote">“Find my mug.”</p>
+      <aside class="notes">That's all the wearer says. Watch the hand: the word above it is what they hear. Hands-free, any object by name, no setup.</aside>
+    </section>
+
+    <section class="slide" data-id="others" data-shots="recede" data-enter="slide" data-dur="10">
+      <h2 class="head">They describe. We guide.</h2>
+      <ol class="vs">
+        <li><span class="vs-n">Meta glasses</span><span class="vs-r">a volunteer talks you there</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="No"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li><span class="vs-n">Be My AI</span><span class="vs-r">describes a photo</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="No"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li><span class="vs-n">Seeing AI</span><span class="vs-r">stops at arm's reach</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="No"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li><span class="vs-n">AIGuide</span><span class="vs-r">handheld, objects pre-scanned</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="No"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li class="us"><span class="vs-n">[Project name]</span><span class="vs-r">guides your hand, offline</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Yes"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></li>
       </ol>
-      <aside class="notes">On the third build the line to the cloud is cut, matching what they just saw live.</aside>
+      <p class="fine">Be My Eyes on Ray-Ban Meta, 2024; Microsoft Research, Find My Things; Lee et al., TACCESS 2022.</p>
+      <aside class="notes">Meta glasses: hands-free, "Hey Meta, Be My Eyes" calls a sighted volunteer who talks you through it; needs internet and a person; 56% retrieval accuracy in the ASSETS 2025 study. Be My AI sends a photo to the cloud and describes it. Seeing AI's Find My Things needs four videos per item and stops at arm's reach. AIGuide guides the hand, but handheld with pre-scanned objects. We guide the hand, hands-free, offline, any object by name.</aside>
     </section>
 
-    <section class="slide" data-id="close" data-shots="grab" data-dur="6">
-      <h2 class="poster small">Grab.</h2>
-      <p class="lede">[Project name]. Built in 24 hours on an ASUS Ascent GX10.</p>
-      <ul class="team">
-        <li>[Name]</li><li>[Name]</li><li>[Name]</li><li>[Name]</li>
-      </ul>
-      <p class="fine">Prior work we build on: AIGuide (Lee et al., Penn State, ACM TACCESS 2022) guided a hand with a handheld phone and pre-scanned objects.</p>
-      <aside class="notes">End on the green line. Thank the judges; open for questions.</aside>
+    <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="4" data-enter="drop" data-dur="10">
+      <h2 class="head">How it works</h2>
+      <div class="swap words">
+        <p class="word" data-only="1">See</p>
+        <p class="word" data-only="2">Find</p>
+        <p class="word" data-only="3">Measure</p>
+        <p class="word" data-only="4">Speak</p>
+      </div>
+      <aside class="notes">See: iPhone color + lidar to the GX10. Find: YOLO-World finds the mug, MediaPipe the fingertip. Measure: lidar turns both into 3D points. Speak: the biggest gap becomes one word.</aside>
+    </section>
+
+    <section class="slide" data-id="math" data-shots="vector" data-enter="stagger" data-dur="10">
+      <h2 class="head">The core loop</h2>
+      <ol class="math">
+        <li><span class="eq">p = d · K<sup>−1</sup> [u, v, 1]</span><span class="eq-l">pixel and lidar depth to 3D</span></li>
+        <li><span class="eq">e = p<sub>mug</sub> − p<sub>finger</sub></span><span class="eq-l">where the hand must go</span></li>
+        <li><span class="eq">say argmax |e<sub>i</sub>| &gt; 3 cm</span><span class="eq-l">one word: right, down, forward</span></li>
+        <li><span class="eq">|e| &lt; 5 cm for 0.3 s → grab</span><span class="eq-l">then “grab”</span></li>
+      </ol>
+      <aside class="notes">Median depth over a small patch, ignoring holes. Table plane by RANSAC to level the 3D view. Words at most twice a second. About 35 ms per frame on the GX10.</aside>
+    </section>
+
+    <section class="slide slide-live" data-id="live" data-shots="off" data-enter="fade" data-dur="12">
+      <iframe class="live" id="live" title="Live dashboard" tabindex="-1" data-src="/"></iframe>
+      <p class="live-note" id="live-note">Live demo</p>
+      <aside class="notes">Blindfold on. "Find my mug." Move the mug and repeat. Pull the network cable and run it again. Fallback: the recorded run.</aside>
+    </section>
+
+    <section class="slide" data-id="results" data-shots="grab" data-enter="zoom" data-dur="10">
+      <div class="duo">
+        <div class="stat"><p class="stat-n is-grab">99%</p><p class="stat-l">lidar + camera</p></div>
+        <div class="stat"><p class="stat-n">52%</p><p class="stat-l">camera only</p></div>
+      </div>
+      <p class="lede small">Reaches that ended on the mug</p>
+      <p class="fine">Simulated: 1,000 blindfold reaches through our real perception and guidance code.</p>
+      <aside class="notes">Same 1,000 mugs, starts and wearer movements in both. Lidar median miss 3.1 cm; camera only 5.8 cm, 1 in 10 off by over 15 cm. The killer for camera-only: hand and mug get different depth errors, so the gap never shrinks. Camera error sizes are our assumptions, not measured on the phone. Lidar struggles with glass and shiny things.</aside>
+    </section>
+
+    <section class="slide" data-id="local" data-shots="local,local,cut,grab" data-steps="4" data-enter="rise" data-dur="10">
+      <h2 class="head">Why the GX10</h2>
+      <div class="swap words">
+        <p class="word" data-only="1">Private</p>
+        <p class="word" data-only="2">All models, one box</p>
+        <p class="word" data-only="3">No internet</p>
+        <p class="word is-grab" data-only="4">Grab.</p>
+      </div>
+      <aside class="notes">Private: a camera in someone's home never streams out. Every model at once: YOLO-World, MediaPipe, Whisper and the 8B Cosmos Reason model all stay loaded in 128 GB of unified memory. No internet: we just pulled the cable. Steady ~35 ms loop, no cloud round trip. End on Grab; thank the judges.</aside>
     </section>
 
   </main>

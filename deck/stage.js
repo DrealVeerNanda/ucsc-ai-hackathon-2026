@@ -36,8 +36,8 @@ const SHOTS = {
   vector:    { pos: [-0.02, 1.0, -0.2], at: [0.0, 0.0, 0.48], shift: 0.2, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, axes: 1 } },
   speak:     { pos: [-0.34, 0.6, -0.3], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
   off:       { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.0, lv: { reveal: 1, dim: 1 } },
-  local:     { pos: [-0.5, 0.95, -0.7], at: [0.0, 0.15, 0.45], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, link: 1 } },
-  cut:       { pos: [-0.5, 0.95, -0.7], at: [0.0, 0.15, 0.45], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, link: 1, cut: 1 } },
+  local:     { pos: [-0.5, 0.95, -0.7], at: [0.0, 0.15, 0.45], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1 } },
+  cut:       { pos: [-0.5, 0.95, -0.7], at: [0.0, 0.15, 0.45], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1 } },
   grab:      { pos: [-0.25, 0.42, 0.12], at: [0.08, 0.06, 0.58], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, still: 1, grabbed: 1 } },
 };
 const LEVELS = ["reveal", "dim", "hand", "leg", "guide", "wander", "words", "frustum", "person", "sweep",
@@ -140,7 +140,7 @@ export function createStage(canvas, labels) {
 
   // a link up to "the cloud" that gets cut
   const linkMat = new THREE.LineDashedMaterial({ color: C.muted, dashSize: 0.03, gapSize: 0.02, transparent: true, opacity: 0 });
-  const CLOUD = new THREE.Vector3(-0.5, 0.95, 0.95);
+  const CLOUD = new THREE.Vector3(0.32, 0.62, 1.0); // upper right of the shot, clear of the text
   const link = new THREE.Line(new THREE.BufferGeometry().setFromPoints([CHEST.clone(), CLOUD.clone()]), linkMat);
   scene.add(link);
   const cloud = new THREE.Mesh(new THREE.SphereGeometry(0.05, 20, 14), new THREE.MeshBasicMaterial({ color: C.muted, wireframe: true, transparent: true, side: DS, opacity: 0 }));
@@ -161,7 +161,8 @@ export function createStage(canvas, labels) {
   // ?still snaps every level and the camera to the shot (screenshots, PDF export)
   const still = new URLSearchParams(location.search).has("still");
   const snap = () => reduced.matches || still;
-  let t0 = performance.now(), last = t0, sweepT = 0, word = "", wordT = 0;
+  let t0 = performance.now(), last = t0, sweepT = 0, word = "", wordT = 0, clear = 0;
+  const mvp = new THREE.Matrix4();
   const handPos = START.clone();
 
   function setShot(name) {
@@ -223,6 +224,12 @@ export function createStage(canvas, labels) {
     camera.lookAt(camAt);
     const w = canvas.clientWidth, h = canvas.clientHeight;
     camera.setViewOffset(w, h, -shift * w, 0, w, h);
+    camera.updateMatrixWorld();
+    scene.updateMatrixWorld();
+    mvp.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(scene.matrixWorld);
+    const M = mvp.elements;
+    // slides with text on the left: points fade out across the text column so type stays legible
+    clear += ((shot.shift > 0.05 ? 1 : 0) - clear) * (snap() ? 1 : 1 - Math.exp(-dt * 3));
 
     // points: scatter in, dim, or sweep in
     if (goal.sweep) sweepT = still ? 0.62 : Math.min(1.25, sweepT + dt / 3.2);
@@ -236,7 +243,13 @@ export function createStage(canvas, labels) {
       pos[j] = scatter[j] + (home[j] - scatter[j]) * e;
       pos[j + 1] = scatter[j + 1] + (home[j + 1] - scatter[j + 1]) * e;
       pos[j + 2] = scatter[j + 2] + (home[j + 2] - scatter[j + 2]) * e;
-      const b = (0.15 + 0.85 * e) * dim * (i >= nTable && lv.box > 0.5 ? 1.15 : 1);
+      let b = (0.15 + 0.85 * e) * dim * (i >= nTable && lv.box > 0.5 ? 1.15 : 1);
+      if (clear > 0.01) {
+        const px = pos[j], py = pos[j + 1], pz = pos[j + 2];
+        const sx = (M[0] * px + M[4] * py + M[8] * pz + M[12]) / (M[3] * px + M[7] * py + M[11] * pz + M[15]);
+        const f = Math.min(1, Math.max(0, ((sx + 1) / 2 - 0.4) / 0.22));
+        b *= 1 - clear * (1 - (0.04 + 0.96 * f * f * (3 - 2 * f)));
+      }
       col[j] = base[j] * b; col[j + 1] = base[j + 1] * b; col[j + 2] = base[j + 2] * b;
     }
     geo.attributes.position.needsUpdate = true;
