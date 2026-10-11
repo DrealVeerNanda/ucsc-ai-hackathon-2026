@@ -257,7 +257,7 @@ def short_words(sr: int, fast: float = 1.7) -> dict:
             if loud.size:
                 clip = clip[max(0, loud[0] - sr // 100):loud[-1] + sr // 50]
             out[f"word_{name}"] = clip
-            out[f"fast_{name}"] = speed_up(clip, fast, sr)
+            out[f"fast_{name}"] = speed_up(clip, fast, sr) if clip.size > 0.3 * sr else clip    # "up" is short enough as it is
     return out
 
 

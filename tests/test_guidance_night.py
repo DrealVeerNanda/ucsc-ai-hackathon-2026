@@ -488,7 +488,7 @@ def test_fast_words_are_one_word_and_short():
     words = audio_out.short_words(48000)
     assert {f"{kind}_{w}" for kind in ("word", "fast") for w in audio_out.DIRECTIONS} <= set(words)
     for w in audio_out.DIRECTIONS:
-        assert len(words[f"fast_{w}"]) < 0.75 * len(words[f"word_{w}"]) or len(words[f"word_{w}"]) < 0.25 * 48000
+        assert len(words[f"fast_{w}"]) < 0.75 * len(words[f"word_{w}"]) or len(words[f"word_{w}"]) <= 0.3 * 48000
         assert len(words[f"word_{w}"]) / 48000 < 0.7        # not the 1.4 s sentences of the newest clip set
         assert len(words[f"fast_{w}"]) / 48000 < 0.4
     assert audio_out.CLIP_TEXT["word_left"] == "left"
