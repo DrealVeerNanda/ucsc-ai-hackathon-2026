@@ -715,9 +715,11 @@ def test_a_nemotron_that_is_not_there_is_left_alone_for_a_while_and_then_tried_a
     assert voice.interpret("I am really thirsty") == ("pick", "water bottle") and len(calls) == 2
 
 
-def test_one_slow_answer_from_nemotron_does_not_switch_it_off(quiet):
+@pytest.mark.parametrize("failure", [socket.timeout("timed out"),
+                                     urllib.error.HTTPError("http://x", 500, "Internal Server Error", None, None)])
+def test_one_slow_or_failed_answer_from_nemotron_does_not_switch_it_off(quiet, failure):
     quiet.delenv("VOICE_LLM_URL")
-    answers = [socket.timeout("timed out"), json.dumps({"intent": "pick", "target": "water bottle"})]
+    answers = [failure, json.dumps({"intent": "pick", "target": "water bottle"})]
 
     def urlopen(req, timeout=None):
         a = answers.pop(0)
