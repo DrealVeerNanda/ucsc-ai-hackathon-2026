@@ -4,6 +4,7 @@ on, how long it takes to be useful again, and whether it got there by itself.
   python tools/fault_drill.py                    # every drill (about 25 minutes), a table at the end
   python tools/fault_drill.py --list             # what there is
   python tools/fault_drill.py camera_stops nemotron_slow     # only these
+  python tools/fault_drill.py --quick            # the ones a stage demo is most likely to meet (about 10 minutes)
   python tools/fault_drill.py --slow             # also the three-minute recording drill
 
 No phone, no sound, no window: the camera is tools/soak.py's fake one, the sound card plays to
@@ -315,6 +316,10 @@ def threads_fds(pid: int) -> tuple[int, int]:
 # Drills that share one pipeline. Each gets the rig settled: camera normal, a target set, frames flowing.
 
 SHARED, OWN, SLOW = {}, {}, set()
+# --quick: what a stage demo is most likely to meet, in the order the full run does them.
+QUICK = ["camera_stops", "camera_link_drops", "nemotron_slow", "cosmos_hangs", "stall_5s", "dash_client_never_reads",
+         "voice_idle_connection", "object_not_there", "request_in_every_state", "stop_sigint_recording",
+         "mic_error_then_fine", "earbuds_switch_hangs", "sound_card_stops", "stop_when_started_in_background"]
 
 
 def shared(fn):
@@ -595,7 +600,7 @@ def _say(rig: Rig, wav: bytes) -> float:
 def _measure(rig: Rig, wav: bytes | None) -> dict:
     """Frame rate, loop time and detector time over 8 s of undisturbed loop, then how long
     Whisper, Cosmos and Nemotron take for one request each."""
-    t = time.time()
+    t0 = t = time.time()
     time.sleep(8.0)
     frames = rig.window(t, t + 8.0)
     t = time.time()
@@ -620,14 +625,16 @@ def _measure(rig: Rig, wav: bytes | None) -> dict:
     return {"fps": st.get("fps", 0.0), "loop_p50": st.get("loop_p50"), "loop_p95": st.get("loop_p95"), "loop_max": st.get("loop_max"),
             "detector_p50": float(np.median(det)) if det else None, "hand_p50": float(np.median(hand)) if hand else None,
             "whisper_ms": ms("whisper"), "nemotron_ms": ms("nemotron"), "cosmos_list_ms": ms("cosmos.list"),
-            "nemotron_calls": len([e for e in events if e["name"] == "nemotron"])}
+            "nemotron_calls": len([e for e in events if e["name"] == "nemotron"]),
+            "sound_gaps": sum(e.get("underruns", 0) for e in rig.events(t0, "audio"))}
 
 
 def _fmt(m: dict) -> str:
     def f(v, unit=" ms"):
         return "-" if v is None else f"{v:.0f}{unit}"
     return (f"{m['fps']:.1f} fps, loop {f(m['loop_p50'])} (95%: {f(m['loop_p95'])}, max {f(m['loop_max'])}), detector {f(m['detector_p50'])}, "
-            f"hand {f(m['hand_p50'])}, Whisper {f(m['whisper_ms'])}, Nemotron {f(m['nemotron_ms'])}, Cosmos list {f(m['cosmos_list_ms'])}")
+            f"hand {f(m['hand_p50'])}, Whisper {f(m['whisper_ms'])}, Nemotron {f(m['nemotron_ms'])}, Cosmos list {f(m['cosmos_list_ms'])}, "
+            f"{m['sound_gaps']} sound blocks more than 10 ms late")
 
 
 GPU_HOG = ("import torch,time,sys\n"
@@ -1038,6 +1045,23 @@ def _switch_in_state(rig: Rig, want_state: str, setup, new_target: str, timeout_
         return (f"{want_state}: took the request after {looking['t'] - t:.1f} s, then STOPPED AND ASKED AGAIN"
                 + (" (it listed the table once more)" if again else "")), False
     return f"{want_state}: took the request after {looking['t'] - t:.1f} s", True
+
+
+@shared
+def object_not_there(rig: Rig) -> Result:
+    """The wearer asks for something that is not on the table (or was misheard), and then
+    says nothing more: with earbuds the microphone is only open while it waits for a request."""
+    t = rig.ask("banana")
+    cant = rig.wait(soak.event("say", text="I can't see that"), 20.0, t)
+    asked = rig.wait(lambda r: r.get("type") == "event" and r["name"] == "say" and "want" in r.get("text", "").lower(), 40.0, t)
+    time.sleep(1.0)
+    said = rig.said(t)
+    ok = asked is not None
+    told = "never said it could not see it" if cant is None else f'said "I can\'t see that" after {cant["t"] - t:.0f} s'
+    return Result("object_not_there", ok, None if asked is None else asked["t"] - t, ok,
+                  f"it {told}, " + (f"and asked what to grab instead after {asked['t'] - t:.0f} s" if ok else
+                                    "then went on searching in silence: 40 s later it had still not asked for another request "
+                                    "(only a key on the dashboard or a typed request gets it out)") + f". Said: {said}")
 
 
 @shared
@@ -1693,6 +1717,7 @@ if __name__ == "__main__":
     ap.add_argument("drills", nargs="*", help="which drills (default: all)")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--slow", action="store_true", help="include the drills that take minutes each")
+    ap.add_argument("--quick", action="store_true", help="only the drills for what is most likely on stage (about 10 minutes)")
     ap.add_argument("--base", type=int, default=18650, help="ports from here up are used (dashboard base+6, voice base+16, ...)")
     ap.add_argument("--recordings", nargs="+", default=["recordings/live_2025", "recordings/live_2148"])
     ap.add_argument("--out", help="folder for the results (default out/drills/DATE_TIME)")
@@ -1705,7 +1730,7 @@ if __name__ == "__main__":
     unknown = [d for d in a.drills if d not in everything]
     if unknown:
         sys.exit(f"[drill] no such drill: {', '.join(unknown)} (see --list)")
-    chosen = a.drills or list(everything)
+    chosen = a.drills or (QUICK if a.quick else list(everything))
     out_dir = Path(a.out or ROOT / "out" / "drills" / time.strftime("%Y%m%d_%H%M%S"))
     # Started with nohup or & this would ignore Ctrl-C, and a plain kill would leave the pipeline
     # it started running. Both now stop it and clean up.

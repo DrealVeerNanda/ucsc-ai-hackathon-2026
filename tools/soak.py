@@ -85,15 +85,29 @@ def silent_sink(mode: str = "auto", device=None, cfg=None):
     dt = block / mixer.cfg.sr
 
     def play():
-        due = time.monotonic()
+        import tracing
+        due = reported = time.monotonic()
+        blocks = late = 0
+        worst = 0.0
         while True:
+            t = time.perf_counter()
             mixer.render(block)
+            worst = max(worst, (time.perf_counter() - t) * 1000)
+            blocks += 1
             due += dt
-            wait = due - time.monotonic()
+            now = time.monotonic()
+            # A real card holds about 10 ms of sound (10.7 ms in the live runs). A block that is
+            # ready later than that would have been a gap in the wearer's ears.
+            late += now - due > 0.010
+            if now - reported >= 5.0:         # the same summary AudioEngine writes, so reports read alike
+                tracing.event("audio", render_max_ms=round(worst, 3), blocks=blocks, underruns=late)
+                blocks = late = 0
+                worst, reported = 0.0, now
+            wait = due - now
             if wait > 0:
                 time.sleep(wait)
             elif wait < -0.2:
-                due = time.monotonic()        # the process was stalled: carry on from now, like a card would
+                due = now                     # the process was stalled: carry on from now, like a card would
 
     threading.Thread(target=play, daemon=True, name="silent-card").start()
     return mixer

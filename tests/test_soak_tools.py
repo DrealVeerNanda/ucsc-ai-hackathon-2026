@@ -370,6 +370,7 @@ def test_every_drill_is_listed_once_and_described():
     assert len(names) == len(set(names)) and len(names) >= 40
     assert all((fn.__doc__ or "").strip() for fn in {**fault_drill.SHARED, **fault_drill.OWN}.values())
     assert fault_drill.SLOW <= set(names)
+    assert set(fault_drill.QUICK) <= set(names) - fault_drill.SLOW
 
 
 def test_table_counts_passes_failures_and_information():
