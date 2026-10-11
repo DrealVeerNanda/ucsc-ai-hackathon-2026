@@ -18,6 +18,8 @@ Settings by environment variable:
                                 after tools/check_pose.py says the pose is usable.
     PERCEPTION_DETECT_EVERY=1   run the detector on every Nth frame
     PERCEPTION_DEVICE=cuda|cpu  torch device for the detector (default: ultralytics picks)
+    PERCEPTION_HELPER=auto|off  when the detector cannot find the object, ask Cosmos for its box
+                                in the background (auto: only if tools/run_cosmos.sh is running)
     MODELS_DIR=PATH             where weights are kept (default: models/ in this repo)
 
 The detector and tracker wrappers are adapted from the RTHACK handguide target and hand modules.
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 import urllib.request
 from collections import deque
@@ -296,6 +299,9 @@ class PerceptionConfig:
     box_margin: float = 0.10     # hand inside the box grown by this fraction: the box shows the hand
     hand_patch: int = 6          # half-size in px of the depth patch at the fingertip
     max_hand_m: float = 0.90     # a hand farther from the camera than this is somebody else's
+    helper_after_s: float = 1.0  # detector has found nothing for this long: ask the helper (Cosmos)
+    helper_every_s: float = 1.5  # ...and not more often than this; doubles after each "not there"
+    helper_hold_s: float = 5.0   # trust a position from the helper this long without a newer one
     size_depth: bool = True      # no lidar on the hand (closer than about 20 cm): estimate its depth from its size
 
 
@@ -316,9 +322,51 @@ class _Average:
         self.buf.clear()
 
 
+class CosmosHelper:
+    """Asks Cosmos where the object is when the detector cannot find it. One question at a time,
+    on its own thread, so the loop never waits for the 0.6 to 2 s answer."""
+
+    def __init__(self, find=None):
+        if find is None:
+            import cosmos
+            find = cosmos.find
+        self._find = find
+        self._lock = threading.Lock()
+        self._busy = False
+        self._result = None
+
+    def idle(self) -> bool:
+        with self._lock:
+            return not self._busy
+
+    def request(self, frame: Frame, target: str) -> bool:
+        with self._lock:
+            if self._busy:
+                return False
+            self._busy = True
+        threading.Thread(target=self._run, args=(frame, target), daemon=True, name="cosmos-helper").start()
+        return True
+
+    def _run(self, frame: Frame, target: str):
+        try:
+            box = self._find(frame.rgb, target)["box"]
+        except Exception as e:
+            print(f"[perception] Cosmos helper failed: {e}", file=sys.stderr)
+            box = None
+        with self._lock:
+            self._result = (frame, target, box)
+            self._busy = False
+
+    def poll(self):
+        """(the frame that was asked about, target, box or None) once per answer, else None."""
+        with self._lock:
+            out, self._result = self._result, None
+            return out
+
+
 class Perception:
-    def __init__(self, detector=None, hands=None, cfg: PerceptionConfig | None = None):
-        self.detector, self.hands = detector, hands
+    def __init__(self, detector=None, hands=None, cfg: PerceptionConfig | None = None, helper=None):
+        self.detector, self.hands, self.helper = detector, hands, helper
         self.cfg = cfg or PerceptionConfig()
         self.target = None
         self._obj_avg = _Average(self.cfg.smooth, self.cfg.jump_m)
@@ -332,6 +380,10 @@ class Perception:
         self._anchor = None          # remembered object position, world frame if anchored else camera
         self._anchor_t = 0.0
         self._anchored = False       # is _anchor in world coordinates?
+        self._from_helper = False    # did _anchor come from the helper rather than the detector?
+        self._unseen_t = None        # since when the detector has found nothing
+        self._helper_t = -1e9        # when the helper was last asked
+        self._helper_gap = self.cfg.helper_every_s
         self._i = 0
         self._obj_avg.clear()
         self._hand_avg.clear()
@@ -388,6 +440,37 @@ class Perception:
         xyz = None if z is None else back_project(hand.tip[0], hand.tip[1], z, frame.K)
         return xyz, src, reach
 
+    def _ask_helper(self, frame: Frame, target: str, seen: bool, pose):
+        """Take in an answer from the helper if one has arrived, and ask again if the detector
+        is still blind. The answer is about an older frame: the position is read from that
+        frame's depth, and carried into the present through the poses when they are in use.
+        Without poses it is taken as it stands, which is right while the wearer stands still."""
+        cfg = self.cfg
+        if seen:
+            self._unseen_t = None
+        elif self._unseen_t is None:
+            self._unseen_t = frame.t
+        answer = self.helper.poll()
+        if answer is not None:
+            old, asked, box = answer
+            if asked == self.target and not seen:
+                p = box_xyz(box, old.depth, old.K) if box is not None else None
+                if p is not None and pose is not None:
+                    p = None if old.pose is None else old.pose[:3, :3] @ p + old.pose[:3, 3]
+                if p is not None:
+                    self._obj_avg.clear()
+                    self._anchor = self._obj_avg.add(p)
+                    self._anchor_t = frame.t
+                    self._from_helper = True
+                    self._box = box
+                    self._helper_gap = cfg.helper_every_s
+                else:
+                    self._helper_gap = min(2 * self._helper_gap, 8.0)   # not there: ask less often
+        if (not seen and frame.t - self._unseen_t >= cfg.helper_after_s
+                and frame.t - self._helper_t >= self._helper_gap and self.helper.idle()):
+            self._helper_t = frame.t
+            self.helper.request(frame, target)
+
     def locate(self, frame: Frame, target: str) -> Scene:
         cfg = self.cfg
         tracing.begin_frame(frame.t)
@@ -439,6 +522,8 @@ class Perception:
             self._anchor = None      # pose came or went: the remembered point is in the wrong frame
             self._obj_avg.clear()
         self._anchored = pose is not None
+        if self.helper is not None:
+            self._ask_helper(frame, target, seen, pose)
         covered = self._covered(self._box, hand)
         measured = box_xyz(self._box, frame.depth, frame.K) if seen and not covered else None
         if measured is None and seen and covered and self._anchor is None:
@@ -450,6 +535,7 @@ class Perception:
             p = measured if pose is None else pose[:3, :3] @ measured + pose[:3, 3]
             self._anchor = self._obj_avg.add(p)
             self._anchor_t = frame.t
+            self._from_helper = False
         elif self._anchor is not None and seen and covered:
             # Still detected under the hand, but the depth there is the hand's: keep the
             # remembered depth and only follow the box sideways.
@@ -461,10 +547,16 @@ class Perception:
             visible = True
         elif self._anchor is not None:
             limit = cfg.hold_pose_s if self._anchored else (cfg.hold_covered_s if covered else cfg.hold_s)
+            if self._from_helper:
+                limit = max(limit, cfg.helper_hold_s)
             if frame.t - self._anchor_t > limit:
                 self._anchor = None      # hidden for too long to trust
+                self._from_helper = False
                 self._obj_avg.clear()
                 self._box = None
+        tracing.put(object_from="detector" if measured is not None else
+                    ("cosmos" if self._from_helper and self._anchor is not None else
+                     ("memory" if self._anchor is not None else "nothing")))
         object_xyz = None
         if self._anchor is not None:
             object_xyz = self._anchor if pose is None else pose[:3, :3].T @ (self._anchor - pose[:3, 3])
@@ -512,7 +604,14 @@ def build(detector: str | None = None, hand: str | None = None) -> Perception:
             hands = MediaPipeHand()
     cfg = PerceptionConfig(use_pose=os.environ.get("PERCEPTION_USE_POSE", "") not in ("", "0"),
                            detect_every=int(os.environ.get("PERCEPTION_DETECT_EVERY", "1")))
-    return Perception(det, hands, cfg)
+    helper = None
+    if os.environ.get("PERCEPTION_HELPER", "auto") != "off":
+        import cosmos
+        if cosmos.available():
+            helper = CosmosHelper()
+            print("[perception] Cosmos is running: it will be asked when the detector cannot find the object")
+    tracing.meta(helper="cosmos" if helper is not None else "none")
+    return Perception(det, hands, cfg, helper)
 
 
 def locate(frame: Frame, target: str) -> Scene:
