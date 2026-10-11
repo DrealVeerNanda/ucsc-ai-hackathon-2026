@@ -340,15 +340,17 @@ The 3D view as the hero: where the hand is relative to the object, in one look.
 - **Note:** Faint Label bottom right ("View from behind you, 10 cm grid.", plus the assumed-tilt sentence when no table is found).
 
 ### Pitch Deck (second surface)
-Same world, staged. `deck/index.html`, `deck.css`, `deck.js`, `stage.js`; three.js r169 vendored in `deck/vendor` with its MIT license, so it runs offline. Mechanics informed by the standardphysics deck (github.com/Imhaohao/standardphysics, apps/web/src/components/deck).
-- **Persistent stage:** one three.js scene behind every slide: table points, the mug, the fingertip, the yellow leg, plus props raised per shot (camera frustum, sweep plane, axis split of the leg, a dashed link to a wireframe "cloud" that gets cut). Each slide lists a camera shot per build (`data-shots`); camera, look-at and every prop level ease toward the shot each frame, so moves between slides glide.
-- **Tracking labels:** HTML plates (Small, 3px) that follow projected 3D points and fade (250ms): the mug in white, "Chest camera" and "Cloud" on scrim in Muted (the cloud label struck through once cut), axis labels on scrim in white, and the spoken word riding above the hand in the display cut.
-- **Builds:** elements with `data-step` start hidden and rise 1.2vh while fading in (420ms; no translate under reduced motion). Slides cross-fade (out 320ms, in 420ms after 120ms).
-- **Stats and results:** Stat figures over Muted Body labels; results read live from `trials.csv` and show "–" until trials exist.
-- **Competitor table:** full-width slide on a scrim, Small type, 1px Rule rows; Muted header, white "Yes" (600), Faint "No", Muted partials. The product's own row is Grab Green with ground text, 700: the bounded exception to the Green Means Grab Rule.
-- **Placeholders:** dashed 2px Rule frames, 4/3, min(30vw, 52vh) wide, Faint Small text naming the missing asset ("Photo: wearer at a table with the chest mount"). Never a stock image or invented content.
-- **Modes:** `?still` snaps every level, the camera and all transitions (screenshots, PDF export); `?auto` advances each slide on its `data-dur` for recording. The cursor hides after 1.4s idle. Slide counter bottom right in Fine.
-- **Speaker notes:** N opens `notes.html` (760x560), synced over BroadcastChannel: current slide title in the display cut, an elapsed timer against the summed slide budget, the notes text, the next slide, and Back / Next buttons (white plate, ground text, 3px, Muted on hover, 2px white focus ring).
+Same world, staged, and extremely minimal: nine slides, one line or one number per build. `deck/index.html`, `deck.css`, `deck.js`, `stage.js`; three.js r169, the fonts and the icon live inside `deck/`, so any static server runs it offline. Mechanics informed by the standardphysics deck (github.com/Imhaohao/standardphysics, apps/web/src/components/deck).
+- **Persistent stage:** one three.js scene behind every slide: table points, the mug, the fingertip, the yellow leg, plus props raised per shot (camera frustum, sweep plane, axis split of the leg, object box). Each slide lists a camera shot per build (`data-shots`); camera, look-at and every prop level ease toward the shot each frame, so moves between slides glide. Cameras sit just behind the wearer's right shoulder and the scene is mirrored once, so "right" is always screen right.
+- **Clear text column:** on slides with left-hand text, points fade toward 4% brightness across the left 40-62% of the width, so type never sits on busy points. Text is full white; fine print is Muted, never Faint.
+- **Tracking labels:** HTML plates that follow projected 3D points: the mug in white, axis labels on scrim, and the spoken word above the hand on a white plate (green on Grab). Yellow stays the leg alone.
+- **Builds:** `data-step` builds accumulate (rise 1.2vh and fade, 420ms); `data-only` builds replace each other in place (one stat, one word at a time).
+- **Entrances, one per slide** (Veer asked for a different animation on each): rise, wipe (clip-path), scale-down from 1.12, slide-in from the right with staggered rows, drop from above, staggered equations, fade, zoom-up from 0.82. Under reduced motion every entrance is a fade.
+- **Big type:** stat figures at min(14vw, 24vh), single words at min(8vw, 14vh), the quote at min(8.5vw, 15vh), all in the display cut.
+- **Competitors:** a five-line list, not a table: tool name in the display cut, a two-to-four-word reason in Muted, one drawn cross in Faint. The product's own line is a Grab Green plate with green ink and a check: the bounded exception to the Green Means Grab Rule.
+- **Core loop slide:** four equations in the display cut, each with a Muted one-line gloss.
+- **Modes:** `?still` snaps every level, camera and animation (screenshots, PDF); `?auto` advances on each slide's `data-dur` (recording); `?dash=` points the live slide at a dashboard on another machine; with none reachable the live slide plays `media/demo-run.mp4` if present. The cursor hides after 1.4s idle; slide counter bottom right.
+- **Speaker notes:** N opens `notes.html`, synced over BroadcastChannel: slide title, an elapsed timer that appends "N s over" past the summed budget, the notes, the next slide, and Back / Next buttons.
 
 ## Do's and Don'ts
 
