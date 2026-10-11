@@ -161,7 +161,8 @@ class Heartbeat:
         self._seen = tracing.events_since(self._seen)[1]
         heard = self.heard or getattr(self.voice, "last_transcript", None)
         age = None if self.last_frame is None else now - self.last_frame
-        failing = {k: v for k, v in self.faults.failing(now).items() if v >= FAILING_S}
+        # While it waits for the wearer no other step runs, so none of them can be "still failing".
+        failing = {k: v for k, v in self.faults.failing(now).items() if v >= FAILING_S and (step != "listening" or k == "voice")}
         what = f"the {self.target}" if self.target else "nothing yet"
         if failing:
             worst = max(failing, key=failing.get)
@@ -430,15 +431,15 @@ def run(args, mods, beat: Heartbeat | None = None):
     class Camera:
         """Tells the wearer when the picture has gone and when it is back. Mid-reach, silence
         after the camera drops is the worst thing to hear: they cannot know to hold still."""
-        since, told, had = None, False, False
+        since, told, had, told_t = None, False, False, 0.0
 
         def missing(self, now: float):
             self.since = now if self.since is None else self.since
             say = getattr(mods.guidance, "say_text", None)
-            if not self.told and self.had and target and say and now - self.since >= CAMERA_LOST_S:
-                self.told = True
+            if self.had and target and say and now - self.since >= CAMERA_LOST_S and (not self.told or now - self.told_t >= 15.0):
                 tracing.event("camera", lost=True, after_s=round(now - self.since, 1))
-                attempt("guidance", say, "I have lost the camera. Hold still.")
+                attempt("guidance", say, "Still no camera. Hold still." if self.told else "I have lost the camera. Hold still.")
+                self.told, self.told_t = True, now
 
         def arrived(self):
             if self.told:
@@ -469,10 +470,10 @@ def run(args, mods, beat: Heartbeat | None = None):
         print(f"[main] carrying on with {target!r}: the run before this one stopped {age:.0f} s ago in the middle of it")
         tracing.event("resume", target=target, after_s=round(age, 1))
         say = getattr(mods.guidance, "say_text", None)
-        if say:
-            attempt("guidance", say, f"Still looking for the {target}.")
         if mods.reset:
             attempt("guidance", mods.reset, target)
+        if say:                                      # after reset: its "Looking" cuts off whatever is being said
+            attempt("guidance", say, f"Still looking for the {target}.")
         run.update(status="running", started=time.monotonic(), elapsed_s=0.0, target=target)
         beat.target = target
         beat.now("loop")
@@ -495,6 +496,8 @@ def run(args, mods, beat: Heartbeat | None = None):
                 target = None
                 time.sleep(max(0.0, pause - (time.monotonic() - t)))
         print(f"[main] target: {target!r}" + (f" (was {prev!r})" if prev else ""))
+        if dash:
+            dash.pop_keys()                          # "new target" pressed while it was asking: this answer is that target
         if mods.reset:
             attempt("guidance", mods.reset, target)
         if mods.fake_locate:
@@ -516,7 +519,8 @@ def run(args, mods, beat: Heartbeat | None = None):
         return True
 
     def handle_web_keys() -> bool:
-        return all(handle_key(k) for k in dash.pop_keys()) if dash else True
+        keys = dash.pop_keys() if dash else []
+        return all(handle_key(k) for k in dict.fromkeys(keys))      # "new target" pressed twice is asked once
 
     def redraw() -> str | None:
         """No new picture this turn: keep the views alive with the last one."""

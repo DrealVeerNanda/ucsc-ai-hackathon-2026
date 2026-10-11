@@ -180,9 +180,12 @@ def test_heartbeat_reports_a_step_that_keeps_failing_and_a_missing_camera(tmp_pa
     beat.faults.since["perception"] = time.monotonic() - 30
     s = beat.snapshot()
     assert s["state"] == "failing" and s["failing"]["perception"] >= 30 and "cuda gone" in s["message"]
-    beat.at = ("listening", time.monotonic())          # a voice module that keeps failing is not "waiting for the wearer"
-    assert beat.snapshot()["state"] == "failing"
-    beat.faults.ok("perception")
+    beat.at = ("listening", time.monotonic())          # no frame is looked at while it waits for the wearer, so
+    assert beat.snapshot()["state"] == "listening"     # perception cannot be "still failing": that would get it restarted
+    beat.faults.failed("voice", RuntimeError("no microphone"))
+    beat.faults.since["voice"] = time.monotonic() - 30
+    assert beat.snapshot()["state"] == "failing"       # a voice module that keeps failing is not "waiting for the wearer"
+    beat.faults.ok("voice")
     assert beat.snapshot()["state"] == "listening"
 
 

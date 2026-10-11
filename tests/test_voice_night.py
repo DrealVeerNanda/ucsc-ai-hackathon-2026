@@ -881,7 +881,8 @@ def test_no_terminal_to_type_into_is_said_once_and_waited_out(quiet):
     naps = []
     quiet.setenv("VOICE_MODE", "type")
     quiet.setenv("VOICE_AUTO_LIST", "0")
-    quiet.setattr(voice.time, "sleep", lambda s: naps.append(s))
+    me = threading.current_thread()         # other tests' leftover threads sleep too: count only this one's naps
+    quiet.setattr(voice.time, "sleep", lambda s: naps.append(s) if threading.current_thread() is me else None)
 
     def closed(prompt=""):
         raise EOFError

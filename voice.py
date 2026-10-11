@@ -99,7 +99,8 @@ SILENCE_REMINDERS_S = (20.0, 60.0, 180.0)   # gaps before "I'm listening"; the l
 # Telling the wearer from the room, measured through AirPods in the hall on 10 October: the wearer's
 # requests came in at 0.03 to 0.09 (RMS of the cut-out recording) and lasted 2 to 4 s; people standing
 # further off 0.006 to 0.012; a conversation next to the wearer was as loud as a request but 5 to 14 s long.
-REQUEST_MAX_S = 6.0         # longer than this is not a request: it is dropped before Whisper hears it
+REQUEST_MAX_S = 7.5         # longer than this is not a request: it is dropped before Whisper hears it. A hesitant
+                            # "um, okay, can you please find me the... blue cup" is 6.4 s; talk in the hall ran 7.7 s and up
 CLIP_MAX_S = 8.0            # no recording runs longer than this, however long the hall goes on
 LOUD_ROOM = 0.025           # a voice has to be 2.5 times the room; in a loud room, no more than this (or 1.5 times the room)
 WEARER_LEVEL = 0.015        # quieter than this is trusted only when it names something that was just listed
@@ -875,6 +876,8 @@ def from_the_wearer(text: str, level: float) -> bool:
     clean = _plain(text)
     if _ORDINAL.match(clean) or _LIST.search(clean):
         return True
+    if len(last_objects) == 1 and _YES.match(clean):         # "Do you want it?" was the question: "yes" answers it
+        return True
     said = set(clean.split())
     return any(said & set(name.split()) for name in last_objects)
 
@@ -1108,7 +1111,6 @@ class Headset:
         if self._switch(self.headset) is False:
             raise MicLost("the earbuds did not go into headset mode")
         self._match_volume()
-        self.history.clear()              # a different microphone state: measure the room afresh
         self._ran_on = False
 
     def close(self):
@@ -1167,17 +1169,21 @@ class Headset:
         has been missing for ten seconds. Two of us cutting them off would undo each other's
         work, so here it only waits, for a bounded time, until stereo is back."""
         global _switch_t
-        t0, ok = time.monotonic(), False
+        t0, ok, gone = time.monotonic(), False, False
         tracing.event("headset", to="stereo", waiting_on="keeper")
         print("[voice] the earbuds did not go back to stereo; waiting for the launcher's keeper to reconnect them", file=sys.stderr)
         while not ok and time.monotonic() - t0 < KEEPER_WAIT_S:
             time.sleep(0.5)
             found = Headset.find()
             if found is None:
+                gone = True
                 continue                                  # the keeper has just disconnected them
-            if found.device != self.device:               # ...and they are back, under a new number
+            if gone or found.device != self.device:       # ...and they are back, perhaps under a new number
                 self.device, self.headset, self.stereo = found.device, found.headset, found.stereo
                 _switch_t = time.monotonic()              # no switch of ours while they are still coming up
+                gone = False
+                ok = self._switch(self.stereo) is not False    # they can come back in headset mode: ask for stereo
+                continue
             ok = self.mode() == self.stereo
         tracing.event("headset", to="stereo", keeper=True, ok=ok, ms=round((time.monotonic() - t0) * 1000))
         return ok
@@ -1501,6 +1507,9 @@ class WebMic:
                 _ask_next = False
                 wait.look()               # on its own thread, while the earbuds change mode
             buds = self._look_for_headset()
+            if buds is not None and self._find_headset and buds.mode() is None:
+                self.headset = None       # they reconnected during the reach: the number held here is nobody's now
+                buds = self._look_for_headset()
             self._open(buds)              # before the question: an answer given at once must not fall in the switch
             self.status.update(option_families())
             beeped = -1
