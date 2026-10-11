@@ -107,7 +107,10 @@ class Setup:
 
     @property
     def bridge(self) -> Path:
-        return self.root / "tools" / "phone_bridge.py"
+        """The phone bridge's script. With PROPRIO_BRIDGE=0 it is a path that does not exist, so
+        everything here behaves as before there was a bridge: the pipeline reads the phone
+        itself. The way back if the bridge and the real phone do not get on."""
+        return self.root / "tools" / ("phone_bridge.py" if self.env.get("PROPRIO_BRIDGE", "1") != "0" else "phone_bridge.off")
 
     @property
     def nemotron_url(self) -> str:
@@ -177,9 +180,10 @@ def phone(s: Setup, bridge_note: str = "") -> list[dict]:
 
     title = "Phone is streaming"
     if not s.bridge.exists():
-        stream = line("phone_stream", title, AMBER, "This checkout has no phone bridge (tools/phone_bridge.py), so the stream cannot "
-                      "be checked before the start. Open PathOn on the phone and tap Start; the pipeline connects by itself.",
-                      required=False)
+        why = ("The phone bridge is switched off (PROPRIO_BRIDGE=0)" if s.env.get("PROPRIO_BRIDGE", "1") == "0"
+               else "This checkout has no phone bridge (tools/phone_bridge.py)")
+        stream = line("phone_stream", title, AMBER, f"{why}, so the stream cannot be checked before the start. Open PathOn "
+                      "on the phone and tap Start; the pipeline connects by itself.", required=False)
     elif st is None:
         stream = line("phone_stream", title, RED, "The phone bridge has not reported yet (out/status/phone.json is missing). "
                       + (bridge_note or "It is started with this page; give it a few seconds."))

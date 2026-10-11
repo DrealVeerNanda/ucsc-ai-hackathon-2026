@@ -449,6 +449,7 @@ class Supervisor:
             # mid-run; a pipeline that is killed leaves .part files that stream.pack() finishes.
             self.record_dir = self.root / "recordings" / time.strftime("demo_%Y%m%d_%H%M%S")
             env.update(STREAM_RECORD=str(self.record_dir.relative_to(self.root)), STREAM_RECORD_SECONDS=str(RECORD_S))
+            env.setdefault("STREAM_RECORD_VIDEO", "rgb.mkv")     # readable even if the pipeline is killed outright
         return env
 
     def start(self, anyway: bool = False) -> tuple[bool, str]:
