@@ -32,13 +32,13 @@ const SHOTS = {
   query:   { pos: [-0.22, 0.4, 0.1], at: [-0.06, 0.05, 0.6], shift: 0.22, lv: { reveal: 0.8, dim: 0.4, q: 1 } },
   phone:   { pos: [-0.55, 0.7, -0.7], at: [0.0, 0.22, 0.25], shift: 0.22, lv: { reveal: 1, dim: 0.55, frustum: 1 } },
   // the ask: low and close, the hand moving, a speech bubble with each word
-  ask:     { pos: [-0.3, 0.4, 0.0], at: [-0.02, 0.08, 0.5], shift: 0.27, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
+  ask:     { pos: [-0.36, 0.45, -0.1], at: [-0.02, 0.08, 0.5], shift: 0.0, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
   // competitors: the scene sinks far back behind the list
   recede:  { pos: [-0.9, 1.6, -1.5], at: [0.0, 0.0, 0.5], shift: 0.25, lv: { reveal: 1, dim: 0.85 } },
   // how it works, one look per word
   sweep:   { pos: [-0.43, 0.85, -0.55], at: [0.0, 0.1, 0.45], shift: 0.16, lv: { sweep: 1, frustum: 1 } },
-  found:   { pos: [-0.38, 0.75, -0.45], at: [0.05, 0.05, 0.5], shift: 0.16, lv: { reveal: 1, frustum: 1, box: 1, hand: 1, still: 1 } },
-  vector:  { pos: [-0.5, 0.55, 0.05], at: [0.0, 0.08, 0.48], shift: 0.2, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, axes: 1 } },
+  found:   { pos: [-0.36, 0.6, -0.3], at: [0.05, 0.08, 0.45], shift: 0.18, lv: { reveal: 1, box: 1, hand: 1, still: 1, tip: 1 } },
+  vector:  { speed: 2.6, pos: [-0.5, 0.55, 0.05], at: [0.0, 0.08, 0.48], shift: 0.2, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, axes: 1 } },
   speak:   { pos: [-0.3, 0.35, 0.05], at: [-0.05, 0.15, 0.4], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, big: 1 } },
   // core loop: straight overhead, a coordinate gizmo at the fingertip
   plan:    { pos: [-0.02, 1.15, 0.35], at: [0.0, 0.0, 0.5], shift: 0.22, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, gizmo: 1 } },
@@ -47,8 +47,8 @@ const SHOTS = {
   finale:  { pos: [-0.5, 0.6, -0.45], at: [-0.05, 0.05, 0.55], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, still: 1, grabbed: 1 } },
   off:     { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.0, lv: { reveal: 1, dim: 1 } },
   // results: overhead on the mug, where reaches ended
-  land1:   { pos: [-0.06, 0.55, 0.4], at: [-0.08, 0.0, 0.63], shift: 0.3, lv: { reveal: 1, dim: 0.85, land1: 1, ring: 1 } },
-  land2:   { pos: [-0.06, 0.55, 0.4], at: [-0.08, 0.0, 0.63], shift: 0.3, lv: { reveal: 1, dim: 0.85, land1: 1, land2: 1, ring: 1 } },
+  camonly: { pos: [-0.06, 0.55, 0.4], at: [-0.08, 0.0, 0.63], shift: 0.3, lv: { reveal: 1, dim: 0.85, land2: 1, ring: 1 } },
+  both:    { pos: [-0.06, 0.55, 0.4], at: [-0.08, 0.0, 0.63], shift: 0.3, lv: { reveal: 1, dim: 0.85, land1: 1, land2: 1, ring: 1 } },
   // why the GX10, one look per reason
   dome:    { pos: [-1.2, 1.1, -1.4], at: [0.0, 0.2, 0.5], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, dome: 1, gx: 1 } },
   boxed:   { pos: [-0.8, 0.5, -0.38], at: [-0.32, 0.03, 0.22], shift: 0.2, lv: { reveal: 1, dim: 0.6, gx: 1 } },
@@ -56,7 +56,7 @@ const SHOTS = {
   cut:     { pos: [-0.95, 0.8, -0.7], at: [-0.4, 0.16, 0.5], shift: 0.18, lv: { reveal: 1, gx: 1, link: 1, cut: 1, hand: 1, leg: 1, guide: 1 } },
 };
 const LEVELS = ["reveal", "dim", "hand", "leg", "guide", "wander", "words", "frustum", "sweep", "box",
-  "still", "axes", "link", "cut", "grabbed", "big", "gizmo", "land1", "land2", "ring", "dome", "gx", "fast", "q", "motors", "all"];
+  "still", "axes", "link", "cut", "grabbed", "big", "gizmo", "land1", "land2", "ring", "dome", "gx", "fast", "q", "motors", "all", "tip"];
 
 export function createStage(canvas, labels) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -132,7 +132,28 @@ export function createStage(canvas, labels) {
   box.position.set(MUG.x, 0.055, MUG.z);
   scene.add(box);
 
-  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.014, 24, 16), new THREE.MeshBasicMaterial({ color: C.text, transparent: true, side: DS }));
+  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.007, 16, 12), new THREE.MeshBasicMaterial({ color: C.text, transparent: true, side: DS }));
+  // the reaching hand as lidar would see it: points on a palm-down right hand, index finger out,
+  // the fingertip (the point we track) at the origin. x = wearer's right, z = forward.
+  const handPts = [];
+  const tube = (x0, y0, z0, x1, y1, z1, r, n) => {
+    for (let i = 0; i < n; i++) {
+      const k = Math.random(), a = Math.random() * Math.PI * 2;
+      handPts.push(x0 + (x1 - x0) * k + r * Math.cos(a), y0 + (y1 - y0) * k + r * Math.sin(a), z0 + (z1 - z0) * k);
+    }
+  };
+  tube(0, 0, -0.004, 0, 0.004, -0.075, 0.0075, 170);            // index
+  tube(0.019, -0.006, -0.04, 0.02, 0.004, -0.095, 0.0078, 130);  // middle, curled under
+  tube(0.036, -0.008, -0.05, 0.037, 0.003, -0.1, 0.0074, 120);   // ring
+  tube(0.051, -0.008, -0.065, 0.052, 0.0, -0.1, 0.0065, 100);    // little
+  tube(-0.024, -0.008, -0.06, -0.016, -0.002, -0.105, 0.0085, 110); // thumb
+  for (let i = 0; i < 420; i++) {                                   // palm, a flat slab
+    handPts.push(-0.012 + Math.random() * 0.072, (Math.random() < 0.5 ? -1 : 1) * 0.011 + (Math.random() - 0.5) * 0.004, -0.1 - Math.random() * 0.085);
+  }
+  tube(0.02, 0, -0.185, 0.02, 0.005, -0.25, 0.028, 220);           // wrist
+  const handCloud = new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(handPts, 3)),
+    new THREE.PointsMaterial({ size: 0.0045, color: C.text, transparent: true, opacity: 0 }));
+  scene.add(handCloud);
   scene.add(hand);
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.022, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, side: DS, opacity: 0.5 }));
   shadow.rotation.x = -Math.PI / 2;
@@ -222,7 +243,7 @@ export function createStage(canvas, labels) {
   // ?still snaps every level and the camera to the shot (screenshots, PDF export)
   const still = new URLSearchParams(location.search).has("still");
   const snap = () => reduced.matches || still;
-  let t0 = performance.now(), last = t0, sweepT = 0, word = "", wordT = 0, clear = 0, settle = 1;
+  let t0 = performance.now(), last = t0, sweepT = 0, word = "", wordT = 0, clear = 0, settle = 1, guideT = 0;
   const mvp = new THREE.Matrix4();
   const handPos = START.clone();
 
@@ -231,6 +252,7 @@ export function createStage(canvas, labels) {
     for (const k of LEVELS) goal[k] = shot.lv[k] || 0;
     if (shot.lv.sweep) sweepT = 0;
     t0 = performance.now();
+    guideT = 0;
   }
 
   function resize() {
@@ -244,9 +266,9 @@ export function createStage(canvas, labels) {
 
   // reach loop: a guided hand moves to the mug in steps (one axis at a time, like the words)
   function guidedHand(t) {
-    const cycle = 7.5, u = (t % cycle) / cycle;
+    const cycle = 9, u = (t % cycle) / cycle;
     const err = new THREE.Vector3().subVectors(GRAB_AT, START);
-    const legs = [[0, 0.0, 0.22], [1, 0.22, 0.42], [2, 0.42, 0.72]]; // x, then y, then z
+    const legs = [[0, 0.0, 0.26], [1, 0.26, 0.46], [2, 0.46, 0.74]]; // x, then y, then z
     const p = START.clone();
     let say = "";
     for (const [axis, a, b] of legs) {
@@ -255,8 +277,8 @@ export function createStage(canvas, labels) {
       p.setComponent(axis, START.getComponent(axis) + err.getComponent(axis) * e);
       if (u >= a && u < b) say = ["Right", err.y < 0 ? "Down" : "Up", "Forward"][axis];
     }
-    if (u >= 0.72) say = "Grab";
-    return { p, say, grabbed: u >= 0.72 };
+    if (u >= 0.74) say = "Grab";
+    return { p, say, grabbed: u >= 0.74 };
   }
   function wanderHand(t) {
     return new THREE.Vector3(-0.05 + 0.28 * Math.sin(t * 0.37) * Math.cos(t * 0.13), 0.14 + 0.06 * Math.sin(t * 0.71), 0.5 + 0.22 * Math.sin(t * 0.23 + 1.3));
@@ -275,15 +297,17 @@ export function createStage(canvas, labels) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     const t = (now - t0) / 1000;
-    const fast = snap() ? 1 : 1 - Math.exp(-dt * 3.2);
+    const pace = shot.speed || 1;
+    const fast = snap() ? 1 : 1 - Math.exp(-dt * 3.2 * pace);
+    if (settle > 0.9) guideT += dt * (lv.fast > 0.5 ? 1.8 : 1);
     for (const k of LEVELS) lv[k] += (goal[k] - lv[k]) * fast;
 
     const before = camPos.clone();
-    camPos.lerp(new THREE.Vector3(...shot.pos), snap() ? 1 : 1 - Math.exp(-dt * 1.6));
+    camPos.lerp(new THREE.Vector3(...shot.pos), snap() ? 1 : 1 - Math.exp(-dt * 1.6 * pace));
     const speed = before.distanceTo(camPos) / Math.max(dt, 1e-3);
     settle += ((speed < 0.06 ? 1 : 0) - settle) * (snap() ? 1 : 1 - Math.exp(-dt * 8));
-    camAt.lerp(new THREE.Vector3(...shot.at), snap() ? 1 : 1 - Math.exp(-dt * 1.6));
-    shift += (shot.shift - shift) * (snap() ? 1 : 1 - Math.exp(-dt * 1.6));
+    camAt.lerp(new THREE.Vector3(...shot.at), snap() ? 1 : 1 - Math.exp(-dt * 1.6 * pace));
+    shift += (shot.shift - shift) * (snap() ? 1 : 1 - Math.exp(-dt * 1.6 * pace));
     camera.position.copy(camPos);
     camera.lookAt(camAt);
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -330,9 +354,11 @@ export function createStage(canvas, labels) {
     let say = "", grabbed = lv.grabbed > 0.5;
     if (lv.wander > 0.5) handPos.lerp(wanderHand(now / 1000), 0.08);
     else if (lv.still > 0.5 || reduced.matches) handPos.lerp(lv.grabbed > 0.5 ? GRAB_AT : START, still ? 1 : 0.08);
-    else if (lv.guide > 0.5) { const g = guidedHand(still ? 2.3 : t * (lv.fast > 0.5 ? 1.8 : 1)); handPos.copy(g.p); say = g.say; grabbed = grabbed || g.grabbed; }
+    else if (lv.guide > 0.5) { const g = guidedHand(still ? 2.3 : guideT); handPos.copy(g.p); say = g.say; grabbed = grabbed || g.grabbed; }
     hand.position.copy(handPos);
     hand.material.opacity = lv.hand;
+    handCloud.position.copy(handPos);
+    handCloud.material.opacity = 0.9 * lv.hand;
     shadow.position.set(handPos.x, 0.0015, handPos.z);
     shadow.material.opacity = 0.5 * lv.hand;
     drop.geometry.setFromPoints([handPos, new THREE.Vector3(handPos.x, 0, handPos.z)]);
@@ -408,6 +434,7 @@ export function createStage(canvas, labels) {
     place(L.mug, MUG_TOP, Math.max(lv.box, lv.words * 0.9, lv.axes), -18, -34);
     place(L.you, CHEST, lv.frustum, -14, -30);
     place(L.q, MUG_TOP, lv.q, -10, -110);
+    place(L.tip, handPos, lv.tip, -40, 26);
     // four vibration motors around the wrist, buzzing one at a time (why not vibration)
     (L.motors || []).forEach((el, k) => {
       const [dx, dy] = [[-18, -96], [-18, 60], [60, -18], [-96, -18]][k];

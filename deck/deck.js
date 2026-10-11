@@ -9,7 +9,7 @@ const stage = createStage($("stage"), {
   word: $("lab-word"), mug: $("lab-mug"), you: $("lab-you"), cloud: $("lab-cloud"),
   ax: $("lab-ax"), ay: $("lab-ay"), az: $("lab-az"),
   gx10: $("lab-gx10"), gxx: $("lab-gxx"), gxy: $("lab-gxy"), gxz: $("lab-gxz"),
-  q: $("lab-q"),
+  q: $("lab-q"), tip: $("lab-tip"),
   motors: [...document.querySelectorAll(".lab-motor")],
 });
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("deck") : null;
@@ -295,6 +295,12 @@ function autoplay() {
     autoplay();
   }, per);
 }
+
+// typeset the core-loop equations (KaTeX is vendored and loaded before this module)
+document.querySelectorAll("[data-tex]").forEach((el) => {
+  if (window.katex) window.katex.render(el.dataset.tex, el, { throwOnError: false });
+  else el.textContent = el.dataset.tex;
+});
 
 show(...parseHash());
 if (auto) { started = Date.now(); autoplay(); }

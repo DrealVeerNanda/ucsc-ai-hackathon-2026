@@ -94,6 +94,7 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 .lab-gx { background: var(--scrim); color: var(--text); }
 .lab-motor { width: 36px; height: 36px; padding: 0; border: 3px solid var(--muted); border-radius: 50%; background: transparent; }
 .lab-motor.is-on { border-color: var(--text); scale: 1.35; }
+.lab-tip { background: var(--text); color: var(--ground); }
 .lab-q { background: var(--text); color: var(--ground); font: 700 min(5vw, 9vh)/1 var(--display); padding: 0.15em 0.4em; }
 .lab-word.is-grab { background: var(--grab); color: var(--on-grab); }
 .lab-mug { background: var(--text); color: var(--ground); }
@@ -150,26 +151,30 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 
 .math { list-style: none; padding: 0; display: grid; gap: 3vh; }
 .math li { display: grid; gap: 0.6vh; }
-.eq { font: 700 var(--t-lede)/1.1 var(--display); }
+.eq { font-size: var(--t-lede); color: var(--text); }
+.eq .katex { font-size: 1.15em; }
 .eq sub, .eq sup { font-size: 0.6em; line-height: 0; }
 .eq-l { font-size: var(--t-body); color: var(--muted); }
 
-/* competitors: one line each, one mark */
-.vs { list-style: none; padding: 0; display: grid; gap: 0; width: min(46vw, 90vh); }
+/* competitors: one tool per Enter, what it does and its gap; ours last */
+.vs { list-style: none; padding: 0; display: grid; width: min(50vw, 96vh); }
 .vs li {
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-areas: "n mk" "r mk";
+  grid-template-areas: "n mk" "w mk" "r mk";
   align-items: center;
   column-gap: 2vw;
-  padding: 1.7vh 0;
+  padding: 1.5vh 0;
   border-bottom: 1px solid var(--rule);
 }
 .vs-n { grid-area: n; font: 700 var(--t-lede)/1.1 var(--display); }
-.vs-r { grid-area: r; font-size: var(--t-small); color: var(--muted); }
+.vs-w { grid-area: w; font-size: var(--t-small); color: var(--muted); }
+.vs-r { grid-area: r; font-size: var(--t-small); font-weight: 600; color: var(--text); }
 .vs .mk { grid-area: mk; width: min(2.6vw, 4.6vh); height: min(2.6vw, 4.6vh); fill: none; stroke: var(--faint); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.vs .mk path { stroke-dasharray: 40; stroke-dashoffset: 0; transition: stroke-dashoffset 450ms ease-out 250ms; }
+.vs li.is-later .mk path { stroke-dashoffset: 40; transition: none; }
 .vs li.us { border-bottom: 0; padding: 1.7vh 1.2vw; margin-top: 1vh; background: var(--grab); border-radius: var(--radius); }
-.vs li.us .vs-n, .vs li.us .vs-r { color: var(--on-grab); }
+.vs li.us .vs-n, .vs li.us .vs-w, .vs li.us .vs-r { color: var(--on-grab); }
 .vs li.us .mk { stroke: var(--on-grab); stroke-width: 2.8; }
 
 .team { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 1.2vh 2.4vw; font: 600 var(--t-body)/1.2 var(--font); }
@@ -182,23 +187,6 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 .curtain .half.top { top: 0; }
 .curtain .half.bottom { bottom: 0; }
 .is-still .curtain { display: none; }
-
-/* competitors: rows arrive one by one, each cross draws itself, our row lands last */
-.slide.is-on .vs li { animation: row-in 500ms var(--ease) both; }
-.slide.is-on .vs li:nth-child(2) { animation-delay: 140ms; }
-.slide.is-on .vs li:nth-child(3) { animation-delay: 280ms; }
-.slide.is-on .vs li:nth-child(4) { animation-delay: 420ms; }
-.slide.is-on .vs li.us { animation: row-land 600ms var(--ease) 800ms both; }
-.vs .mk path { stroke-dasharray: 40; stroke-dashoffset: 0; }
-.slide.is-on .vs li .mk path { animation: draw 450ms ease-out both; }
-.slide.is-on .vs li:nth-child(1) .mk path { animation-delay: 350ms; }
-.slide.is-on .vs li:nth-child(2) .mk path { animation-delay: 490ms; }
-.slide.is-on .vs li:nth-child(3) .mk path { animation-delay: 630ms; }
-.slide.is-on .vs li:nth-child(4) .mk path { animation-delay: 770ms; }
-.slide.is-on .vs li.us .mk path { animation-delay: 1250ms; }
-@keyframes row-in { from { opacity: 0; translate: -4vw 0; } }
-@keyframes row-land { from { opacity: 0; scale: 1.18; } }
-@keyframes draw { from { stroke-dashoffset: 40; } }
 
 /* how it works: words roll up like a counter */
 .roll { overflow: hidden; }
@@ -218,7 +206,8 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 .stat-n.sm { font-size: min(10vw, 17vh); }
 
 @media (prefers-reduced-motion: reduce) {
-  .slide.is-on .vs li, .slide.is-on .vs li .mk path, .slide.is-on .write li { animation: none; }
+  .slide.is-on .write li { animation: none; }
+  .vs .mk path { transition: none; }
   .roll [data-only], .roll [data-only].is-off { translate: none; }
 }
 .is-still .slide * { animation: none !important; }

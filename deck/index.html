@@ -9,7 +9,9 @@
   <meta name="description" content="Three-minute pitch: spoken directions guide a blind person's hand to an object, all on an ASUS Ascent GX10.">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preload" href="fonts/barlow-semi-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
   <link rel="stylesheet" href="deck.css">
+  <script src="vendor/katex/katex.min.js" defer></script>
 </head>
 <body>
   <canvas id="stage" class="stage" aria-hidden="true"></canvas>
@@ -19,6 +21,7 @@
     <span class="lab lab-you" id="lab-you">Chest camera</span>
     <span class="lab lab-cloud" id="lab-cloud">Internet</span>
     <span class="lab lab-q" id="lab-q">?</span>
+    <span class="lab lab-tip" id="lab-tip">Fingertip</span>
     <span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span>
     <span class="lab lab-gx" id="lab-gx10">GX10</span>
     <span class="lab lab-axis" id="lab-gxx">x right</span>
@@ -40,46 +43,39 @@
     <section class="slide" data-id="problem" data-shots="fog,query,phone" data-steps="2" data-trans="lights" data-dur="12">
       <div class="swap">
         <div class="stat" data-only="0"><p class="stat-n" data-count="43" data-suffix="M">43M</p><p class="stat-l">people are blind</p></div>
-        <div class="stat" data-only="1"><p class="stat-n" data-count="41" data-suffix="%">41%</p><p class="stat-l">of their questions are “what is this?”</p></div>
-        <div class="stat" data-only="2"><p class="stat-n" data-count="4250" data-prefix="$" data-group>$4,250</p><p class="stat-l">for a wearable AI camera built for them</p></div>
+        <div class="stat" data-only="1"><p class="stat-n">#1</p><p class="stat-l">everyday challenge: finding a dropped or misplaced thing</p></div>
+        <div class="stat" data-only="2"><p class="stat-n" data-count="68" data-suffix="%">68%</p><p class="stat-l">of their requests for help needed an answer within 10 minutes</p></div>
       </div>
       <p class="fine swap">
         <span data-only="0">Lancet Global Health, 2020</span>
-        <span data-only="1">Brady et al., CHI 2013</span>
-        <span data-only="2">OrCam MyEye 3 Pro, US retail. We use a phone and earbuds.</span>
+        <span data-only="1">Yi et al., Finding Objects for Assisting Blind People, 2013</span>
+        <span data-only="2">Brady et al., CHI 2013: 40,748 questions from 5,329 blind users</span>
       </p>
-      <aside class="notes">43M blind worldwide, 61M by 2050 (Lancet GH 2020). 41%: VizWiz Social, 40,748 questions from 5,329 blind users (Brady et al., CHI 2013). $4,250: OrCam MyEye 3 Pro at a US retailer; Envision Glasses $1,899. Ours runs on an iPhone and earbuds plus one shared box.</aside>
+      <aside class="notes">43M blind worldwide, 61M by 2050 (Lancet GH 2020). #1: finding dropped or misplaced items is described as the most common challenge (Yi et al. 2013); interview studies say it touches nearly every household task. 68%: in VizWiz Social, most questions needed an answer within 10 minutes, so help has to be real time (Brady et al., CHI 2013).</aside>
     </section>
 
-    <section class="slide" data-id="provide" data-shots="ask" data-trans="iris" data-dur="8">
-      <p class="poster quote" data-type>“Find my mug.”</p>
-      <aside class="notes">That's all the wearer says. Watch the hand: each bubble is a word they hear. Hands-free, any object by name, no setup.</aside>
+    <section class="slide" data-id="provide" data-shots="ask" data-trans="iris" data-dur="9">
+      <aside class="notes">Say it out loud: "Find my mug." Then let the scene talk: the hand moves one axis at a time and each bubble is the word in the earbud. Hands-free, any object by name, no setup.</aside>
     </section>
 
-    <section class="slide" data-id="others" data-shots="recede" data-trans="wipe" data-dur="10">
-      <h2 class="head">They describe. We guide.</h2>
+    <section class="slide" data-id="others" data-shots="recede" data-steps="5" data-trans="wipe" data-dur="14">
+      <h2 class="head">What exists today</h2>
       <ol class="vs">
-        <li><span class="vs-n">Meta glasses</span><span class="vs-r">a volunteer talks you there</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="No"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
-        <li><span class="vs-n">Be My AI</span><span class="vs-r">describes a photo</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="No"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
-        <li><span class="vs-n">Seeing AI</span><span class="vs-r">stops at arm's reach</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="No"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
-        <li><span class="vs-n">AIGuide</span><span class="vs-r">handheld, objects pre-scanned</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="No"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
-        <li class="us"><span class="vs-n">[Project name]</span><span class="vs-r">guides your hand, offline</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Yes"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></li>
+        <li data-step="1"><span class="vs-n">Meta glasses</span><span class="vs-w">a volunteer talks you through it</span><span class="vs-r">needs internet and a person</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li data-step="2"><span class="vs-n">Be My AI</span><span class="vs-w">describes a photo</span><span class="vs-r">never guides your hand</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li data-step="3"><span class="vs-n">Seeing AI</span><span class="vs-w">leads you toward an item</span><span class="vs-r">stops at arm's reach</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li data-step="4"><span class="vs-n">AIGuide</span><span class="vs-w">guides your hand</span><span class="vs-r">handheld, objects scanned first</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li class="us" data-step="5"><span class="vs-n">[Project name]</span><span class="vs-w">guides your hand by voice</span><span class="vs-r">hands-free, offline, any object</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Fills it"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></li>
       </ol>
-      <p class="fine">Be My Eyes on Ray-Ban Meta, 2024; Microsoft Research, Find My Things; Lee et al., TACCESS 2022.</p>
-      <aside class="notes">Meta glasses: hands-free; "Hey Meta, Be My Eyes" calls a sighted volunteer who talks you through it; needs internet and a person. Be My AI sends a photo to the cloud and describes it. Seeing AI's Find My Things needs four videos per item and stops at arm's reach. AIGuide guides the hand, but handheld with pre-scanned objects.</aside>
+      <p class="fine" data-step="1">Be My Eyes on Ray-Ban Meta, 2024; Microsoft Research, Find My Things; Lee et al., TACCESS 2022.</p>
+      <aside class="notes">One Enter per tool: say what it does, then the gap. Meta glasses: hands-free, "Hey Meta, Be My Eyes" calls a sighted volunteer; needs internet and a person; 56% retrieval accuracy in an ASSETS 2025 study. Be My AI sends a photo to the cloud and describes it. Seeing AI Find My Things needs four videos per item and stops at arm's reach. AIGuide guides the hand but is handheld with pre-scanned objects. Last Enter: ours fills every gap.</aside>
     </section>
 
-    <section class="slide" data-id="haptics" data-shots="buzz,overload" data-steps="1" data-trans="columns" data-dur="10">
+    <section class="slide" data-id="haptics" data-shots="overload" data-trans="columns" data-dur="8">
       <h2 class="head">Why not vibration?</h2>
-      <div class="swap">
-        <div class="stat" data-only="0"><p class="stat-n">1 in 10</p><p class="stat-l">buzzes on the wrist were felt in the wrong spot</p></div>
-        <div class="stat" data-only="1"><p class="stat-n" data-count="26" data-suffix="%">26%</p><p class="stat-l">could tell which buzzes fired when they came at once</p></div>
-      </div>
-      <p class="fine swap">
-        <span data-only="0">Trant et al., Scientific Reports 2025: four motors on the wrist, 41 blind participants.</span>
-        <span data-only="1">Yeganeh, University of Iceland 2026 (forearm): 93% when one at a time.</span>
-      </p>
-      <aside class="notes">Vibration has to spread motors over the body, one per direction: the bracelet used four on the wrist and still had no forward or back. 1 in 10 buzzes was felt in the wrong place (90.6% localization), and spoken cues gave grasps about 0.6 s faster. Overload: add more motors (a face rig, a belt) and buzzes start to overlap; people picked out simultaneous buzzes 26% of the time vs 93% one at a time. Blind users' tactile working memory fell from about 5 items to 1.6 while walking with a cane in station noise. One earbud word says direction without decoding anything.</aside>
+      <div class="stat"><p class="stat-n" data-count="26" data-suffix="%">26%</p><p class="stat-l">could tell which buzzes fired when they came at once</p></div>
+      <p class="fine">Yeganeh, University of Iceland 2026: 93% when one at a time.</p>
+      <aside class="notes">Vibration needs a motor per direction spread over the body (a wrist band, a belt, a face rig), and the buzzes overlap: people picked out simultaneous buzzes 26% of the time vs 93% one at a time. Even single wrist buzzes were felt in the wrong spot 1 time in 10 (Trant et al., Sci Rep 2025, 41 blind participants), and spoken cues gave faster grasps. One word in an earbud needs no decoding.</aside>
     </section>
 
     <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="3" data-trans="blinds" data-dur="10">
@@ -96,10 +92,10 @@
     <section class="slide" data-id="math" data-shots="plan" data-trans="split" data-dur="10">
       <h2 class="head">The core loop</h2>
       <ol class="math write">
-        <li><span class="eq">p = d · K<sup>−1</sup> [u, v, 1]</span><span class="eq-l">pixel and lidar depth to 3D</span></li>
-        <li><span class="eq">e = p<sub>mug</sub> − p<sub>finger</sub></span><span class="eq-l">where the hand must go</span></li>
-        <li><span class="eq">say argmax |e<sub>i</sub>| &gt; 3 cm</span><span class="eq-l">one word: right, down, forward</span></li>
-        <li><span class="eq">|e| &lt; 5 cm for 0.3 s → grab</span><span class="eq-l">then “grab”</span></li>
+        <li><span class="eq" data-tex="\mathbf{p} = d\,K^{-1}\!\begin{bmatrix}u\\ v\\ 1\end{bmatrix}"></span><span class="eq-l">pixel and lidar depth to 3D</span></li>
+        <li><span class="eq" data-tex="\mathbf{e} = \mathbf{p}_{\text{mug}} - \mathbf{p}_{\text{finger}}"></span><span class="eq-l">where the hand must go</span></li>
+        <li><span class="eq" data-tex="i^{*} = \arg\max_{i}\,\lvert e_i\rvert \quad \text{if } \lvert e_{i^{*}}\rvert > 3\,\text{cm}"></span><span class="eq-l">one word: right, down, forward</span></li>
+        <li><span class="eq" data-tex="\lVert \mathbf{e} \rVert < 5\,\text{cm for } 0.3\,\text{s} \;\Rightarrow\; \text{grab}"></span><span class="eq-l">then “grab”</span></li>
       </ol>
       <aside class="notes">Median depth over a small patch, ignoring holes. Table plane by RANSAC. Words at most twice a second. About 35 ms per frame on the GX10.</aside>
     </section>
@@ -110,14 +106,14 @@
       <aside class="notes">Blindfold on. "Find my mug." Move the mug and repeat. Pull the network cable and run it again. Fallback: the recorded run.</aside>
     </section>
 
-    <section class="slide" data-id="results" data-shots="land1,land2" data-steps="1" data-trans="lift" data-dur="10">
+    <section class="slide" data-id="results" data-shots="camonly,both" data-steps="1" data-trans="lift" data-dur="10">
       <div class="duo">
-        <div class="stat"><p class="stat-n is-grab" data-count="99" data-suffix="%">99%</p><p class="stat-l">lidar + camera</p></div>
-        <div class="stat" data-step="1"><p class="stat-n" data-count="52" data-suffix="%">52%</p><p class="stat-l">camera only</p></div>
+        <div class="stat"><p class="stat-n" data-count="52" data-suffix="%">52%</p><p class="stat-l">camera only</p></div>
+        <div class="stat" data-step="1"><p class="stat-n is-grab" data-count="99" data-suffix="%">99%</p><p class="stat-l">with lidar</p></div>
       </div>
       <p class="lede small">Reaches that ended on the mug</p>
       <p class="fine">Simulated: 1,000 blindfold reaches through our real perception and guidance code. Dots illustrate the median misses.</p>
-      <aside class="notes">Same 1,000 mugs, starts and wearer movements in both. Lidar median miss 3.1 cm; camera only 5.8 cm, 1 in 10 off by over 15 cm. Camera-only fails because hand and mug get different depth errors, so the gap never shrinks. Camera error sizes are our assumptions, not measured on the phone. The ring is the 6 cm that counts as on the mug.</aside>
+      <aside class="notes">First camera only: 52%, the grey dots scatter. Then add lidar: 99%, the green dots land on the mug. Same 1,000 mugs, starts and wearer movements in both. Lidar median miss 3.1 cm; camera only 5.8 cm, 1 in 10 off by over 15 cm. Camera error sizes are our assumptions, not measured on the phone.</aside>
     </section>
 
     <section class="slide" data-id="local" data-shots="dome,boxed,quick,cut" data-steps="3" data-trans="diagonal" data-dur="12">
@@ -135,7 +131,6 @@
       <h2 class="poster">[Project name]</h2>
       <p class="lede">Find it. Grab it. Eyes closed.</p>
       <ul class="team"><li>[Name]</li><li>[Name]</li><li>[Name]</li><li>[Name]</li></ul>
-      <p class="fine">Thank you. Built in 24 hours on one ASUS Ascent GX10.</p>
       <aside class="notes">Thank the judges, then questions. Likely ones: how you measured the numbers (simulation for 99/52, published studies for the rest), why not run it on a laptop (privacy, all models together in 128 GB, offline), glass and shiny objects (lidar struggles; falls back to hand size).</aside>
     </section>
 
