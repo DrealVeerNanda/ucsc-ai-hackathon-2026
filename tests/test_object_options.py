@@ -200,3 +200,22 @@ def test_found_once_an_object_taken_away_after_grab_is_not_a_miss():
     for i in range(90):
         state = g.update(p.locate(frame(t=t + i / FPS, obj=None, hands=[gone], pose=_pose()), "mug"), now=t + i / FPS)
     assert state == "idle" and "Try again" not in g.sink.spoken
+
+
+def test_an_option_clicked_between_start_and_the_first_request_is_not_lost(monkeypatch):
+    # The models load when the first object is asked for. Until then the page said "ok" and the
+    # choice was only kept for the next Start: the run in progress began on the old one.
+    import dashboard
+    monkeypatch.setattr(perception, "_default", None)
+    monkeypatch.setattr(perception, "_hand_number", None)
+    monkeypatch.delenv("OBJECT_OPTION", raising=False)
+    monkeypatch.delenv("HAND_OPTION", raising=False)
+    monkeypatch.setenv("GUIDANCE_AUDIO", "off")
+    with pytest.raises(RuntimeError, match="not running yet"):
+        dashboard.set_option("object", 3)                   # a run on the fake perception: nothing to switch
+    monkeypatch.setattr(perception, "in_use", True)
+    assert dashboard.set_option("object", 3) == "found once"
+    assert dashboard.set_option("hand", 2) == "MediaPipe, steady"
+    now = {f["family"]: f["current"] for f in dashboard.option_families()}
+    assert now["object"] == 3 and now["hand"] == 2
+    assert perception.OBJECT_OPTIONS[perception._object_wanted()][0] == "locked" and perception.hand_option()[0] == 2

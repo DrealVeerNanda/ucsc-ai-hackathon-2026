@@ -1032,6 +1032,7 @@ class Perception:
 # The interface main.py uses.
 
 _default: Perception | None = None
+in_use = False                       # set by main.py when this module, not the fake one, does the looking
 _hand_lock = threading.Lock()
 _hand_loading = threading.Lock()     # one model loads at a time
 _hand_number: int | None = None      # the hand option in use or on its way in; None until someone asks

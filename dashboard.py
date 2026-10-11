@@ -18,6 +18,7 @@ import json
 import mimetypes
 import os
 import socket
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -94,6 +95,13 @@ def _running(module) -> bool:
     return getattr(module, "_default", None) is not None
 
 
+def _waiting(mod: str) -> bool:
+    """Is this the real perception before its first request? Its models load when the first
+    object is asked for, and until then it takes a choice and starts with it: a click made
+    between Start and the first request must not be lost."""
+    return mod == "perception" and getattr(sys.modules.get(mod), "in_use", False)
+
+
 def option_families() -> list[dict]:
     """Every family of options with its choices and the one in use (None when not running)."""
     import importlib
@@ -103,7 +111,7 @@ def option_families() -> list[dict]:
             module = importlib.import_module(mod)
             options = [{"n": i + 1, "key": o[0], "title": o[1], "about": o[2] if len(o) > 2 else ""}
                        for i, o in enumerate(getattr(module, names))]
-            now = getattr(module, current)()[0] if _running(module) else None
+            now = getattr(module, current)()[0] if _running(module) or _waiting(mod) else None
         except Exception:
             continue
         out.append({"family": family, "heading": heading, "say": say, "current": now, "options": options})
@@ -116,7 +124,7 @@ def set_option(family: str, n: int) -> str:
     for fam, _heading, mod, _names, _current, setter, say in _FAMILIES:
         if fam == family:
             module = importlib.import_module(mod)
-            if not _running(module):
+            if not _running(module) and not _waiting(mod):
                 raise RuntimeError("not running yet")
             title = getattr(module, setter)(n)
             try:

@@ -270,7 +270,9 @@ def load_modules(args) -> SimpleNamespace:
     else:
         m.get_frame = fakes.FakeStream(args.image, args.fps).get_frame
     if args.perception == "real":
-        m.locate = importlib.import_module("perception").locate
+        perception = importlib.import_module("perception")
+        perception.in_use = True     # so an option picked before the first request is taken, not refused
+        m.locate = perception.locate
     else:
         m.fake_locate = fakes.FakeLocate()
         m.locate = m.fake_locate.locate
