@@ -919,6 +919,7 @@ _switch_lock = threading.RLock()         # one change of the earbuds' mode at a 
 _switch_t = -1e9                         # when the last one was asked for
 _repair_t = -1e9
 _stereo_volume: float | None = None      # how loud the wearer has the earbuds in stereo, read before leaving it
+_nodes_trusted = True                    # the sound nodes look the way _is_up expects for these earbuds
 
 
 def _wants_earbuds() -> bool:
@@ -994,16 +995,21 @@ class Headset:
 
     def _is_up(self, index: int) -> bool | None:
         """Are they in that mode, with its sound nodes really there? None if it cannot be told."""
-        mode, nodes = self.mode(), self._nodes()
-        if mode is None or nodes is None:
+        mode = self.mode()
+        if mode is None:
             return None
-        return mode == index and "Audio/Sink" in nodes and ("Audio/Source" in nodes) == (index == self.headset)
+        if mode != index:
+            return False
+        nodes = self._nodes() if _nodes_trusted else None
+        if nodes is None:
+            return None
+        return "Audio/Sink" in nodes and ("Audio/Source" in nodes) == (index == self.headset)
 
     def _switch(self, index: int) -> bool | None:
         """Change mode and wait until it has really happened, rather than for a fixed moment:
         True when it is up, False when it did not come up in SWITCH_WAIT_S, None when this
         machine cannot tell (then it waits the fixed moment, as before)."""
-        global _switch_t, _stereo_volume
+        global _switch_t, _stereo_volume, _nodes_trusted
         to = "headset" if index == self.headset else "stereo"
         with _switch_lock:
             t0 = time.monotonic()
@@ -1019,6 +1025,12 @@ class Headset:
                 if up is not False or time.monotonic() - _switch_t >= SWITCH_WAIT_S:
                     break
                 time.sleep(0.15)
+            if up is False and self.mode() == index:
+                # The mode is right; it is the nodes that do not look as expected. Earbuds that show
+                # them differently must not be taken for broken (and reconnected) at every switch:
+                # from here on only the mode is checked, with the fixed wait as before.
+                _nodes_trusted, up = False, None
+                tracing.event("headset", to=to, nodes="not as expected", seen=self._nodes())
             # Up is not yet playing: give the sound server a moment to move the streams over, so
             # the next thing said does not start on the wrong speaker.
             time.sleep(0.3 if up else 0.0 if up is False else 0.5 if index == self.headset else 1.0)
@@ -1480,6 +1492,7 @@ class WebMic:
                     _beep()                               # "your turn": the microphone is open from here
                     beep = False
                 self._check()
+                buds = self.headset
                 audio = buds.record(should_stop=lambda: not self._requests.empty() or due(),
                                     abandon=lambda: not self._requests.empty())
             except Exception as e:

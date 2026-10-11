@@ -38,7 +38,7 @@ def quiet(monkeypatch, tmp_path):
     for name, value in (("_ask_next", True), ("last_objects", []), ("_llm_ok", None), ("_llm_again_t", 0.0), ("_stopped", False),
                         ("_told_no_cosmos", False), ("_said_t", 0.0), ("_reminders", 0), ("_last_said", ""), ("_trouble", {}),
                         ("_problems", {}), ("_switch_t", -1e9), ("_repair_t", -1e9), ("_stereo_volume", None), ("_listener", None),
-                        ("_mode", None), ("_failures", 0), ("_no_keyboard", False), ("_status_thread", object()), ("_left_open", [])):
+                        ("_mode", None), ("_failures", 0), ("_nodes_trusted", True), ("_no_keyboard", False), ("_status_thread", object()), ("_left_open", [])):
         monkeypatch.setattr(voice, name, value)
     monkeypatch.setattr(voice, "_status", dict(voice._status, state="starting", heard="", meant="", error="", error_t=None))
     monkeypatch.real_poke = voice._poke_main
@@ -972,19 +972,21 @@ class PipeWire:
     """The sound server as Headset sees it through wpctl, pw-cli, pw-dump and bluetoothctl."""
 
     def __init__(self, profile=5, takes_s=0.2):
-        self.profile, self.takes_s, self.stuck, self.blind = profile, takes_s, False, False
-        self.device, self.ready_t, self.commands, self.volumes = 61, 0.0, [], {}
+        self.profile, self.takes_s, self.stuck, self.blind, self.odd = profile, takes_s, False, False, False
+        self.device, self.ready_t, self.commands, self.volumes, self.refuses = 61, 0.0, [], {}, None
 
     def nodes(self):
         if time.monotonic() < self.ready_t:
             return {}                                       # the old mode's nodes are gone, the new ones not yet up
+        if self.odd:
+            return {"Audio/Sink": 80, "Audio/Source": 81}  # earbuds that show a microphone in stereo too
         return {"Audio/Sink": 90, "Audio/Source": 91} if self.profile == 261 else {"Audio/Sink": 80}
 
     def run(self, cmd, **k):
         self.commands.append((time.monotonic(), cmd))
         out = ""
         if cmd[:2] == ["wpctl", "set-profile"]:
-            if not (self.stuck and int(cmd[3]) == 5):       # stuck: "trying to set invalid profile", as on 10 October
+            if not (self.stuck and int(cmd[3]) == 5) and int(cmd[3]) != self.refuses:     # stuck: "trying to set invalid profile", as on 10 October
                 self.profile, self.ready_t = int(cmd[3]), time.monotonic() + self.takes_s
         elif cmd[:2] == ["pw-cli", "enum-params"] and cmd[3] == "Profile":
             out = f"  Object: size 328\n    Prop: key Spa:Pod:Object:Param:Profile:index (1), flags 00000000\n      Int {self.profile}\n"
@@ -1056,14 +1058,12 @@ def test_stereo_that_does_not_come_back_is_repaired_by_reconnecting(pipewire, qu
 
 
 def test_a_microphone_that_does_not_come_up_is_reported_not_recorded_from(pipewire, quiet, tmp_path):
-    pipewire.takes_s = 5.0                                  # the headset mode never comes up in time
+    pipewire.refuses = 261                                  # the earbuds will not go into headset mode
     buds = voice.Headset(61, 261, 5, "AirPods Pro")
     with pytest.raises(voice.MicLost, match="did not go into headset mode"):
         buds.open()
     mic = web_mic(tmp_path, buds, hear=lambda audio: "")
     try:
-        pipewire.ready_t = time.monotonic() + 5
-        pipewire.profile = 5
         assert mic._open(buds) is False and mic.headset is None and voice.status()["ok"] is False
     finally:
         mic.close()
@@ -1220,3 +1220,17 @@ def test_a_way_of_guiding_from_before_the_options_is_named_as_such(quiet):
     assert guidance.pop_phrases() == ["This is words, which is not one of the 5 options."]
     assert voice.option_families()["option"] == "words"
     assert voice.respond("next option") == "" and guidance.option()[0] == 1
+
+
+def test_earbuds_whose_nodes_look_different_are_not_taken_for_broken(pipewire):
+    pipewire.takes_s, pipewire.odd = 0.0, True
+    buds = voice.Headset(61, 261, 5, "Other earbuds")
+    buds.open()
+    t = time.monotonic()
+    buds.close()                                            # stereo is on; only the nodes are not what was expected
+    assert time.monotonic() - t < 3 and pipewire.profile == 5 and voice.status()["ok"] is True
+    assert not [cmd for at, cmd in pipewire.commands if cmd[0] == "bluetoothctl"]       # so: no reconnecting
+    t = time.monotonic()
+    buds.open()
+    buds.close()
+    assert time.monotonic() - t < 3.5                       # and after the first time, no waiting for them either
