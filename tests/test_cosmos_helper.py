@@ -550,6 +550,13 @@ class _Earbuds:
 
     def __init__(self):
         self.calls = 0
+        self.modes = []
+
+    def open(self):
+        self.modes.append("headset")
+
+    def close(self):
+        self.modes.append("stereo")
 
     def record(self, should_stop=None):
         self.calls += 1
@@ -563,6 +570,7 @@ def test_a_spoken_answer_through_the_earbuds_becomes_the_target(quiet_voice, tmp
                        headset=buds, hear=lambda audio: "the green can please")
     try:
         assert mic.listen() == "green can" and buds.calls == 3 and mic.status["heard"] == "the green can please"
+        assert buds.modes == ["headset", "stereo"]            # one switch each way, however long the wait
     finally:
         mic.close()
 

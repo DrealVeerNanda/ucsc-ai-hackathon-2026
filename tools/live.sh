@@ -18,6 +18,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source .venv/bin/activate
 export DISPLAY="${DISPLAY:-:1}" XAUTHORITY="${XAUTHORITY:-/run/user/$(id -u)/gdm/Xauthority}"
+# The phone's address on the Wi-Fi, tried when the app is not sending over the cable.
+[ -f .phone_ip ] && export STREAM_PHONE_IP="${STREAM_PHONE_IP:-$(cat .phone_ip)}"
 
 if [ $# -ge 1 ]; then
     args=(--target "$1")

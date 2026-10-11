@@ -19,3 +19,4 @@ screenshots/
 .impeccable/config.local.json
 models/
 weights/
+.phone_ip

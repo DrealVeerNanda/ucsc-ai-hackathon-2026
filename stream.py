@@ -5,7 +5,8 @@
 
 Where frames come from is set by stream.start(SOURCE) or the STREAM_SOURCE environment variable:
 
-    auto                   whichever phone app is streaming over USB: PathOn, then Record3D (default)
+    auto                   whichever phone app is streaming: PathOn over USB, PathOn over Wi-Fi if
+                           STREAM_PHONE_IP gives the phone's address, then Record3D (default)
     record3d               Record3D app over USB
     pathon | pathon:IP     free "Record3DStream - PathOn" app over USB | Wi-Fi
     relay | relay:PORT     frames forwarded from a Mac by tools/relay_send.py
@@ -313,7 +314,9 @@ def _auto_frames() -> Iterator[RawFrame]:
     """Whichever app is streaming. The two are easy to mix up: the free one is called
     "Record3DStream - PathOn", the paid one "Record3D"."""
     errors = []
-    for source in (_pathon_frames, _record3d_frames):
+    wifi = os.environ.get("STREAM_PHONE_IP")          # PathOn streams over the cable or Wi-Fi, whichever
+    sources = [_pathon_frames] + ([lambda: _pathon_frames(wifi)] if wifi else []) + [_record3d_frames]   # mode the app is in
+    for source in sources:
         it = source()
         try:
             first = next(it)

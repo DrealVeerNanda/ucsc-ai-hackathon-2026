@@ -421,25 +421,33 @@ class Headset:
     def _profile(self, index: int):
         subprocess.run(["wpctl", "set-profile", str(self.device), str(index)], capture_output=True, timeout=3)
 
-    def record(self, should_stop=None) -> np.ndarray | None:
-        """Switch to headset mode, wait for someone to speak, and return what they said."""
-        import sounddevice as sd
+    def open(self):
+        """Headset mode: the microphone comes up, the sound drops to mono. Stay here for the whole
+        wait rather than flipping back and forth, which the earbuds do not take well."""
         self._profile(self.headset)
-        try:
-            time.sleep(0.3)                               # let the microphone come up
-            blocks: queue.Queue = queue.Queue()
-            n = int(SR * 0.03)
-            with sd.InputStream(samplerate=SR, channels=1, dtype="float32", blocksize=n,
-                                callback=lambda data, frames, t, status: blocks.put(data[:, 0].copy())):
-                def incoming():
-                    while True:
-                        try:
-                            yield blocks.get(timeout=1.0)
-                        except queue.Empty:
-                            return
-                return cut_speech(incoming(), should_stop=should_stop)
-        finally:
-            self._profile(self.stereo)                    # stereo again, for the guidance
+        time.sleep(0.5)
+
+    def close(self):
+        """Stereo again, for the guidance. Give the earbuds a moment to come back as the output,
+        so the next thing said does not start on the wrong speaker."""
+        self._profile(self.stereo)
+        time.sleep(1.0)
+
+    def record(self, should_stop=None) -> np.ndarray | None:
+        """Wait for someone to speak and return what they said (None if nobody did). Call
+        between open() and close()."""
+        import sounddevice as sd
+        blocks: queue.Queue = queue.Queue()
+        n = int(SR * 0.03)
+        with sd.InputStream(samplerate=SR, channels=1, dtype="float32", blocksize=n,
+                            callback=lambda data, frames, t, status: blocks.put(data[:, 0].copy())):
+            def incoming():
+                while True:
+                    try:
+                        yield blocks.get(timeout=1.0)
+                    except queue.Empty:
+                        return
+            return cut_speech(incoming(), should_stop=should_stop)
 
 
 def decode_recording(data: bytes) -> np.ndarray:
@@ -535,21 +543,30 @@ class WebMic:
     def _next_request(self) -> str:
         """Whatever comes first: something typed or sent from the page, or, with earbuds as the
         microphone, something said aloud."""
-        while True:
+        if self.headset is None:
+            return self._requests.get()
+        buds = self.headset
+        try:
+            buds.open()
+            while True:
+                try:
+                    return self._requests.get(timeout=0.05)
+                except queue.Empty:
+                    pass
+                audio = buds.record(should_stop=lambda: not self._requests.empty())
+                text = self._hear(audio) if audio is not None else ""
+                if text and worth_hearing(text):
+                    self.status["heard"] = text
+                    return text
+        except Exception as e:
+            print(f"[voice] the earbuds' microphone failed ({e}); use the page or type", file=sys.stderr)
+            self.headset = None
+            return self._requests.get()
+        finally:
             try:
-                return self._requests.get(timeout=0.05 if self.headset is not None else None)
-            except queue.Empty:
+                buds.close()
+            except Exception:
                 pass
-            try:
-                audio = self.headset.record(should_stop=lambda: not self._requests.empty())
-            except Exception as e:
-                print(f"[voice] the earbuds' microphone failed ({e}); use the page or type", file=sys.stderr)
-                self.headset = None
-                continue
-            text = self._hear(audio) if audio is not None else ""
-            if text and worth_hearing(text):
-                self.status["heard"] = text
-                return text
 
     def _serve(self, cert_dir: Path):
         mic = self
