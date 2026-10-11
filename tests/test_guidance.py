@@ -436,6 +436,28 @@ def test_real_clips_exist_for_every_phrase_guidance_uses():
     assert all(0.2 < len(c) / 48000 < 2.0 for c in clips.values())
 
 
+def test_elevenlabs_overrides_older_voices_and_bad_files_fall_back(tmp_path, monkeypatch):
+    import wave
+
+    def clip(folder, name, level):
+        folder.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(folder / (name + ".wav")), "wb") as output:
+            output.setparams((1, 2, 48000, 0, "NONE", "not compressed"))
+            output.writeframes(np.full(480, level, np.int16).tobytes())
+
+    clip(tmp_path, "right", 1000)
+    clip(tmp_path, "looking", 2000)
+    clip(tmp_path / "calm", "right", 3000)
+    clip(tmp_path / "calm", "left", 4000)
+    clip(tmp_path / "elevenlabs", "right", 5000)
+    (tmp_path / "elevenlabs" / "left.wav").write_bytes(b"invalid WAV")
+    monkeypatch.setattr(audio_out, "CLIPS_DIR", tmp_path)
+    clips = audio_out.load_clips()
+    assert clips["right"][0] == pytest.approx(5000 / 32768)
+    assert clips["left"][0] == pytest.approx(4000 / 32768)
+    assert clips["looking"][0] == pytest.approx(2000 / 32768)
+
+
 # --- voice ---------------------------------------------------------------------
 
 @pytest.mark.parametrize("said, target", [
