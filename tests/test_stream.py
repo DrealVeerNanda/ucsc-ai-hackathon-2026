@@ -20,6 +20,7 @@ K0 = np.array([[500.0, 0, 170.0], [0, 510.0, 110.0], [0, 0, 1]])
 def _no_phone_bridge(tmp_path, monkeypatch):
     """A phone bridge running on this machine must not be picked up by these tests."""
     monkeypatch.setenv("PHONE_BRIDGE_DIR", str(tmp_path / "no_bridge"))
+    monkeypatch.setattr(stream, "_bridge_used", False)
 
 
 def _pose(tx=0.1, ty=-0.2, tz=0.3, yaw=0.3):

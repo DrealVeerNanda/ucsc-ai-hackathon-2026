@@ -420,7 +420,8 @@ class Bridge:
             fps = len(recent) / 2.0
         slow = state == "streaming" and now - self._since > 3.0 and fps < 15.0
         if state == "streaming":
-            message = f"Streaming over {'the USB cable' if via == 'usb' else 'Wi-Fi'} at {fps:.0f} frames a second."
+            message = f"Streaming over {'the USB cable' if via == 'usb' else 'Wi-Fi'}" + (
+                f" at {fps:.0f} frames a second." if len(recent) > 1 else ".")       # one frame is not yet a rate
             if slow:
                 message += " That is slow: the sound will lag behind the hand." + (
                     " Use the USB cable." if via == "wifi" else "")
@@ -555,8 +556,8 @@ class Bridge:
 
     def _pairing_problem(self):
         """(state, message) if this computer may not talk to the phone, else None. Asked at most
-        every five seconds, and only while the app is not answering."""
-        if time.monotonic() - self._pairing_at < 5.0:
+        every two seconds, and only while the app is not answering."""
+        if time.monotonic() - self._pairing_at < 2.0:
             return self._pairing
         self._pairing_at = time.monotonic()
         try:
@@ -566,7 +567,7 @@ class Bridge:
         except (OSError, subprocess.TimeoutExpired):
             said = ""
         if "passcode" in said:
-            p = ("untrusted", "The iPhone is locked. Unlock it with its passcode.")
+            p = ("untrusted", "The iPhone is locked. Enter its passcode on the phone.")
         elif "trust dialog" in said and "denied" not in said:
             p = ("untrusted", "The iPhone is asking whether to trust this computer. Unlock it and tap Trust.")
         elif "denied" in said or "not paired" in said:

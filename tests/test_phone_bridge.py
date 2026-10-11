@@ -32,6 +32,7 @@ def home(monkeypatch):
     d = Path(tempfile.mkdtemp(prefix="pb", dir="/tmp"))
     monkeypatch.setenv("PHONE_BRIDGE_DIR", str(d))
     monkeypatch.setenv("PHONE_BRIDGE_SYSFS", str(d / "no-usb-list"))      # as on a Mac: ask idevice_id
+    monkeypatch.setattr(stream, "_bridge_used", False)
     yield d
     shutil.rmtree(d, ignore_errors=True)
 
@@ -295,8 +296,11 @@ def test_a_bridge_killed_dead_is_noticed_and_its_successor_cleans_up(home, phone
             assert took < 1.0
             proc.wait(timeout=5)
             assert not stream.bridge_running(home)
+            # auto does not take the phone for itself in the gap: the next bridge must find it free
+            time.sleep(0.6)
+            assert phone.stats()["connections"] == 1 and "bridge" in s.status()["error"]
             bridges(phone)
-            _wait(lambda: s.status()["state"] == "streaming", 3.0, "the reader attaching to the new bridge")
+            _wait(lambda: s.status()["state"] == "streaming", 1.5, "the reader attaching to the new bridge")
             assert _status(home)["shm"] != board
             with pytest.raises(SourceError):
                 FrameBoard.attach(board)                  # the dead bridge's memory was removed
@@ -461,7 +465,7 @@ def test_usb_states_are_told_apart(home, phone, bridges, usb):
     st = _status(home)
     assert st["via"] == "usb" and "USB cable" in st["message"]
     for word, state, words in [("absent", "no_phone", "Plug it in"), ("untrusted", "untrusted", "tap Trust"),
-                               ("locked", "untrusted", "Unlock it"), ("ok", "streaming", "Streaming over the USB cable")]:
+                               ("locked", "untrusted", "passcode"), ("ok", "streaming", "Streaming over the USB cable")]:
         usb(word)
         if word != "ok":
             phone.restart(0.1)                            # whatever happened, the stream is gone

@@ -344,7 +344,9 @@ def _auto_frames(stop: threading.Event | None = None, on_status=None) -> Iterato
     """The phone bridge when one is running: it holds the phone, so opening the phone here as
     well would fight it. Otherwise whichever app is streaming. The two are easy to mix up: the
     free one is called "Record3DStream - PathOn", the paid one "Record3D"."""
-    if bridge_running():
+    # Once this program has had its frames from a bridge it waits for the bridge, even a dead
+    # one: whoever restarts the bridge must find the phone free, not taken by us in the gap.
+    if _bridge_used or bridge_running():
         yield from _bridge_frames(stop=stop, on_status=on_status)
         return
     errors = []
@@ -508,6 +510,9 @@ def bridge_running(folder: str | Path | None = None) -> bool:
         return True
     finally:
         os.close(fd)
+
+
+_bridge_used = False             # this program has read frames through a bridge (see _auto_frames)
 
 
 def bridge_status(folder: str | Path | None = None) -> dict | None:
@@ -837,7 +842,8 @@ class Stream:
         return _replay_frames(self.source, loop=self.loop)
 
     def _heard_from_bridge(self, state: dict):
-        self._bridge = state
+        global _bridge_used
+        self._bridge, _bridge_used = state, True
 
     def _set(self, state, error=None):
         with self._cond:
@@ -847,6 +853,7 @@ class Stream:
     def _run(self):
         while not self._stop.is_set():
             gen = self._frames()
+            wait = 1.0
             try:
                 for raw in gen:
                     if self._stop.is_set():
@@ -872,6 +879,8 @@ class Stream:
                     return
             except Exception as e:
                 msg = str(e) if isinstance(e, SourceError) else f"{self.source}: {e!r}"
+                if _bridge_used or self.source.startswith("bridge"):
+                    wait = 0.25      # asking the bridge again costs nothing, and disturbs no phone
                 self._bridge = None
                 if self._seq == 0 or not self.reconnect:
                     self._set("failed", msg)
@@ -882,7 +891,7 @@ class Stream:
                 self._set("reconnecting", msg)
             finally:
                 gen.close()
-            self._stop.wait(1.0)
+            self._stop.wait(wait)
 
     def _delay_ms(self, raw: RawFrame, now: float):
         """How much longer this frame took to get here than the quickest recent one. The two
