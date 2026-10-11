@@ -113,6 +113,13 @@ function draw() {
   const lines = s.lines;
   const seen = new Set(lines.map((l) => drawLine(l, s.can_control)));
   document.querySelectorAll(".line").forEach((li) => { if (!seen.has(li.dataset.id)) li.remove(); });
+  // Keep each column in the keeper's order. Only when it differs: moving a line while it is
+  // being clicked would swallow the click.
+  document.querySelectorAll(".lines").forEach((list) => {
+    const want = lines.map((l) => l.id).filter((id) => list.querySelector(`:scope > [data-id="${id}"]`));
+    const have = [...list.children].map((li) => li.dataset.id);
+    if (want.join() !== have.join()) want.forEach((id) => list.appendChild(list.querySelector(`:scope > [data-id="${id}"]`)));
+  });
 
   const waiting = lines.filter((l) => l.required && l.level !== "green");
   const reds = waiting.filter((l) => l.level === "red" && !l.blocked);

@@ -537,7 +537,7 @@ def test_room_lines_never_hold_up_start(tmp_path):
     m = Machine(**{"iw dev wlan0 link": (0, "Connected to aa:bb\n\tSSID: hall\n\tfreq: 2437.0"), "iw dev": (0, "phy#0\n\tInterface wlan0"),
                    "gsettings get org.gnome.desktop.notifications": (0, "true")})
     got = by_id(checks.room(setup(tmp_path, m, PROPRIO_THERMAL=str(tmp_path / "thermal"))))
-    assert [got[k]["level"] for k in ("heat", "wifi", "desktop")] == [AMBER] * 3
+    assert [got[k]["level"] for k in ("heat", "wifi", "desktop")] == [AMBER] * 3 and got["phone_cable"]["level"] == GREEN
     assert "86" in got["heat"]["message"] and "2.4 GHz" in got["wifi"]["message"] and "notification banners" in got["desktop"]["message"]
     assert checks.ready(list(got.values()))
     (zone / "temp").write_text("47800\n")

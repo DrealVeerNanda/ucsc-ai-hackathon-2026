@@ -198,7 +198,7 @@ def phone(s: Setup, bridge_note: str = "") -> list[dict]:
         slow = (fps is not None and fps < 15) or (frame_age is not None and frame_age > 0.5)
         stream = line(title=title, id="phone_stream", level=AMBER if slow else GREEN,
                       message=("Streaming, but slowly: " if slow else "Streaming: ") + (facts or str(st.get("message", "ok"))) + ".")
-    return [usb, trust, stream, cable(s)]
+    return [usb, trust, stream]
 
 
 def bridge_running(s: Setup) -> bool:
@@ -698,7 +698,8 @@ QUIET = (("org.gnome.desktop.notifications", "show-banners", "false", "notificat
 
 
 def room(s: Setup) -> list[dict]:
-    """Things around the demo that have spoiled a run before. None of them holds up Start."""
+    """Things around the demo that have spoiled a run before. None of them holds up Start. (The
+    phone's cable is looked at here, every few seconds, rather than with the phone every second.)"""
     temps = []
     for zone in sorted(Path(s.env.get("PROPRIO_THERMAL", "/sys/class/thermal")).glob("thermal_zone*/temp")):
         try:
@@ -731,7 +732,7 @@ def room(s: Setup) -> list[dict]:
                       fix=("quiet_desktop", "Quiet the desktop"))
     else:
         desk = advice("desktop", "Quiet desktop", GREEN, "No banners, no alert sounds, no Files window when the phone is plugged in.")
-    return [heat, wifi, desk]
+    return ([] if s.replay else [cable(s)]) + [heat, wifi, desk]
 
 
 def ready(lines: list[dict]) -> bool:
