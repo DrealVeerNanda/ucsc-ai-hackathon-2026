@@ -342,6 +342,7 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; o
 }
 .options-k, .options-about, .options-note { margin: 0; color: var(--muted); max-width: 60ch; }
 .options-note:empty { display: none; }
+#options-list { display: grid; gap: 1.4rem; }
 .options-group { display: grid; gap: var(--sp2); }
 .options-h { margin: 0; font: 700 var(--s1, 1rem)/1.2 var(--display); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .options-row { display: flex; flex-wrap: wrap; gap: var(--sp2); }
