@@ -38,6 +38,7 @@ fi
 UI="${UI:-both}"
 if [ "$UI" = web ] && command -v firefox >/dev/null; then
     export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
-    (sleep 6; firefox --new-window "http://localhost:8642/${VIEW:+#$VIEW}" >/dev/null 2>&1 || true) &
+    # A dashboard page left open from the last run reconnects by itself: open another only if none is there.
+    (sleep 6; xdotool search --name "Proprio" >/dev/null 2>&1 || firefox --new-window "http://localhost:8642/${VIEW:+#$VIEW}" >/dev/null 2>&1 || true) &
 fi
 exec python main.py --stream real --perception real --guidance real "${args[@]}" --ui "$UI" --no-open
