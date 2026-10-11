@@ -1215,7 +1215,8 @@ def _recording_ok(folder: Path) -> tuple[bool, str]:
     if not (folder / "frames.npz").exists() or not (folder / "meta.json").exists():
         return False, f"no frames.npz/meta.json (left behind: {parts or 'nothing'})"
     meta = json.loads((folder / "meta.json").read_text())
-    cap = cv2.VideoCapture(str(folder / "rgb.mp4"))
+    video = soak.video_of(folder)
+    cap = cv2.VideoCapture(str(video))
     n = 0
     while cap.read()[0]:
         n += 1
@@ -1223,7 +1224,7 @@ def _recording_ok(folder: Path) -> tuple[bool, str]:
     data = np.load(folder / "frames.npz")
     depth = float((data["depth_mm"] > 0).mean())
     ok = meta["frames"] > 0 and abs(n - meta["frames"]) <= 1 and not parts and depth > 0.2
-    return ok, (f"{meta['frames']} frames with depth in frames.npz, {n} readable in rgb.mp4"
+    return ok, (f"{meta['frames']} frames with depth in frames.npz, {n} readable in {video.name}"
                 + (f", leftovers {parts}" if parts else "") + (", DEPTH IS EMPTY" if depth <= 0.2 else ""))
 
 

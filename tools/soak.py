@@ -119,6 +119,7 @@ def run_pipeline(argv: list[str]):
     # When the soak itself was started with nohup or &, Ctrl-C is ignored all the way down, and
     # the run could only be killed. (What main.py does by itself in that case is its own drill.)
     signal.signal(signal.SIGINT, signal.default_int_handler)
+    signal.signal(signal.SIGHUP, signal.SIG_DFL)
     if os.environ.get("SOAK_FILE_LIMIT_KB"):          # a full disk, without filling one: no file may grow past this
         import resource
         limit = int(os.environ["SOAK_FILE_LIMIT_KB"]) * 1024
@@ -175,6 +176,11 @@ def encode_pictures(rgb: np.ndarray, depth_m: np.ndarray, quality: int = 85) -> 
     return jpg.tobytes(), png.tobytes()
 
 
+def video_of(folder) -> Path:
+    """A recording's colour video, whichever container it was written in."""
+    return next((p for p in (Path(folder) / "rgb.mp4", Path(folder) / "rgb.avi") if p.exists()), Path(folder) / "rgb.mp4")
+
+
 def recorded_frames(folders: list, loop: bool = True, first: int = 0, seek_s: float = 0.0):
     """(rgb, depth in metres, K, pose or None, kind, seconds until the next frame) from each
     recording in turn, for ever, starting `seek_s` into recording number `first`. A recording
@@ -191,7 +197,7 @@ def recorded_frames(folders: list, loop: bool = True, first: int = 0, seek_s: fl
             meta = folder / "meta.json"
             kind = json.loads(meta.read_text()).get("kind", "record3d") if meta.exists() else "record3d"
             flat = float((depth_mm[::max(1, len(ts) // 40)] > 0).mean()) < 0.2
-            cap = cv2.VideoCapture(str(folder / "rgb.mp4"))
+            cap = cv2.VideoCapture(str(video_of(folder)))
             skip, seek_s = int(np.searchsorted(ts - ts[0], seek_s)), 0.0
             try:
                 for i in range(len(ts)):
