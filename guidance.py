@@ -84,8 +84,8 @@ GRAB_OPTIONS = [
                                   "hand tracker do not restart the count, and readings no hand could make are "
                                   "left out."),
     ("over", "over the object", "The fingertip over the object in the picture, or within a quarter of its width "
-                                "of it, and no more than 15 cm short of it in depth: what a hand resting on the "
-                                "object measures."),
+                                "of it, and within 10 cm of it in depth for a third of a second, or up to 15 cm "
+                                "short for most of a second: what a hand resting on the object measures."),
     ("arrive", "arrive or cover", "Grabbing distance, and also when a hand that was closing in from a hand's "
                                   "width away disappears at the object: wrapped around it, the tracker loses it."),
     ("near", "wide circle", "The first rule with the circle widened to 9 cm, to compare."),
@@ -108,19 +108,20 @@ class GuidanceConfig:
     grab_side_m: float = 0.06    # "zone": this far across the camera's view, where pixels are exact
     grab_depth_m: float = 0.10   # ...and this far along it
     over_short_m: float = 0.15   # "over": the hand may measure this far short of the object...
-    over_past_m: float = 0.08    # ...or this far past its front
-    depth_jump_m: float = 0.12   # the hand's depth changing this much in one frame is lidar reading past
+    over_past_m: float = 0.08    # ...or this far past its front...
+    over_hold_s: float = 0.8     # ...if it stays this long: a hand still on its way in is through that band sooner
+    depth_jump_m: float = 0.12   # the hand's depth changing this much in a tenth of a second is lidar reading past
     doubt_s: float = 0.5         # ...the finger onto what is behind it: not believed for this long
     goal_jump_m: float = 0.10    # the object moving this much in one frame was measured on something else.
     landed_m: float = 0.12       # ...If that puts it this close to the hand, it was measured on the hand:
     apart_m: float = 0.15        # no "grab" until the two have been seen this far apart again. See _trust
     grab_near_m: float = 0.09    # the "near" rule's radius
-    grab_slack: float = 1.5      # once inside, still counted as inside out to this many times the zone
+    grab_slack: float = 1.3      # once inside, still counted as inside out to this many times the zone
     grab_forgive_s: float = 0.15  # outside for less than this is a bad frame, not a hand that left
     grab_max_mps: float = 0.30   # a hand crossing the view faster than this is passing, not arriving
     grab_box_grow: float = 0.25  # "over": this fraction of the object's width around its box still counts
     arrive_gone_s: float = 0.25  # "arrive" rule: the hand unseen this long, having been...
-    arrive_zone: float = 1.8     # ...within this many times the zone, and closing in: it is at the object
+    arrive_zone: float = 1.3     # ...within this many times the zone, and closing in: it is at the object
     miss_m: float = 0.25         # after "grab": hand seen this far from an object that is seen still there...
     miss_s: float = 0.4          # ...for this long: it came away empty, guide again
     object_blink_s: float = 0.4  # object gone for less than this: the detector blinked, say nothing
@@ -207,12 +208,16 @@ class Guidance:
         self._said_cant_see = False
         self._object_gone_t = None
         self._last_hand_t = None
+        self._unseen_t = None        # since when the hand has been out of sight
         self._remind_t = None
         self._near_t = None          # since when the hand has been in grabbing distance
         self._out_t = None           # ...and since when it has been out of it again
+        self._wide_t = None          # ...and when it was last inside by the wide depth limit only
+        self._wide = False
         self._zone_log = deque(maxlen=40)    # (time, zone distance) of the last frames with a hand
         self._before = None          # (time, object position, hand depth) of the frame before
         self._doubt_t = -1e9         # when the hand's depth last jumped
+        self._depth = None           # (time, depth still to go) when it was last believed
         self._unearned = False       # the object jumped onto the hand, and has not been seen apart from it since
         self._grab_t = None
         self._miss_t = None
@@ -247,7 +252,8 @@ class Guidance:
             raise ValueError(f"unknown guidance option {key!r}")
         self.cfg.option = key
         self.cfg.hybrid, self.cfg.words = key == "steps", key == "words"
-        self.tone.volume = 0.25 if key in TONAL else 0.16        # beeps under speech are kept quiet
+        # Beeps that are the guidance are loud, beeps under speech quiet, and a note that never stops quieter still.
+        self.tone.volume = 0.14 if key in ("hotcold", "twostage", "detector") else (0.25 if key in TONAL else 0.16)
         self._step_axis = self._step_word = self._phrase = None
         self._lined, self._was_lined, self._lined_t = [False, False], False, None
         self._on_beam = self._fine = self._moved = False
@@ -562,10 +568,10 @@ class Guidance:
         """How far the fingertip is from grabbing distance, as a fraction: under 1 is inside."""
         cfg = self.cfg
         key = cfg.grab_option
+        self._wide = False           # inside only by the wider depth limit of "over"
         if key in ("fingertip", "near"):
             return float(np.linalg.norm(err)) / (cfg.grab_m if key == "fingertip" else cfg.grab_near_m)
         side = float(np.hypot(err[0], err[1])) / cfg.grab_side_m
-        depth = err[2] / cfg.grab_depth_m
         if key != "zone" and scene.hand_px is not None and scene.object_box is not None:
             # In the picture a centimetre is a centimetre whatever the depth says, so with the
             # fingertip seen over the object the depth only has to be roughly right.
@@ -573,8 +579,8 @@ class Guidance:
             u, v = scene.hand_px
             outside = max(x1 - u, u - x2, y1 - v, v - y2, 0.0)
             side = outside / max(8.0, cfg.grab_box_grow * min(x2 - x1, y2 - y1))
-            depth = err[2] / (cfg.over_short_m if err[2] > 0 else cfg.over_past_m)
-        return float(np.hypot(side, depth))
+            self._wide = float(np.hypot(side, err[2] / (cfg.over_short_m if err[2] > 0 else cfg.over_past_m))) < 1.0
+        return float(np.hypot(side, err[2] / cfg.grab_depth_m))
 
     def _trust(self, scene: Scene, hand, err, now: float) -> bool:
         """Can this frame count towards "Grab"? Not if it shows something a hand or a bottle
@@ -589,15 +595,18 @@ class Guidance:
         cfg = self.cfg
         before, self._before = self._before, (now, np.asarray(scene.object_xyz, float).copy(), float(hand[2]))
         dist = float(np.linalg.norm(err))
-        if before is not None and now - before[0] < 0.25 and abs(hand[2] - before[2]) > cfg.depth_jump_m:
+        # Against every sighting of the last tenth of a second, not only the last one: the
+        # camera's own smoothing spreads a jump over three frames.
+        if any(now - t <= 0.12 and abs(hand[2] - h[2]) > cfg.depth_jump_m for t, h in self._track[:-1]):
             self._doubt_t = now
         # Compared with the last frame that had a hand in it: the object jumps while the tracker blinks.
         if before is not None and now - before[0] < 1.0 and \
                 float(np.linalg.norm(self._before[1] - before[1])) > cfg.goal_jump_m:
             self._unearned = dist < cfg.landed_m
-        if dist >= cfg.apart_m:
+        believed = now - self._doubt_t >= cfg.doubt_s
+        if believed and dist >= cfg.apart_m:
             self._unearned = False
-        return not self._unearned and now - self._doubt_t >= cfg.doubt_s
+        return believed and not self._unearned
 
     def _arrived(self, zone: float, trusted: bool, now: float) -> bool:
         """Has the hand been in grabbing distance long enough to say so?"""
@@ -608,23 +617,29 @@ class Guidance:
             self._zone_log.clear()
             return False
         forgive = cfg.grab_forgive_s if patient else 0.0
-        slack = cfg.grab_slack if patient else 1.3
+        slack = cfg.grab_slack
         self._zone_log.append((now, zone))
-        if zone < 1.0 or (self._near_t is not None and zone < slack):
+        inside = zone < 1.0 or self._wide
+        if inside or (self._near_t is not None and zone < slack):
             # Once inside, allow a little slack before counting it as outside again.
             if self._out_t is not None and now - self._out_t >= forgive:
                 self._near_t = None                      # it was away for longer than a bad frame lasts
             self._out_t = None
-            if self._near_t is None and zone < 1.0:
+            if self._near_t is None and inside:
                 self._near_t = now
+            if zone >= 1.0:
+                self._wide_t = now
         elif self._near_t is not None:
             if self._out_t is None:
                 self._out_t = now
             if now - self._out_t >= forgive:
                 self._near_t = self._out_t = None
         passing = patient and self._speed is not None and self._speed > cfg.grab_max_mps
-        return (self._near_t is not None and self._out_t is None and not passing
-                and now - self._near_t >= cfg.grab_hold_s)
+        if self._near_t is None or self._out_t is not None or passing:
+            return False
+        # Inside by the wide depth limit only: that takes longer to believe.
+        surely = self._near_t if self._wide_t is None else max(self._near_t, self._wide_t)
+        return now - surely >= cfg.grab_hold_s or now - self._near_t >= cfg.over_hold_s
 
     def _covered(self, now: float) -> bool:
         """The hand has gone from view. Was it closing in on the object, a hand's width away?
@@ -712,6 +727,7 @@ class Guidance:
 
         patient = cfg.grab_option in PATIENT
         if scene.hand_xyz is None:
+            self._unseen_t = now if self._unseen_t is None else self._unseen_t
             self._step_near_t = None
             missing = math.inf if self._last_hand_t is None else now - self._last_hand_t
             if not patient or missing >= cfg.hold_s:
@@ -733,15 +749,26 @@ class Guidance:
 
         if self.state == WAITING_HAND:
             self.sink.cancel("show_me_your_hand")        # still waiting its turn, and no longer true
+        if self._unseen_t is not None and self._near_t is not None:
+            self._near_t += now - self._unseen_t         # time unseen is not time spent there
+        self._unseen_t = None
         self._last_hand_t = now
         self.state = GUIDING
         err = hand_error(scene)
         hand = np.asarray(scene.hand_xyz, float)
         self._watch(hand, now)
-        lead = err if self._vel is None else err - self._vel * cfg.lead_s
         zone = self._zone(scene, err)
         trusted = self._trust(scene, hand, err, now)
         arrived = self._arrived(zone, trusted, now)
+        vel = self._vel
+        if now - self._doubt_t < cfg.doubt_s and self._depth is not None and now - self._depth[0] < 1.0:
+            # A depth that has just jumped is not steered by either: "back" for a hand that
+            # never moved is worse than saying nothing new for half a second.
+            err = np.array([err[0], err[1], self._depth[1]])
+            vel = None if vel is None else np.array([vel[0], vel[1], 0.0])
+        else:
+            self._depth = (now, float(err[2]))
+        lead = err if vel is None else err - vel * cfg.lead_s
         self.trace = {"err": [int(round(1000 * v)) for v in err], "lead": [int(round(1000 * v)) for v in lead],
                       "zone": round(zone, 2), "trusted": int(trusted),
                       "near_s": None if self._near_t is None else round(now - self._near_t, 2),

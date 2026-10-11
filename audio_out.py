@@ -164,6 +164,15 @@ def synthesize(text: str, sr: int) -> np.ndarray | None:
     here (about 0.1 s on the GX10), the macOS voice on a Mac, otherwise None. Short phrases are
     kept, since guidance says the same few again and again."""
     key = (text, sr)
+    parts = text.split(", ")
+    if len(parts) > 1 and all(p.split()[0] in DIRECTIONS for p in parts):
+        # "right twenty, up ten": made from its halves, which are kept, so that the hundreds of
+        # pairs a reach can ask for cost the loop nothing once each half has been said.
+        made = [synthesize(p, sr) for p in parts]
+        if any(m is None for m in made):
+            return None
+        pause = np.zeros(int(0.07 * sr), np.float32)
+        return np.concatenate([x for m in made for x in (m, pause)][:-1])
     if key not in _spoken_cache:
         out = _synthesize(text, sr)
         if out is None or len(text) > 40 or len(_spoken_cache) > 300:
