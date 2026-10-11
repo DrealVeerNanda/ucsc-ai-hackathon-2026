@@ -2,7 +2,7 @@
 without gaps or clicks, and short spoken clips from audio/ mixed over it.
 
     sink = open_sink()                       # sound card if there is one, printed text if not
-    sink.set_tone(pan, freq_hz, beeps_per_s, "beep")   # "beep", "steady" or "silent"
+    sink.set_tone(pan, freq_hz, beeps_per_s, "beep")   # "beep", "steady", "echo" or "silent"
     sink.say("grab")                         # plays audio/grab.wav
     sink.speak("I can see a mug and a phone.")   # any sentence, with a local voice (Piper)
 
@@ -34,6 +34,9 @@ PIPER_VOICE = Path(os.environ.get("PIPER_VOICE") or
 # What each clip says, for the dashboard and the printed log.
 CLIP_TEXT = {"listen": "(beep: listening)", "looking": "Looking", "found_it": "Found it", "show_me_your_hand": "Show me your hand", "grab": "Grab",
              "i_lost_it": "I lost it", "i_cant_see_that": "I can't see that"}
+DIRECTIONS = ("left", "right", "up", "down", "forward", "back")
+CLIP_TEXT.update({f"word_{w}": w for w in DIRECTIONS})
+CLIP_TEXT.update({f"fast_{w}": f"{w} (fast)" for w in DIRECTIONS})
 
 
 @dataclass
@@ -57,6 +60,7 @@ class ToneSynth:
         self.cfg = cfg or ToneConfig()
         c = self.cfg
         self._target = (0.0, c.base_hz, c.rate_far, "silent")
+        self._gap = 0.0          # "echo" mode: seconds from the ping to its echo
         self.pan = 0.0
         self.freq = c.base_hz
         self.gain = 0.0          # master gain (0 when silent)
@@ -64,9 +68,14 @@ class ToneSynth:
         self.phase = 0.0
         self.t_cycle = 0.0
 
-    def set(self, pan: float, freq: float, rate: float, mode: str):
-        """pan -1 (left ear) .. +1 (right ear); mode is beep, steady or silent."""
+    def set(self, pan: float, freq: float, rate: float, mode: str, gap: float = 0.0):
+        """pan -1 (left ear) .. +1 (right ear); mode is beep, steady, echo or silent.
+
+        "echo" plays two notes each cycle: a ping in the middle of the head at the base pitch,
+        then, `gap` seconds later, an echo at this pan and pitch. Only the difference between
+        the two has to be heard, so nobody needs to know what "level" sounds like."""
         self._target = (float(pan), float(freq), float(rate), mode)
+        self._gap = float(gap)
 
     def _approach(self, cur, tgt, n):
         k = 1.0 - math.exp(-n / (self.cfg.smooth_s * self.cfg.sr))
@@ -90,11 +99,6 @@ class ToneSynth:
         gain = self.gain + (gain_n - self.gain) * ramp
         steady = self.steady + (steady_n - self.steady) * ramp
 
-        # continuous-phase oscillator
-        ph = self.phase + np.cumsum(2.0 * math.pi * freq / c.sr)
-        tone = np.sin(ph)
-        self.phase = float(ph[-1] % (2.0 * math.pi))
-
         # beep envelope from time-in-cycle with fixed on-length
         period = max(1.0 / max(rate_t, 0.1), c.beep_on_s + 2 * c.edge_s)
         if self.t_cycle >= period:  # period shrank; we were in the silent gap, so env was 0
@@ -103,6 +107,21 @@ class ToneSynth:
         self.t_cycle = float((self.t_cycle + n / c.sr) % period)
         env = np.clip(t / c.edge_s, 0, 1) * np.clip((c.beep_on_s - t) / c.edge_s, 0, 1)
         env = np.where(t <= c.beep_on_s, env, 0.0)
+        if mode == "echo":
+            # The echo is a second beep later in the same cycle. Pitch and side switch to the
+            # echo's in the silence between the two, so the switch itself is never heard.
+            gap = min(max(self._gap, c.beep_on_s + c.edge_s), period - c.beep_on_s - c.edge_s)
+            te = t - gap
+            echo = np.clip(te / c.edge_s, 0, 1) * np.clip((c.beep_on_s - te) / c.edge_s, 0, 1)
+            env = env + np.where((te >= 0) & (te <= c.beep_on_s), echo, 0.0)
+            second = t >= 0.5 * (c.beep_on_s + gap)
+            freq = np.where(second, freq, c.base_hz)
+            pan = np.where(second, pan, 0.0)
+
+        # continuous-phase oscillator
+        ph = self.phase + np.cumsum(2.0 * math.pi * freq / c.sr)
+        tone = np.sin(ph)
+        self.phase = float(ph[-1] % (2.0 * math.pi))
 
         amp = c.volume * gain * (env * (1.0 - steady) + steady)
         theta = (pan + 1.0) * (math.pi / 4.0)  # equal-power pan
@@ -196,6 +215,43 @@ def load_clips(folder: str | Path | None = None, sr: int = 48000) -> dict:
     return clips
 
 
+def speed_up(x: np.ndarray, factor: float, sr: int) -> np.ndarray:
+    """The same words in less time at the same pitch (a "spearcon"). Overlapping 30 ms pieces
+    are taken from the clip `factor` times as far apart as they are laid down, each nudged by
+    up to 5 ms to where it lines up best with what is already there."""
+    win, hop, seek = int(0.030 * sr), int(0.010 * sr), int(0.005 * sr)
+    if factor <= 1.0 or x.size < 3 * win:
+        return x.astype(np.float32)
+    w = np.hanning(win).astype(np.float32)
+    n = int((x.size - win - seek) / (hop * factor))
+    out = np.zeros(n * hop + win, np.float32)
+    norm = np.zeros_like(out)
+    for i in range(n):
+        at = int(i * hop * factor)
+        if i:
+            want = out[i * hop:i * hop + hop]            # the tail the next piece has to continue
+            best = max(range(0, seek + 1, 8), key=lambda d: float(np.dot(want, x[at + d:at + d + hop])))
+            at += best
+        out[i * hop:i * hop + win] += x[at:at + win] * w
+        norm[i * hop:i * hop + win] += w
+    return out / np.maximum(norm, 0.1)
+
+
+def short_words(sr: int, fast: float = 1.7) -> dict:
+    """One-word directions for the options that repeat them quickly: "word_left" is the
+    shortest recording of "left" there is (the sets in elevenlabs/ and calm/ say whole
+    sentences, 1.4 s each), and "fast_left" is that word again in about half the time."""
+    out = {}
+    for name, clip in load_clips(CLIPS_DIR, sr).items():
+        if name in DIRECTIONS:
+            loud = np.flatnonzero(np.abs(clip) > 0.02)       # the recordings start and end with silence
+            if loud.size:
+                clip = clip[max(0, loud[0] - sr // 100):loud[-1] + sr // 50]
+            out[f"word_{name}"] = clip
+            out[f"fast_{name}"] = speed_up(clip, fast, sr)
+    return out
+
+
 def success_chime(sr: int) -> np.ndarray:
     """Quiet two-note confirmation with soft edges and a pause before 'grab'."""
     out = np.zeros(round(0.48 * sr), dtype=np.float32)
@@ -227,9 +283,12 @@ class Mixer:
         self.clips = dict(clips) if clips is not None else load_clips(sr=self.cfg.sr)
         self.clips["aligned"] = success_chime(self.cfg.sr)
         self.clips["listen"] = listen_beep(self.cfg.sr)
+        if clips is None:
+            self.clips.update(short_words(self.cfg.sr))
         self._grab_clip = (np.concatenate((success_chime(self.cfg.sr), self.clips["grab"]))
                            if "grab" in self.clips else None)
         self.stale_s = stale_s
+        self.rechime_s = 1.5                 # the lined-up chime this recently: "Grab" comes without its own
         self.spoken: list[str] = []          # names actually started, for tests and logs
         self.log: list[str] = []             # the words of everything said, for the dashboard
         self._lock = threading.Lock()
@@ -238,10 +297,19 @@ class Mixer:
         self._next = None                    # name waiting for the current clip to end
         self._duck = 1.0
         self._last_set = time.monotonic()
+        self._played = 0                     # samples rendered so far: the mixer's own clock
+        self._chimed = None                  # ...and its reading when the lined-up chime last started
 
-    def set_tone(self, pan: float, freq: float, rate: float, mode: str):
+    def set_tone(self, pan: float, freq: float, rate: float, mode: str, gap: float = 0.0):
         self._last_set = time.monotonic()
-        self.synth.set(pan, freq, rate, mode)
+        self.synth.set(pan, freq, rate, mode, gap)
+
+    def cancel(self, name: str):
+        """Drop a phrase that is still waiting its turn and is no longer true, such as "show
+        me your hand" once the hand is in view. One already playing is left to finish."""
+        with self._lock:
+            if self._next == name:
+                self._next = None
 
     def say(self, name: str, now: bool = False):
         """Play a clip after the current one. now=True cuts the current one off, because a
@@ -260,7 +328,14 @@ class Mixer:
         else:
             text = CLIP_TEXT.get(name, name.replace("_", " "))
             self.spoken.append(name)
-            clip = self._grab_clip if name == "grab" else self.clips.get(name)
+            clip = self.clips.get(name)
+            if name == "aligned":
+                self._chimed = self._played
+            elif name == "grab" and self._grab_clip is not None:
+                # "Grab" opens with the chime, unless the same chime has only just been heard
+                # for lining up: twice in a second sounds like a stutter.
+                recent = self._chimed is not None and self._played - self._chimed < self.rechime_s * self.cfg.sr
+                clip = clip if recent else self._grab_clip
             if clip is None:
                 print(f"[audio] no clip audio/{name}.wav", file=sys.stderr)
         self.log.append(text)
@@ -298,6 +373,7 @@ class Mixer:
             self.synth.set(0.0, self.cfg.base_hz, self.cfg.rate_far, "silent")
         out = self.synth.render(n)
         with self._lock:
+            self._played += n
             duck_t = self.cfg.duck if self._clip is not None else 1.0
             out *= np.linspace(self._duck, duck_t, n, dtype=np.float32)[:, None]
             self._duck = duck_t
@@ -364,10 +440,12 @@ class PrintSink:
         self.spoken: list[str] = []
         self.log: list[str] = []
         self.tone = (0.0, 0.0, 0.0, "silent")
+        self.gap = 0.0
         self._last = 0.0
 
-    def set_tone(self, pan: float, freq: float, rate: float, mode: str):
+    def set_tone(self, pan: float, freq: float, rate: float, mode: str, gap: float = 0.0):
         self.tone = (pan, freq, rate, mode)
+        self.gap = gap
         now = time.monotonic()
         if not self.quiet and mode != "silent" and now - self._last >= self.every:
             self._last = now
@@ -387,6 +465,9 @@ class PrintSink:
         tracing.event("say", text=text)
         if not self.quiet:
             print(f"[audio] says: {text}")
+
+    def cancel(self, name: str):
+        pass
 
     def saying(self) -> bool:
         return False
