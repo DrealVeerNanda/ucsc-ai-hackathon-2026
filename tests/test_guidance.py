@@ -30,6 +30,7 @@ def near(dx=0.0, dy=0.0, dz=0.0):
 
 
 def guide(**kw):
+    kw.setdefault("decide_s", 0.0)        # these tests are about what one frame calls for: see the vote's own tests
     g = Guidance(PrintSink(quiet=True), GuidanceConfig(**kw))
     g.reset("mug", now=0.0)
     return g
@@ -533,6 +534,7 @@ def test_without_nemotron_the_rule_is_used_and_it_is_not_asked_again(monkeypatch
 # --- options that give the whole direction at once --------------------------------
 
 def dyn(option="combined", **kw):
+    kw.setdefault("decide_s", 0.0)        # these tests are about what one frame calls for: see the vote's own tests
     g = Guidance(PrintSink(quiet=True), GuidanceConfig(**kw))
     g.set_option(option)
     g.reset("mug", now=0.0)
@@ -616,20 +618,20 @@ def test_the_chime_comes_back_after_a_real_spell_off_the_line():
     g.update(near(dx=0.10, dy=0.0, dz=0.25), now=4.4)       # away for two seconds and more
     g.update(near(dx=0.01, dy=0.0, dz=0.25), now=4.6)
     assert said(g).count("aligned") == 2 and said(g)[-1] == "aligned"
-    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=5.4)
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=5.7)
     assert said(g)[-1] == "forward"
 
 
 def test_a_quiet_return_to_the_line_still_says_forward_and_reaches_grab():
     g = dyn(lead_s=0.0)
     g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.0)
-    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.8)
-    g.update(near(dx=0.08, dy=0.0, dz=0.25), now=2.6)       # drifted off
-    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=3.0)       # and straight back
-    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=3.8)
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=2.1)
+    g.update(near(dx=0.08, dy=0.0, dz=0.25), now=3.2)       # drifted off
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=3.6)       # and straight back
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=4.7)
     assert said(g) == ["aligned", "forward", "right", "forward"]
     for i in range(10):                                     # the jump forward is not believed for half a second
-        state = g.update(near(dz=0.02), now=4.0 + 0.1 * i)
+        state = g.update(near(dz=0.02), now=5.0 + 0.1 * i)
     assert state == "grab" and said(g)[-1] == "grab"
 
 

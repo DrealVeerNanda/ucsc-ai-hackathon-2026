@@ -3,6 +3,7 @@ for what the live run of 10 Oct showed, what guidance writes to the trace, and t
 renders every option to listen to."""
 import importlib.util
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -40,6 +41,7 @@ def over(dz=0.0, outside_px=0.0, **kw):
 
 
 def guide(grab="over", option="combined", hand=True, **kw):
+    kw.setdefault("decide_s", 0.0)        # these tests are about what one frame calls for: see the vote's own tests
     g = Guidance(PrintSink(quiet=True), GuidanceConfig(**kw))
     g.set_option(option)
     g.set_grab_option(grab)
@@ -378,7 +380,7 @@ def test_measured_words_give_one_instruction_for_each_move():
     for i in range(20):                                     # it has stopped, 6 cm short
         g.update(near(dx=0.06, dz=0.25), now=2.55 + i / FPS)
     assert said(g) == ["right twenty", "right five"]
-    for i in range(30):
+    for i in range(45):
         g.update(near(dx=0.0, dz=0.25), now=3.3 + i / FPS)
     assert said(g)[2:] == ["aligned", "forward twenty five"]
 
@@ -513,7 +515,7 @@ def test_on_the_beam_it_is_quiet_and_a_drift_is_ticks_not_words():
     g = guide(option="beam", hand=False, lead_s=0.0)
     g.update(near(dx=0.15, dy=0.12, dz=0.25), now=1.0)
     assert said(g) == ["down and right"] and g.sink.tone[3] == "silent"
-    for i in range(30):
+    for i in range(40):
         g.update(near(dx=0.01, dy=0.0, dz=0.25), now=2.0 + i / FPS)
     assert said(g)[1:] == ["aligned", "forward"] and g.sink.tone[3] == "silent"
     n = len(said(g))
@@ -669,7 +671,7 @@ def talk(g, frames, t0=1.0):
 
 
 def test_a_new_phrase_waits_for_a_breath_after_the_last_one():
-    g = Guidance(Talking(0.6), GuidanceConfig())
+    g = Guidance(Talking(0.6), GuidanceConfig(decide_s=0.0))
     g.set_option("combined")
     g.reset("mug", now=0.0)
     g.update(scene(hand=None), now=0.05)
@@ -686,8 +688,8 @@ def test_left_straight_after_right_is_jitter_unless_the_hand_is_well_past():
     turns = sum(1 for a, b in zip(words, words[1:]) if {a, b} == {"left", "right"})
     assert turns <= 2                                       # 10 Oct: ten such turns under a second apart
     g2 = guide(lead_s=0.0)
-    out = talk(g2, [near(dx=0.15, dz=0.25)] * 3 + [near(dx=-0.15, dz=0.25)] * 30)
-    assert [w for _, w in out] == ["right", "left"] and out[1][0] < 1.0     # a real overshoot is corrected at once
+    out = talk(g2, [near(dx=0.15, dz=0.25)] * 3 + [near(dx=-0.15, dz=0.25)] * 40, t0=1.5)
+    assert [w for _, w in out] == ["right", "left"] and out[1][0] <= 1.1    # a real overshoot is corrected at the next turn
 
 
 def test_forward_with_no_progress_becomes_lean_forward():
@@ -858,3 +860,68 @@ def test_compare_options_reports_how_long_the_hand_waited_for_grab():
     table = co.grab_table(waits)
     assert "3 over the object" in table and "1 fingertip touch" in table and "2.0 s" in table
     assert co.grabs([{"type": "frame", "t": 1.0, "state": "guiding"}, {"type": "frame", "t": 2.0, "state": "grab"}]) == []   # an old trace
+
+
+# --- an instruction is what most of the last moments' frames call for (11 Oct) ----------------
+
+def voting(option="combined", **kw):
+    g = Guidance(Talking(0.5), GuidanceConfig(lead_s=0.0, **kw))
+    g.set_option(option)
+    g.reset("mug", now=0.0)
+    g.update(scene(hand=None), now=0.05)
+    g.sink.spoken.clear()
+    return g
+
+
+def test_one_odd_frame_does_not_put_another_instruction_in_the_run():
+    # 11 Oct: "down and left", then "down" five times. The tracker put the hand 8 cm to the side
+    # for single frames, and one of them came up just as it was time to speak.
+    def jittery(t):
+        odd = int(round(t * FPS)) % 7 == 0
+        return near(dx=-0.08 if odd else 0.0, dy=0.15, dz=0.25)
+    words = [w for _, w in talk(voting(), [jittery] * (8 * FPS))]
+    assert set(words) == {"down"} and len(words) >= 3
+    one_frame = [w for _, w in talk(voting(decide_s=0.0), [jittery] * (8 * FPS))]
+    assert "down and left" in one_frame                     # which is what going by one frame did
+
+
+def test_nothing_is_said_on_the_first_frames_of_a_hand():
+    out = talk(voting(), [near(dx=0.15, dz=0.25)] * 3 + [near(dx=0.15, dy=0.15, dz=0.25)] * 40)
+    assert [w for _, w in out] == ["down and right"] and 0.2 <= out[0][0] <= 0.4
+
+
+def test_a_real_change_is_said_within_about_a_second():
+    out = talk(voting(), [near(dx=0.15, dz=0.25)] * 30 + [near(dy=0.15, dz=0.25)] * 60)
+    assert [w for _, w in out] == ["right", "down"]
+    assert 1.0 <= out[1][0] - out[0][0] <= 1.5              # the hand changed a second in: the vote adds half a second at most
+
+
+def test_instructions_come_about_a_second_apart_at_most():
+    def wandering(t):                                       # the direction changes five times a second
+        return near(dx=0.15 * math.sin(7 * t), dy=0.15 * math.cos(5 * t), dz=0.25)
+    out = talk(voting(), [wandering] * (10 * FPS))
+    gaps = [b[0] - a[0] for a, b in zip(out, out[1:]) if "aligned" not in (a[1], b[1])]
+    assert gaps and min(gaps) >= 0.99
+
+
+def test_on_the_edge_of_the_line_what_was_said_stands():
+    # Half the frames call for "down and left", half for "down": neither has the clear share a
+    # change needs, so it does not go back and forth between them.
+    def edge(t):
+        return near(dx=-0.08 if int(round(t * FPS)) % 2 else 0.0, dy=0.15, dz=0.25)
+    words = [w for _, w in talk(voting(), [edge] * (10 * FPS))]
+    assert len(set(words)) == 1 and len(words) >= 2
+
+
+def test_the_lined_up_chime_does_not_wait_for_the_vote():
+    g = voting()
+    out = talk(g, [near(dx=0.15, dz=0.25)] * 30 + [near(dx=0.0, dz=0.25)] * 45)
+    assert [w for _, w in out] == ["right", "aligned", "forward"]
+    assert out[1][0] <= 1.0 + 2 / FPS                       # on the frame it lines up, as before
+
+
+def test_measured_words_take_the_middle_of_the_measurements():
+    def jittery(t):
+        return near(dx=0.20 + (0.06 if int(round(t * FPS)) % 7 == 0 else 0.0), dz=0.25)
+    words = [w for _, w in talk(voting(option="numbers"), [jittery] * (2 * FPS))]
+    assert words and set(words) == {"right twenty"}

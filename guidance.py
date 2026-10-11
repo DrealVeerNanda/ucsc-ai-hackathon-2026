@@ -159,7 +159,14 @@ class GuidanceConfig:
     rechime_s: float = 2.0       # back on the line after less than this off it: no second chime
     reach_m: float = 0.03        # lined up, and the object is this much further away: "forward"
     back_m: float = 0.07         # only say "back" when the hand is clearly past the object
-    phrase_gap_s: float = 0.7    # minimum pause before a different phrase
+    phrase_gap_s: float = 1.0    # minimum pause before a different phrase: about one instruction a second
+    decide_s: float = 0.8        # an instruction is what most of the frames of this long call for, not what the
+                                 # one frame at hand does: on 11 Oct single frames put a "down and left" into a
+                                 # run of "down", and an "up" between two "forward". 0 = go by one frame
+    decide_min_s: float = 0.2    # ...and none is given until the hand has been watched this long
+    decide_share: float = 0.6    # a change from the last instruction needs this share of those frames behind it.
+                                 # This morning's reaches played back: 12 instructions taken straight back within
+                                 # three seconds going by one frame, 2 going by 0.8 s of them
     breath_s: float = 0.3        # ...and this much silence after the last one ended
     reverse_s: float = 1.5       # "left" this soon after "right" is jitter, unless...
     reverse_m: float = 0.08      # ...the hand is this far past the line: then it really overshot
@@ -241,6 +248,8 @@ class Guidance:
         self._step_near_t = None
         self._step_pause_until = 0.0
         self._track = []             # (time, hand position) over the last moments, for its speed
+        self._calls = []             # (time, the instruction that frame called for) over the last moments
+        self._errs = []              # (time, measured error) over the same moments, for the "numbers" amounts
         self._vel = None
         self._speed = None           # across the camera's view, m/s; None until it can be measured
         self._lined = [False, False]
@@ -330,8 +339,33 @@ class Guidance:
         return now - self._stall[0] >= cfg.stall_s
 
     def _phrase_for(self, lead, hand=None, now: float = 0.0, amounts=None) -> str | None:
-        """What to say for this error, for the options that give the whole direction at once.
+        """What to say now, for the options that give the whole direction at once: what most of
+        the frames of the last moments called for. The tracker jitters, and the frame that happens
+        to come up when it is time to speak is as likely as any to be the odd one out.
         With `amounts` (the measured error) each word is followed by how far, in centimetres."""
+        cfg = self.cfg
+        call = self._phrase_now(lead, hand, now)
+        if not cfg.decide_s:
+            return call if amounts is None or call is None else self._phrase_now(lead, hand, now, amounts)
+        if self._calls and now - self._calls[-1][0] >= 0.5:
+            self._calls, self._errs = [], []              # the hand was away: what it called for before says nothing
+        self._calls = [c for c in self._calls if now - c[0] <= cfg.decide_s] + [(now, call)]
+        if amounts is not None:
+            self._errs = [e for e in self._errs if now - e[0] <= cfg.decide_s] + [(now, np.array(amounts, float))]
+        if now - self._calls[0][0] < cfg.decide_min_s:
+            return None
+        calls = [c for _, c in self._calls]
+        most = max(set(calls), key=calls.count)
+        if most != self._phrase and calls.count(most) < cfg.decide_share * len(calls) and self._phrase in calls:
+            most = self._phrase                           # no clear call for a change: what was said still stands
+        if most is None or amounts is None:
+            return most
+        if most != call:
+            return None                                   # the amounts are this frame's: wait for one that agrees
+        return self._phrase_now(lead, hand, now, np.median([e for _, e in self._errs], axis=0))
+
+    def _phrase_now(self, lead, hand=None, now: float = 0.0, amounts=None) -> str | None:
+        """What this one frame calls for."""
         cfg = self.cfg
         how_far = (lambda a: "") if amounts is None else (lambda a: " " + _amount(amounts[a]))
         if self._line(lead):
