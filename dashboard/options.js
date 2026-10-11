@@ -9,6 +9,7 @@
   const list = document.getElementById("options-list");
   const note = document.getElementById("options-note");
   let shown = "";
+  let version = null;     // the server's stamp of these files when this tab loaded them
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -56,6 +57,8 @@
     try {
       const r = await fetch("/options", { cache: "no-store" });
       const d = await r.json();
+      if (version === null) version = d.version;
+      else if (d.version && d.version !== version) return location.reload();      // the page was updated
       button.hidden = d.families.length === 0;
       draw(d.families);
     } catch (e) { /* main.py is not running: keep what is shown */ }
@@ -74,5 +77,5 @@
   });
   refresh();
   if (location.hash === "#options") toggle(true);
-  setInterval(() => { if (!panel.hidden || button.hidden) refresh(); }, 2000);
+  setInterval(refresh, 3000);     // also how a tab left open notices that the page has been updated
 })();

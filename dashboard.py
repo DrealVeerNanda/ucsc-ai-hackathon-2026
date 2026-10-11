@@ -78,6 +78,14 @@ _FAMILIES = (("guidance", "Guidance sound", "guidance", "OPTIONS", "option", "se
              ("grab", "When it says grab", "guidance", "GRAB_OPTIONS", "grab_option", "set_grab_option", "grab option"))
 
 
+def page_version() -> int:
+    """Changes whenever the page's files do: a tab left open from before an update reloads itself."""
+    try:
+        return int(max(os.path.getmtime(os.path.join(STATIC_DIR, n)) for n in os.listdir(STATIC_DIR)))
+    except (OSError, ValueError):
+        return 0
+
+
 def _running(module) -> bool:
     """Is the real module in use? Asking guidance for its option would otherwise start it,
     and open the sound device, in a run that uses the fake one."""
@@ -364,7 +372,8 @@ class Dashboard:
                              for e in events for d in [tracing.describe(e)] if d]
                     return self._send(json.dumps({"next": nxt, "lines": lines}).encode(), "application/json")
                 if path == "/options":
-                    return self._send(json.dumps({"families": option_families()}).encode(), "application/json")
+                    return self._send(json.dumps({"families": option_families(), "version": page_version()}).encode(),
+                                      "application/json")
                 if path == "/trials.json":
                     # readable from a deck served elsewhere (?dash=...): read-only, local numbers
                     return self._send(json.dumps(_trial_stats()).encode(), "application/json", cors=True)

@@ -18,6 +18,7 @@ const MARK = {
 const SAYS = { green: "ready", amber: "look at this", red: "needs fixing", none: "not tested" };
 
 let state = null;
+let pageVersion = null;  // the keeper's stamp of these files when this tab loaded them
 let skew = 0;            // the keeper's clock minus this browser's, so "running for" is right on a laptop too
 let failures = 0;
 const open = new Set();  // lists of files the person has unfolded
@@ -246,6 +247,8 @@ async function poll() {
     const r = await fetch("api/state", { signal: ctl.signal, cache: "no-store" });
     clearTimeout(timer);
     state = await r.json();
+    if (pageVersion === null) pageVersion = state.page_version;
+    else if (state.page_version && state.page_version !== pageVersion) return location.reload();   // the page was updated
     skew = state.t - Date.now() / 1000;
     failures = 0;
     draw();

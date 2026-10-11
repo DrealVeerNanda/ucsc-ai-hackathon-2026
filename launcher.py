@@ -92,6 +92,15 @@ print("OPTIONS " + json.dumps(out))
 """
 
 
+def page_version() -> int:
+    """Changes whenever the page's own files do, so a tab left open from before an update loads
+    itself again instead of running the old script against the new keeper."""
+    try:
+        return int(max(p.stat().st_mtime for p in PAGE_DIR.iterdir() if p.is_file()))
+    except (OSError, ValueError):
+        return 0
+
+
 def load_env(root: Path = ROOT, base: dict | None = None) -> dict:
     """The environment for the keeper and everything it starts."""
     env = dict(os.environ if base is None else base)
@@ -450,6 +459,7 @@ class Supervisor:
                 "settings": {k: self.env.get(k) for k in ("GUIDANCE_MODE", "GUIDANCE_AUDIO", "VOICE_MODE", "STREAM_SOURCE") if self.env.get(k)},
                 "offline": bool(checks.offline_env(self.s, self.proof)),
                 "options": self.options_state(),
+                "page_version": page_version(),
                 "log": tail(self.pipeline.log, 14) if self.mode != "checklist" else []}
 
     # --- the options: guidance sound, hand tracking, when to say Grab -------------------
