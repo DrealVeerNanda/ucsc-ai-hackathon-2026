@@ -192,6 +192,10 @@ def describe(e: dict):
         return "GUIDANCE", "", str(e.get("state", "")).replace("_", " ") + (f'  ({e["target"]})' if e.get("target") else "")
     if name == "option":
         return "GUIDANCE", "", f'switched to option {e.get("number", "?")}: {e.get("title", e.get("option", ""))}'
+    if name == "grab_option":
+        return "GUIDANCE", "", f'grab rule {e.get("number", "?")}: {e.get("title", e.get("option", ""))}'
+    if name == "hand_option":
+        return "HANDS", "", f'hand tracker {e.get("number", "?")}: {e.get("title", e.get("option", ""))}'
     if name.startswith("load."):
         return "LOAD", took, f'{name[5:]} ({e.get("kind") or e.get("model") or ""}) ready'
     return None
