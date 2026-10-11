@@ -10,6 +10,9 @@ memory (stream.py reads it with STREAM_SOURCE=bridge, or auto while a bridge is 
     python tools/phone_bridge.py stop           # stop it cleanly
     python tools/phone_bridge.py run            # run it here in the foreground (Ctrl-C stops it)
     python tools/phone_bridge.py record on|off  # start or stop saving what the phone sends
+    python tools/phone_bridge.py probe          # with the real phone, bridge stopped: learn in two minutes
+                                                # how long PathOn waits for a client that left, and
+                                                # whether it takes two clients at once
 
 It reaches the phone over the USB cable (it runs its own `iproxy`), and over Wi-Fi when the cable
 does not answer and STREAM_PHONE_IP (or --phone-ip) gives the phone's address. When the link
@@ -138,9 +141,15 @@ class Packets:
         return out
 
 
-def decode(head: dict, packet: bytes):
+def decode(head: dict, packet: bytes, half: bool = False):
     """(rgb, depth, K, pose) as stream.RawFrame wants them, or None if the picture is broken.
-    Depth and pose are cleaned exactly as the direct reader in stream.py cleans them."""
+    Depth and pose are cleaned exactly as the direct reader in stream.py cleans them.
+
+    half=True decodes the picture at half its width and height (960 x 720 from the phone's
+    1920 x 1440), which is the size the pipeline shrinks it to anyway. It is about twice as
+    quick and leaves a quarter of the bytes to hand over, but it is not the same pixels as
+    decoding whole and shrinking: on the GX10 they differed by 0.2 of 255 on average on a
+    camera picture, and by up to 46 on hard edges. So it is off unless asked for."""
     at = head["at"]
     k = np.frombuffer(packet, np.float32, 9, at).reshape(3, 3)
     pose = np.frombuffer(packet, np.float32, 16, at + _K_BYTES).reshape(4, 4)
@@ -151,14 +160,19 @@ def decode(head: dict, packet: bytes):
     jpeg = np.frombuffer(packet, np.uint8, head["n_jpeg"], at)
     at += head["n_jpeg"]
     conf = np.frombuffer(packet, np.uint8, dh * dw, at).reshape(dh, dw) if head["n_conf"] else None
+    small = 16 if half else 0                    # OpenCV's "reduced by 2": the JPEG is never unpacked at full size
     if _AS_RGB is not None:
-        rgb = cv2.imdecode(jpeg, _AS_RGB)
+        rgb = cv2.imdecode(jpeg, _AS_RGB | small)
     else:
-        rgb = cv2.imdecode(jpeg, cv2.IMREAD_COLOR)
+        rgb = cv2.imdecode(jpeg, cv2.IMREAD_COLOR | small)
         rgb = None if rgb is None else cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
-    if rgb is None or (head["rgb"][1] and rgb.shape[:2] != head["rgb"]):
+    h, w = head["rgb"]
+    if rgb is None or (w and rgb.shape[:2] != (((h + 1) // 2, (w + 1) // 2) if half else (h, w))):
         return None
     K = np.array([[k[0, 0], 0, k[0, 2]], [0, k[1, 1], k[1, 2]], [0, 0, 1]], dtype=np.float64)
+    if half:                                     # K follows the picture, as stream.shrink does it
+        K[0] *= rgb.shape[1] / (w or 2 * rgb.shape[1])
+        K[1] *= rgb.shape[0] / (h or 2 * rgb.shape[0])
     return rgb, stream._clean_depth(depth, conf), K, stream._valid_pose(pose)
 
 
@@ -368,9 +382,9 @@ class Bridge:
     def __init__(self, folder: str | Path | None = None, port: int = 8888, phone_ip: str | None = None,
                  usb: bool = True, stall_s: float = stream.STALL_S, redial_s: float = 10.0,
                  record: bool = False, record_dir: str | Path | None = None, record_minutes: float = 15.0,
-                 min_free_gb: float = 5.0):
+                 min_free_gb: float = 5.0, half: bool = False):
         self.files = stream.bridge_files(folder)
-        self.port, self.phone_ip, self.usb = port, phone_ip, usb
+        self.port, self.phone_ip, self.usb, self.half = port, phone_ip, usb, half
         # stall_s: no frame for this long is reported as stalled. redial_s: after this long the
         # silent connection is given up and dialled again (0: never), which is what brought the
         # stream back by itself once on the evening before the demo.
@@ -755,7 +769,7 @@ class Bridge:
 
     def _publish(self, head: dict, packet: bytes, now: float) -> bool:
         t = time.perf_counter()
-        frame = decode(head, packet)
+        frame = decode(head, packet, self.half)
         if frame is None:
             self.bad_frames += 1
             return False
@@ -948,13 +962,123 @@ def _record(a, files: dict) -> int:
     return 0
 
 
+def _probe(a, files: dict) -> int:
+    """Find out, with the real phone, what PathOn does when its client goes away: the app's
+    source is not public, and the evening's logs only suggest an answer. Leaves the stream for
+    longer and longer, and each time sees whether PathOn serves a new client without a tap;
+    then tries a second client beside the first. Two minutes, with someone at the phone."""
+    if _lock_holder(files) is not None:
+        print("Stop the bridge first: python tools/phone_bridge.py stop", file=sys.stderr)
+        return 1
+    logging.basicConfig(level=logging.ERROR)
+    b = Bridge(a.dir, a.port, a.phone_ip, not a.no_usb)
+
+    def dial(seconds: float):
+        end = time.monotonic() + seconds
+        while True:
+            b.usb_watch.poll()
+            conn = b._dial()
+            if conn is not None or time.monotonic() > end:
+                return conn
+            time.sleep(0.25)
+
+    def frames(sock, seconds: float, enough: int | None = None) -> int:
+        """Frames that arrive within `seconds` (returning early once there are `enough`)."""
+        packets, n, end = Packets(), 0, time.monotonic() + seconds
+        sock.settimeout(0.2)
+        while time.monotonic() < end and (enough is None or n < enough):
+            try:
+                data = sock.recv(1 << 20)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if not data:
+                break
+            n += len(packets.feed(data))
+        return n
+
+    def streaming(seconds: float):
+        """A connection that is sending frames, tried for up to `seconds`; else None."""
+        end = time.monotonic() + seconds
+        while True:
+            conn = dial(max(0.0, end - time.monotonic()))
+            if conn is not None and frames(conn[0], 1.5, enough=1):
+                return conn
+            if conn is not None:
+                conn[0].close()
+            if time.monotonic() > end:
+                return None
+
+    try:
+        conn = streaming(2.0)
+        if conn is None:
+            print(f"The phone is not streaming: {b.message}")
+            return 1
+        sock, via = conn[0], conn[1]
+        print(f"Streaming over {'the USB cable' if via == 'usb' else 'Wi-Fi'} at {frames(sock, 2.0) / 2.0:.0f} frames a second.")
+        longest_ok = shortest_bad = None
+        for gap in a.gaps:
+            sock.close()
+            print(f"Away for {gap:g} s ... ", end="", flush=True)
+            time.sleep(gap)
+            conn = streaming(1.5)
+            if conn is not None:
+                longest_ok, sock = gap, conn[0]
+                print("served again, no tap needed.")
+                continue
+            shortest_bad = gap
+            print("NOT served: PathOn has stopped.\nTap Start Streaming on the phone now (waiting up to a minute).")
+            conn = streaming(60.0)
+            if conn is None:
+                print("Still not streaming. Start again when it is.")
+                return 1
+            sock = conn[0]
+            break
+        if shortest_bad is None:
+            print(f"PathOn took a new client after every gap tried (up to {longest_ok:g} s).")
+        else:
+            print(f"PathOn keeps its door open for {'at least %g s' % longest_ok if longest_ok else 'less than %g s' % shortest_bad}"
+                  f" after its client leaves, and has closed it by {shortest_bad:g} s.")
+        # A second client beside the first.
+        if via == "usb":
+            try:
+                second = socket.create_connection(("127.0.0.1", b._iproxy_port), timeout=2.0)
+                second = None if b._hung_up(second) else second
+            except OSError:
+                second = None
+        else:
+            second = b._dial_wifi()[0]
+        if second is None or not frames(second, 2.0, enough=1):
+            print("A second client at the same time: refused.")
+        else:
+            reading = threading.Thread(target=frames, args=(second, 2.5), daemon=True)     # or it would hold the app up
+            reading.start()
+            print(f"A second client at the same time: served, and the first still gets {frames(sock, 2.0) / 2.0:.0f} frames a second.")
+            reading.join()
+            second.close()
+            frames(sock, 1.0)
+            alive = frames(sock, 2.0, enough=1) > 0
+            print("When the second leaves, the first " + ("carries on." if alive else "STOPS too: tap Start Streaming again."))
+        if via == "usb" and a.phone_ip:
+            wifi = b._dial_wifi()[0]
+            print("Wi-Fi while the app is in USB mode: " + ("open." if wifi is not None and frames(wifi, 2.0, enough=1) else "closed."))
+            if wifi is not None:
+                wifi.close()
+        sock.close()
+        print("Done. PathOn has no client now: start the bridge at once, or tap Start Streaming again once it runs.")
+        return 0
+    finally:
+        b._stop_iproxy()
+
+
 def _run(a, files: dict) -> int:
     files["dir"].mkdir(parents=True, exist_ok=True)
     handler = logging.handlers.RotatingFileHandler(files["log"], maxBytes=1_000_000, backupCount=3)
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logging.basicConfig(level=logging.INFO, handlers=[handler] + ([logging.StreamHandler()] if sys.stderr.isatty() else []))
     bridge = Bridge(a.dir, a.port, a.phone_ip, not a.no_usb, a.stall, a.redial, a.record, a.record_dir,
-                    a.record_minutes, a.min_free_gb)
+                    a.record_minutes, a.min_free_gb, a.half)
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: bridge.stop())
     signal.signal(signal.SIGHUP, signal.SIG_IGN)     # the terminal closing is not a reason to drop the phone
@@ -976,7 +1100,9 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     env = os.environ.get
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", nargs="?", default="run", choices=["run", "start", "stop", "status", "record"])
+    p.add_argument("command", nargs="?", default="run", choices=["run", "start", "stop", "status", "record", "probe"])
+    p.add_argument("--gaps", type=lambda s: [float(v) for v in s.split(",")], default=[0.5, 1.5, 3.0, 5.0, 10.0, 20.0],
+                   help="for probe: how long to stay away from the phone each time, in seconds")
     p.add_argument("switch", nargs="?", choices=["on", "off"], help="for record")
     p.add_argument("--dir", default=None, help="where its files go (default out/, or PHONE_BRIDGE_DIR)")
     p.add_argument("--port", type=int, default=int(env("PHONE_BRIDGE_PORT", "8888")), help="PathOn's port on the phone")
@@ -990,6 +1116,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--record-dir", default=env("PHONE_BRIDGE_RECORD_DIR"), help="default recordings/")
     p.add_argument("--record-minutes", type=float, default=float(env("PHONE_BRIDGE_RECORD_MINUTES", "15")))
     p.add_argument("--min-free-gb", type=float, default=5.0, help="do not record with less disk space than this")
+    p.add_argument("--half", action="store_true", default=env("PHONE_BRIDGE_HALF", "0") not in ("0", ""),
+                   help="decode pictures at half size (see decode() for what that changes)")
     p.add_argument("--any-core", action="store_true", default=env("PHONE_BRIDGE_ANY_CORE", "0") not in ("0", ""),
                    help="do not keep to the fast processor cores")
     p.add_argument("--wait", type=float, default=45.0, help="for stop: seconds to wait before killing it")
@@ -1004,6 +1132,8 @@ def main(argv: list[str] | None = None) -> int:
         if a.switch is None:
             p.error("record needs on or off")
         return _record(a, files)
+    if a.command == "probe":
+        return _probe(a, files)
     if a.command == "start":
         return _start(a, files, [x for x in argv if x != "start"])
     return _run(a, files)

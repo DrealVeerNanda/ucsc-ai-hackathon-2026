@@ -11,7 +11,8 @@ Where frames come from is set by stream.start(SOURCE) or the STREAM_SOURCE envir
     bridge                 frames from tools/phone_bridge.py, the small program that holds the
                            connection to PathOn so that restarting this one never drops it
     record3d               Record3D app over USB
-    pathon | pathon:IP     free "Record3DStream - PathOn" app over USB | Wi-Fi
+    pathon | pathon:IP     free "Record3DStream - PathOn" app over USB | Wi-Fi (pathon:IP:PORT for
+                           the pretend phone, tools/fake_phone.py)
     relay | relay:PORT     frames forwarded from a Mac by tools/relay_send.py
     recordings/NAME        a saved recording, looped and paced like a live camera
 
@@ -836,7 +837,8 @@ class Stream:
         if kind == "record3d":
             return _record3d_frames(int(arg or 0))
         if kind == "pathon":
-            return _pathon_frames(arg or None)
+            host, _, port = arg.partition(":")       # the port is only ever given for tools/fake_phone.py
+            return _pathon_frames(host or None, int(port or 8888))
         if kind == "relay":
             return _relay_frames(int(arg or RELAY_PORT), self._stop)
         return _replay_frames(self.source, loop=self.loop)

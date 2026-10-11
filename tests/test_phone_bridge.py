@@ -133,6 +133,17 @@ def test_low_confidence_depth_is_dropped_like_the_direct_reader_does():
     assert (depth[:10] == 0).all() and (depth[10:] == 1).all()
 
 
+def test_half_size_decoding_gives_what_the_pipeline_would_have_shrunk_to():
+    f = fake_phone.synthetic_frames(1, (1920, 1440), (64, 48))[0]
+    head, packet = Packets().feed(fake_phone.pack(0, 0.0, f["K"], f["pose"], f["depth"], f["jpeg"], f["conf"], f["rgb_size"]))[0]
+    whole = stream.prepare(stream.RawFrame(*decode(head, packet), "pathon"), 0.0)             # shrunk to 960 by prepare
+    half = stream.prepare(stream.RawFrame(*decode(head, packet, half=True), "pathon"), 0.0)
+    assert decode(head, packet, half=True)[0].shape == (720, 960, 3)
+    assert half.rgb.shape == whole.rgb.shape == (960, 720, 3) and np.allclose(half.K, whole.K)
+    assert np.array_equal(half.depth, whole.depth)
+    assert np.abs(half.rgb.astype(int) - whole.rgb).mean() < 4                              # near, not identical
+
+
 def test_garbage_and_impossible_headers_are_skipped_and_counted():
     p = Packets()
     broken = _packet(1)
@@ -627,6 +638,22 @@ def test_start_status_stop_from_the_command_line(home, phone):
     assert r.returncode == 0 and "stopped" in r.stdout and not stream.bridge_running(home)
     assert _status(home)["state"] == "stopped"
     _wait(lambda: phone.stats()["clients"] == 0, 2.0, "the phone seeing the bridge leave")
+
+
+def test_probe_finds_how_long_the_app_waits_for_a_client_that_left(home, capsys):
+    phone = FakePhone(FRAMES, fps=30, close_on_disconnect=True, grace_s=1.0).start()
+    tapper = threading.Thread(target=lambda: (_wait(lambda: phone.stats()["needs_tap"], 20.0, "the app stopping"),
+                                              time.sleep(3.0), phone.tap()), daemon=True)   # once the probe has asked for it
+    tapper.start()
+    try:
+        assert phone_bridge.main(["probe", "--no-usb", "--phone-ip", "127.0.0.1", "--port", str(phone.port),
+                                  "--gaps", "0.2,2"]) == 0
+    finally:
+        phone.stop()
+    said = capsys.readouterr().out
+    assert "Away for 0.2 s ... served again" in said and "Away for 2 s ... NOT served" in said
+    assert "door open for at least 0.2 s" in said and "closed it by 2 s" in said
+    assert "second client at the same time: served" in said and "the first carries on" in said
 
 
 # --- nothing spins -----------------------------------------------------------------------
