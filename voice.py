@@ -1555,7 +1555,12 @@ class WebMic:
             buds = self.headset
             _now("listening" if buds is not None else "waiting", mic=buds.name if buds is not None else "page or keyboard")
             try:
-                return self._requests.get(timeout=0.05 if buds is not None else 0.25)
+                text = self._requests.get(timeout=0.05 if buds is not None else 0.25)
+                while True:                               # several typed in a row: the newest is the one meant,
+                    try:                                  # and none may be left to be taken for the next request
+                        text = self._requests.get_nowait()
+                    except queue.Empty:
+                        return text
             except queue.Empty:
                 pass
             if buds is None:

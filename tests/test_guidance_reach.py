@@ -53,8 +53,16 @@ def test_a_hand_that_never_comes_is_given_up_on_too():
     assert 4 <= g.sink.spoken.count("show_me_your_hand") <= 7
 
 
-def test_a_hand_that_comes_and_goes_is_not_given_up_on():
+def test_a_hand_that_comes_and_goes_is_not_given_up_on_until_two_minutes_have_gone():
     g = T.guide()
-    for t in range(120):                                                            # a slow, real reach with pauses
-        state = g.update(T.scene(hand=None) if t % 30 < 20 else T.near(dx=0.2, dz=0.3), now=1.0 + t)
-    assert state != "idle"
+    g.reset("mug", now=0.0)
+    states = [g.update(T.scene(hand=None) if t % 30 < 20 else T.near(dx=0.2, dz=0.3), now=1.0 + t) for t in range(140)]
+    assert "idle" not in states[:118] and states[-1] == "idle"      # a slow, real reach with pauses; then it asks again
+
+
+def test_a_new_request_starts_the_two_minutes_afresh():
+    g = T.guide()
+    g.reset("mug", now=0.0)
+    g.update(T.near(dx=0.2, dz=0.3), now=110.0)
+    g.reset("cup", now=115.0)
+    assert g.update(T.near(dx=0.2, dz=0.3), now=125.0) != "idle"

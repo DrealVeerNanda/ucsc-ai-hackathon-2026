@@ -1287,3 +1287,16 @@ def test_with_the_launchers_keeper_running_voice_waits_instead_of_reconnecting(p
     assert 1.5 <= time.monotonic() - t < 4.0             # bounded: the switch's own wait, then the wait for the keeper
     assert voice.status()["ok"] is False and "stuck in headset mode" in voice.status()["message"]
     assert not [cmd for at, cmd in pipewire.commands if cmd[0] == "bluetoothctl" and "keeper" not in cmd[2]]
+
+
+def test_of_several_typed_requests_the_newest_is_taken_and_none_is_left_behind(quiet, tmp_path):
+    quiet.setattr(voice, "_poke_main", lambda: None)
+    quiet.setenv("VOICE_AUTO_LIST", "0")
+    quiet.setenv("VOICE_LLM_URL", "off")
+    mic = voice.WebMic(port=0, transcribe=lambda data: "", cert_dir=tmp_path / "c", typed=False)
+    try:
+        for text in ("find the phone", "find the orange", "find the blue cup"):
+            mic.submit(text)
+        assert mic.listen() == "blue cup" and mic._requests.empty()      # a stale one would be taken for the next request
+    finally:
+        mic.close()

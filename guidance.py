@@ -137,6 +137,7 @@ class GuidanceConfig:
                                  # again. Misheard or simply not there, they could otherwise say nothing more:
                                  # the microphone is only open while a request is awaited. 0 = search for ever
     hand_give_up_s: float = 30.0 # waiting for a hand this long: go idle too, for the same reason. 0 = wait for ever
+    reach_give_up_s: float = 120.0  # no "Grab" this long after the request, whatever is happening: go idle. 0 = never
     far_hold_s: float = 2.5      # the object has been out of arm's reach this long: say so. Not sooner: a clear
                                  # bottle entering the picture reads as the wall behind it for a moment
     far_repeat_s: float = 8.0    # ...and again this often while it stays there
@@ -714,6 +715,7 @@ class Guidance:
         now = time.monotonic() if now is None else now
         self.target = target
         self.state = SEARCHING
+        self._reach_t = now          # when this reach was asked for
         self._clear(now)
         self._tone(self._silent)
         self.sink.say("looking", now=True)
@@ -743,6 +745,13 @@ class Guidance:
             return self.state
         if self.state == GRAB:
             return self._after_grab(scene, now)
+        if cfg.reach_give_up_s and now - getattr(self, "_reach_t", now) > cfg.reach_give_up_s and not self.sink.saying():
+            # Two minutes and no "Grab" (real reaches took 12 to 47 s): this one is not working.
+            # It may be steering to something the detector made up for a misheard word, with a
+            # hand that comes and goes so that neither shorter limit runs out. Ask again.
+            self.state = IDLE
+            self._tone(self._silent)
+            return self.state
 
         if scene.object_xyz is None:
             if self._had_object:
@@ -872,6 +881,8 @@ def _get() -> Guidance:
             cfg.give_up_s = float(os.environ["GUIDANCE_GIVE_UP_S"])
         if os.environ.get("GUIDANCE_HAND_GIVE_UP_S"):
             cfg.hand_give_up_s = float(os.environ["GUIDANCE_HAND_GIVE_UP_S"])
+        if os.environ.get("GUIDANCE_REACH_GIVE_UP_S"):
+            cfg.reach_give_up_s = float(os.environ["GUIDANCE_REACH_GIVE_UP_S"])
         _default = Guidance(sink, cfg, tone)
         _default.set_option(key)
         _default.set_grab_option(grab)
