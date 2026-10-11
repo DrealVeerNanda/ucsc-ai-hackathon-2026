@@ -281,7 +281,12 @@ class Supervisor:
         running = self.mode != "checklist" and self.pipeline.alive()
         if group == "phone":
             note = "" if self.bridge.alive() else "The bridge is not running; it is started again every few seconds."
-            return checks.phone(self.s, note)
+            lines = checks.phone(self.s, note)
+            stops = self.tries.get("bridge", 0)
+            for l in lines:
+                if l["id"] == "phone_stream" and l["level"] != GREEN and stops >= 3:
+                    l["message"] += f" The bridge has stopped {stops} times in a row: its last words are in out/phone_bridge.log."
+            return lines
         if group == "airpods":
             return checks.airpods(self.s)
         if group == "servers":

@@ -862,6 +862,19 @@ def test_a_phone_bridge_started_by_hand_is_left_alone(keeper):
     keeper.bridge.stop(signal.SIGKILL, 0.2)
 
 
+def test_a_bridge_that_keeps_stopping_is_named_on_the_page_and_started_less_often(keeper):
+    with_bridge(keeper.root)                                      # an empty program: it ends at once, every time
+    now, starts = time.time(), 0
+    for second in range(0, 60, 3):
+        before = keeper.bridge.pid
+        keeper.keep_bridge(now + second)
+        starts += keeper.bridge.pid != before
+        time.sleep(0.1)
+    assert starts == 9                                            # every 3 s six times, then every 15 s
+    line = by_id(keeper.look("phone"))["phone_stream"]
+    assert line["level"] == RED and "stopped 9 times in a row" in line["message"] and "phone_bridge.log" in line["message"]
+
+
 def test_the_bridge_says_whether_the_phone_trusts_us(tmp_path):
     with_bridge(tmp_path)
     m = Machine(**{"idevice_id": (0, "00008130-001A2B3C4D5E6F78")})
