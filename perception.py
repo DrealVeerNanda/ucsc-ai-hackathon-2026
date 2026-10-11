@@ -18,6 +18,7 @@ Settings by environment variable:
                                 after tools/check_pose.py says the pose is usable.
     PERCEPTION_DETECT_EVERY=1   run the detector on every Nth frame
     PERCEPTION_DEVICE=cuda|cpu  torch device for the detector (default: ultralytics picks)
+    PERCEPTION_PARALLEL=0       run the hand tracker after the detector instead of alongside it
     PERCEPTION_HELPER=auto|off  when the detector cannot find the object, ask Cosmos for its box
                                 in the background (auto: only if tools/run_cosmos.sh is running)
     MODELS_DIR=PATH             where weights are kept (default: models/ in this repo)
@@ -32,6 +33,7 @@ import threading
 import time
 import urllib.request
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -304,6 +306,7 @@ class PerceptionConfig:
                                  # Each call loads the GPU for 0.6-2.6 s and slows the loop while it runs
     helper_hold_s: float = 5.0   # trust a position from the helper this long without a newer one
     size_depth: bool = True      # no lidar on the hand (closer than about 20 cm): estimate its depth from its size
+    parallel: bool = True        # hand tracker (CPU) runs while the detector (GPU) does, not after it
 
 
 class _Average:
@@ -373,6 +376,8 @@ class Perception:
         self._obj_avg = _Average(self.cfg.smooth, self.cfg.jump_m)
         self._hand_avg = _Average(self.cfg.smooth, self.cfg.jump_m)
         self._hand_scale = deque(maxlen=90)   # lidar depth / size-based depth, to fit the size estimate to this hand
+        # One worker, so the hand tracker still sees frames one at a time and in order.
+        self._hand_pool = ThreadPoolExecutor(1, thread_name_prefix="hand") if self.cfg.parallel and hands else None
         self._forget()
 
     def _forget(self):
@@ -388,6 +393,11 @@ class Perception:
         self._i = 0
         self._obj_avg.clear()
         self._hand_avg.clear()
+
+    def _track_hands(self, frame: Frame):
+        t = time.perf_counter()
+        hands = self.hands.detect(frame.rgb, int(frame.t * 1000))
+        return hands, (time.perf_counter() - t) * 1000
 
     def _pick(self, dets: list[Detection]):
         if not dets:
@@ -486,12 +496,19 @@ class Perception:
                 t_models += time.perf_counter() - t
                 tracing.event("detector.set_target", (time.perf_counter() - t) * 1000, target=target)
 
+        # Hand tracker starts first and runs alongside the detector: they share nothing.
+        t_par = time.perf_counter()
+        hand_job = None
+        if self._hand_pool is not None:
+            hand_job = self._hand_pool.submit(self._track_hands, frame)
+
         # Object box: fresh from the detector, or reused for a few frames.
         if self.detector is not None:
             if self._i % cfg.detect_every == 0 or not self._seen:
                 t = time.perf_counter()
                 dets = self.detector.detect(frame.rgb)
-                t_models += time.perf_counter() - t
+                if hand_job is None:
+                    t_models += time.perf_counter() - t
                 tracing.add("perception.detector", (time.perf_counter() - t) * 1000)
                 det = self._pick(dets)
                 if det is not None:
@@ -502,11 +519,15 @@ class Perception:
 
         # Hand: only one within arm's reach can be the wearer's. Of those, the one nearest the object.
         hands = []
-        if self.hands is not None:
+        if hand_job is not None:
+            hands, ms = hand_job.result()
+            t_models += time.perf_counter() - t_par     # both models, overlapped
+            tracing.add("perception.hand", ms)
+        elif self.hands is not None:
             t = time.perf_counter()
-            hands = self.hands.detect(frame.rgb, int(frame.t * 1000))
+            hands, ms = self._track_hands(frame)
             t_models += time.perf_counter() - t
-            tracing.add("perception.hand", (time.perf_counter() - t) * 1000)
+            tracing.add("perception.hand", ms)
         hand, hand_raw = None, None
         reach = [(k, p, src) for k, (p, src, ok) in ((k, self._hand_xyz(k, frame)) for k in hands) if ok]
         if reach:
@@ -604,7 +625,8 @@ def build(detector: str | None = None, hand: str | None = None) -> Perception:
         else:
             hands = MediaPipeHand()
     cfg = PerceptionConfig(use_pose=os.environ.get("PERCEPTION_USE_POSE", "") not in ("", "0"),
-                           detect_every=int(os.environ.get("PERCEPTION_DETECT_EVERY", "1")))
+                           detect_every=int(os.environ.get("PERCEPTION_DETECT_EVERY", "1")),
+                           parallel=os.environ.get("PERCEPTION_PARALLEL", "1") != "0")
     helper = None
     if os.environ.get("PERCEPTION_HELPER", "auto") != "off":
         import cosmos
