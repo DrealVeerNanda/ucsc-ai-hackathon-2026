@@ -4,6 +4,7 @@
 #
 #   bash tools/fetch_models.sh          # Cosmos Reason 2: 8B (better boxes) and 2B (faster)
 #   bash tools/fetch_models.sh 8b       # only one of them
+#   bash tools/fetch_models.sh piper    # the voice that speaks sentences (63 MB), into models/piper here
 #
 # Files go to ~/models (override with MODELS_DIR). These are third-party GGUF conversions of
 # nvidia/Cosmos-Reason2-*, under the NVIDIA Open Model License, for llama.cpp.
@@ -30,7 +31,16 @@ for m in "${@:-8b 2b}"; do
                 get mradermacher/Cosmos-Reason2-8B-GGUF Cosmos-Reason2-8B.mmproj-f16.gguf ;;
             2b) get apolo13x/Cosmos-Reason2-2B-GGUF Cosmos-Reason2-2B-Q8_0.gguf
                 get apolo13x/Cosmos-Reason2-2B-GGUF mmproj-Cosmos-Reason2-2B-F16.gguf ;;
-            *)  echo "unknown model: $name (use 8b or 2b)" >&2; exit 1 ;;
+            piper)
+                V="$(cd "$(dirname "$0")/.." && pwd)/models/piper"
+                mkdir -p "$V"
+                for f in en_US-lessac-medium.onnx en_US-lessac-medium.onnx.json; do
+                    [ -s "$V/$f" ] && { echo "have   $V/$f"; continue; }
+                    echo "fetch  $V/$f"
+                    curl -L --fail --retry 30 --retry-delay 5 -o "$V/$f" \
+                        "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/$f"
+                done ;;
+            *)  echo "unknown model: $name (use 8b, 2b or piper)" >&2; exit 1 ;;
         esac
     done
 done

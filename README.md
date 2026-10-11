@@ -185,6 +185,24 @@ GUIDANCE_WORDS=1 python main.py --guidance real   # fallback: spoken left, right
 - `voice.py` asks for a typed target unless a microphone is present. Then it is push-to-talk: Enter, speak, Enter. `VOICE_MODE=type` forces typing.
 - The GX10 has no speakers or microphone of its own, only HDMI. Pair the earbuds, then set `GUIDANCE_DEVICE` and `VOICE_DEVICE` if they are not the default.
 
+## The language models (helpers, not in the loop)
+
+Two models run next to the pipeline and are only asked now and then. Both stay on the GX10.
+
+```bash
+bash tools/run_nemotron.sh     # port 8000: turns what the wearer says into an object name
+bash tools/run_cosmos.sh       # port 8001: looks at one picture (8b by default, `2b` is faster)
+bash tools/fetch_models.sh piper   # once: the voice that speaks sentences
+```
+
+| The wearer says | What happens |
+|---|---|
+| "I want to grab a can", "I'm thirsty" | Nemotron names the object (`can`, `water bottle`), about 0.3 s |
+| "What's on the table?" | Cosmos looks through the camera and lists what could be picked up; it is spoken, and the wearer answers "the mug" or "the second one" |
+| A name the detector cannot find | After one second of searching, Cosmos is asked for the object's box in the background (0.6 to 2 s) and its answer positions the object until the detector takes over |
+
+If a server is not running, the pipeline carries on without it: a simple rule reads plain requests, and the detector works alone. `python tools/ask_cosmos.py photo.jpg --list` tries the listing on any picture.
+
 ## Where the time goes
 
 Every run writes a trace to `logs/trace_*.jsonl` by itself: one line per camera frame with the time each step took, plus a line for every slow call (model loads, Cosmos, Whisper, audio underruns).
