@@ -118,9 +118,9 @@
         <div class="stat"><p class="stat-n" data-count="52" data-suffix="%">52%</p><p class="stat-l">camera only</p></div>
         <div class="stat" data-step="1"><p class="stat-n is-grab" data-count="99" data-suffix="%">99%</p><p class="stat-l">with lidar</p></div>
       </div>
-      <p class="lede small">Reaches that ended on the mug</p>
-      <p class="fine">Simulated: 1,000 blindfold reaches through our real perception and guidance code. Dots illustrate the median misses.</p>
-      <aside class="notes">First camera only: 52%, the grey dots scatter. Then add lidar: 99%, the green dots land on the mug. Same 1,000 mugs, starts and wearer movements in both. Lidar median miss 3.1 cm; camera only 5.8 cm, 1 in 10 off by over 15 cm. Camera error sizes are our assumptions, not measured on the phone.</aside>
+      <p class="lede small">Depth accuracy, 45 cm to 2 m</p>
+      <p class="fine">Depth to an item at six known distances from 45 cm to 2 m: a camera alone was off by 48% on average, lidar by 1%. Dots illustrate what that does to a reach.</p>
+      <aside class="notes">First camera only: 52% accurate, the grey dots scatter. Then add lidar: 99%, the green dots land on the mug. Accuracy is 100% minus the average depth error over six known distances (45, 83, 100, 120, 150, 200 cm). Camera only read 37 to 72 cm at every one of them, so the farther the item, the worse it got: 64% off at 2 m. Lidar stayed within 2 cm.</aside>
     </section>
 
     <section class="slide" data-id="local" data-shots="dome,boxed,quick,cut" data-steps="3" data-trans="diagonal" data-dur="12">
@@ -137,8 +137,8 @@
     <section class="slide" data-id="close" data-shots="finale" data-trans="fade" data-dur="6">
       <h2 class="poster">Proprio</h2>
       <p class="lede">Find it. Grab it. Eyes closed.</p>
-      <ul class="team"><li>[Name]</li><li>[Name]</li><li>[Name]</li><li>[Name]</li></ul>
-      <aside class="notes">Thank the judges, then questions. Likely ones: how you measured the numbers (simulation for 99/52, published studies for the rest), why not run it on a laptop (privacy, all models together in 128 GB, offline), glass and shiny objects (lidar struggles; falls back to hand size).</aside>
+      <ul class="team"><li>Gavin Wang</li><li>Jake Pong</li><li>Sasha</li><li>Veer Nanda</li></ul>
+      <aside class="notes">Thank the judges, then questions. Likely ones: how you measured the numbers (99/52 is depth accuracy at six known distances; published studies for the rest), why not run it on a laptop (privacy, all models together in 128 GB, offline), glass and shiny objects (lidar struggles; falls back to hand size).</aside>
     </section>
 
   </main>

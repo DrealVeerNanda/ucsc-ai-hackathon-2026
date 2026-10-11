@@ -7,7 +7,7 @@ Our team's project for the UCSC AI Hackathon, October 10–11, 2026, at UC Santa
 - Veer Nanda (@DrealVeerNanda)
 - Gavin Wang (gavinyhwang@gmail.com)
 - Jake Pong (jzcpong@gmail.com)
-- _add yourself_
+- Sasha (@SashaSkind)
 
 ## Project: Proprio (ASUS Local AI track)
 
