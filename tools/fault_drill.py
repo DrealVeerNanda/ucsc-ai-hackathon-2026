@@ -1046,7 +1046,8 @@ def _switch_in_state(rig: Rig, want_state: str, setup, new_target: str, timeout_
     """Get the pipeline into a state, ask for something else, and see that it follows and stays following."""
     t0 = setup()
     if want_state is not None:
-        got = rig.wait(soak.event("state", state=want_state), timeout_s, t0)
+        # by the frames, not the "state" events: those are written only when the state changes
+        got = rig.wait(lambda r: r.get("type") == "frame" and r.get("state") == want_state, timeout_s, t0 + 0.5)
         if got is None:
             return f"{want_state}: never reached that state in {timeout_s:.0f} s", None
     t = rig.ask(new_target, interrupt=True)
@@ -1056,6 +1057,8 @@ def _switch_in_state(rig: Rig, want_state: str, setup, new_target: str, timeout_
     time.sleep(12.0)
     flowing = len(rig.window(time.time() - 3.0, time.time(), 1.5))
     again = [e for e in rig.events(looking["t"] + 0.5, "cosmos.list")]
+    if flowing < 20 and rig.events(looking["t"], "state") and any(e.get("state") == "grab" for e in rig.events(looking["t"], "state")):
+        return f"{want_state}: took the request after {looking['t'] - t:.1f} s (and the hand then reached the new object)", True
     if flowing < 20:
         return (f"{want_state}: took the request after {looking['t'] - t:.1f} s, then STOPPED AND ASKED AGAIN"
                 + (" (it listed the table once more)" if again else "")), False
