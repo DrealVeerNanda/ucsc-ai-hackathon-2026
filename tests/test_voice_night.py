@@ -3,6 +3,7 @@ words that have to just work, telling the wearer from the room, and every failur
 through (run with: python -m pytest tests/test_voice_night.py)."""
 import json
 import socket
+import urllib.error
 import ssl
 import sys
 import threading
@@ -696,9 +697,9 @@ class _Reply:
         return self.body
 
 
-def test_nemotron_timing_out_is_left_alone_for_a_while_and_then_tried_again(quiet):
+def test_a_nemotron_that_is_not_there_is_left_alone_for_a_while_and_then_tried_again(quiet):
     quiet.delenv("VOICE_LLM_URL")
-    calls, answer = [], [socket.timeout("timed out")]
+    calls, answer = [], [urllib.error.URLError(ConnectionRefusedError("refused"))]
 
     def urlopen(req, timeout=None):
         calls.append(1)
@@ -712,6 +713,20 @@ def test_nemotron_timing_out_is_left_alone_for_a_while_and_then_tried_again(quie
     quiet.setattr(voice, "_llm_again_t", 0.0)                                           # ...half a minute later
     answer[0] = json.dumps({"intent": "pick", "target": "water bottle"})
     assert voice.interpret("I am really thirsty") == ("pick", "water bottle") and len(calls) == 2
+
+
+def test_one_slow_answer_from_nemotron_does_not_switch_it_off(quiet):
+    quiet.delenv("VOICE_LLM_URL")
+    answers = [socket.timeout("timed out"), json.dumps({"intent": "pick", "target": "water bottle"})]
+
+    def urlopen(req, timeout=None):
+        a = answers.pop(0)
+        if isinstance(a, Exception):
+            raise a
+        return _Reply(a)
+    quiet.setattr(voice.urllib.request, "urlopen", urlopen)
+    assert voice.interpret("find my mug") == ("pick", "mug")                            # the GPU was busy: the rule read it
+    assert voice.interpret("I am really thirsty") == ("pick", "water bottle")           # and the very next one is asked again
 
 
 @pytest.mark.parametrize("content", ["not json at all", "[1, 2]", '{"intent": "dance", "target": "mug"}', '{"target": 7}'])
