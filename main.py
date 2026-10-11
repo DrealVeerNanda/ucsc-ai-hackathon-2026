@@ -63,6 +63,7 @@ STUCK_S = 30.0
 STARTING_S = 120.0      # before the first frame is through: importing torch and loading the models, cold
 NO_CAMERA_S = 2.0       # this long without a frame while it should be guiding: say so
 FAILING_S = 5.0         # a step that has failed on every try for this long is not a blip
+RESUME_S = 90.0         # a run that died mid-reach at most this long ago is carried on with, not asked again
 
 
 def clip_text(name: str) -> str:
@@ -110,6 +111,7 @@ class Heartbeat:
 
     def __init__(self, folder: str | Path | None, faults: Faults | None = None, every_s: float = 1.0):
         self.path = None if not folder or str(folder) == "off" else Path(folder) / "pipeline.json"
+        self.previous = self._read()                 # what the run before this one last reported
         self.faults = faults or Faults()
         self.every_s = every_s
         self.started = time.time()
@@ -121,6 +123,13 @@ class Heartbeat:
         self._seen = 0
         self._stop = threading.Event()
         self._thread = None
+
+    def _read(self) -> dict:
+        try:
+            got = json.loads(self.path.read_text())
+            return got if isinstance(got, dict) else {}
+        except Exception:
+            return {}
 
     def now(self, step: str):
         self.at = (step, time.monotonic())
@@ -413,6 +422,34 @@ def run(args, mods, beat: Heartbeat | None = None):
             attempt("dashboard", dash.publish, frame, scene, info)
         return attempt("view", debug_view.show, frame, scene, info) if view else None
 
+    def resume_target() -> str | None:
+        """The object the run before this one was guiding to, if that run died in the middle of
+        a reach moments ago and the keeper has started this one in its place. A blindfolded
+        wearer then hears the reach carry on, not "what do you want to grab?" again."""
+        prev = beat.previous
+        if os.environ.get("PROPRIO_KEEPER") != "1" or not prev.get("target"):
+            return None
+        try:
+            age = time.time() - float(prev.get("t") or 0)
+        except (TypeError, ValueError):
+            return None
+        if prev.get("state") in ("stopped", "listening") or not 0 <= age <= RESUME_S:
+            return None                              # it was stopped on purpose, or was not reaching, or is old news
+        if prev.get("guidance") not in ("searching", "found", "waiting_hand", "guiding"):
+            return None
+        target = str(prev["target"])
+        print(f"[main] carrying on with {target!r}: the run before this one stopped {age:.0f} s ago in the middle of it")
+        tracing.event("resume", target=target, after_s=round(age, 1))
+        say = getattr(mods.guidance, "say_text", None)
+        if say:
+            attempt("guidance", say, f"Still looking for the {target}.")
+        if mods.reset:
+            attempt("guidance", mods.reset, target)
+        run.update(status="running", started=time.monotonic(), elapsed_s=0.0, target=target)
+        beat.target = target
+        beat.now("loop")
+        return target
+
     def request_target(prev: str | None = None) -> str:
         beat.now("listening")
         if view:
@@ -465,7 +502,7 @@ def run(args, mods, beat: Heartbeat | None = None):
         return show(f, s, info)
 
     try:
-        target = request_target()
+        target = resume_target() or request_target()
         while True:
             t0 = time.perf_counter()
             beat.now("stream")
