@@ -37,6 +37,7 @@ Other things that can be said: "stop" / "cancel" / "never mind", "again" / "repe
                          heard in mono at telephone quality, so left and right tones mean nothing (default: switch)
     VOICE_HEADSET_VOLUME=0.6  how loud the earbuds are in headset mode (wpctl's scale); "match" (default)
                          copies the stereo volume, "keep" leaves it alone
+    PROPRIO_KEEPER=1     set by the launcher: its keeper reconnects earbuds that lost a mode, so voice does not
     VOICE_REACH_LISTEN=1 with VOICE_HEADSET_MODE=stay: keep listening during a reach too, for "stop", "again",
                          "help" and the options, said by the wearer and nothing else. Without it those
                          words work during a reach only from the page or the keyboard: in stereo mode the
@@ -110,6 +111,8 @@ REACH_WORDS_S = 3.0         # during a reach only a word or two is listened for 
 SWITCH_GAP_S = 3.0          # never two changes of the earbuds' mode closer than this: one started while the last was
                             # still coming up left them without stereo for minutes, three times on 10 October
 SWITCH_WAIT_S = 6.0         # a mode that is not up after this has failed
+KEEPER_WAIT_S = 20.0        # with the launcher's keeper running: how long to wait for it to bring stereo back
+                            # (it acts after a mode has been missing for 10 s, and a reconnect takes a few more)
 
 _LEAD = re.compile(
     r"^(?:(?:please|hey|ok|okay|can you|could you|i want you to|i want to|i want|i need|help me)\s+)*"
@@ -1095,6 +1098,8 @@ class Headset:
         """Stereo did not come back by itself (on 10 October it stayed away for up to two and a
         half minutes). Disconnecting and connecting them again is what brings it back by hand."""
         global _repair_t, _switch_t
+        if os.environ.get("PROPRIO_KEEPER") == "1":
+            return self._wait_for_keeper()
         with _switch_lock:
             if time.monotonic() - _repair_t < 60:
                 return False                              # tried a moment ago: do not keep cutting them off
@@ -1118,6 +1123,26 @@ class Headset:
             tracing.event("headset", to="stereo", reconnected=True, ok=ok, ms=round((time.monotonic() - t0) * 1000))
             print(f"[voice] the earbuds did not go back to stereo; reconnected them ({'ok' if ok else 'still not right'})", file=sys.stderr)
             return ok
+
+    def _wait_for_keeper(self) -> bool:
+        """The launcher's keeper is watching the earbuds and reconnects them itself when a mode
+        has been missing for ten seconds. Two of us cutting them off would undo each other's
+        work, so here it only waits, for a bounded time, until stereo is back."""
+        global _switch_t
+        t0, ok = time.monotonic(), False
+        tracing.event("headset", to="stereo", waiting_on="keeper")
+        print("[voice] the earbuds did not go back to stereo; waiting for the launcher's keeper to reconnect them", file=sys.stderr)
+        while not ok and time.monotonic() - t0 < KEEPER_WAIT_S:
+            time.sleep(0.5)
+            found = Headset.find()
+            if found is None:
+                continue                                  # the keeper has just disconnected them
+            if found.device != self.device:               # ...and they are back, under a new number
+                self.device, self.headset, self.stereo = found.device, found.headset, found.stereo
+                _switch_t = time.monotonic()              # no switch of ours while they are still coming up
+            ok = self.mode() == self.stereo
+        tracing.event("headset", to="stereo", keeper=True, ok=ok, ms=round((time.monotonic() - t0) * 1000))
+        return ok
 
     def record(self, should_stop=None, abandon=None) -> np.ndarray | None:
         """Wait for someone to speak and return what they said (None if nobody did). Call
@@ -1284,6 +1309,7 @@ class WebMic:
         self._find_t, self._find_gap, self._check_t, self._sorry_t = 0.0, FIND_EARBUDS_S, 0.0, -1e9
         self.last_recording = {}                          # what the page last sent, for the page's own log
         self._reach = None                                # the thread listening during a reach, and what ends it
+        self._device = None                               # the sound server's number for the earbuds last used
         if transcribe is None:
             try:
                 with tracing.timed("load.whisper", model=model):
@@ -1343,6 +1369,10 @@ class WebMic:
         if self.headset is None and self._find_headset and self._hear is not None:
             self.headset = Headset.find()
             if self.headset is not None:
+                global _switch_t
+                if self._device not in (None, self.headset.device):
+                    _switch_t = time.monotonic()          # reconnected: let them finish coming up before a switch
+                self._device = self.headset.device
                 print(f"[voice] Using {self.headset.name} as the microphone: answer after the beep.")
             elif "earbuds" not in _trouble and _wants_earbuds():
                 with _status_lock:                        # quietly: this is asked every few seconds

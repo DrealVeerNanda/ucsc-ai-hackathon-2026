@@ -32,7 +32,8 @@ def quiet(monkeypatch, tmp_path):
     monkeypatch.setenv("GUIDANCE_AUDIO", "off")
     monkeypatch.setenv("VOICE_STATUS", str(tmp_path / "status" / "voice.json"))
     for name in ("GUIDANCE_MODE", "VOICE_WEARER_LEVEL", "VOICE_REQUEST_S", "VOICE_HEADSET_MODE", "VOICE_HEADSET_VOLUME",
-                 "VOICE_DOWNLOAD", "VOICE_STT", "VOICE_REMIND", "VOICE_MODE", "VOICE_DEVICE", "VOICE_HEADSET"):
+                 "VOICE_DOWNLOAD", "VOICE_STT", "VOICE_REMIND", "VOICE_MODE", "VOICE_DEVICE", "VOICE_HEADSET", "PROPRIO_KEEPER",
+                 "VOICE_REACH_LISTEN"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(guidance, "_default", None)
     for name, value in (("_ask_next", True), ("last_objects", []), ("_llm_ok", None), ("_llm_again_t", 0.0), ("_stopped", False),
@@ -1234,3 +1235,24 @@ def test_earbuds_whose_nodes_look_different_are_not_taken_for_broken(pipewire):
     buds.open()
     buds.close()
     assert time.monotonic() - t < 3.5                       # and after the first time, no waiting for them either
+
+
+def test_with_the_launchers_keeper_running_voice_waits_instead_of_reconnecting(pipewire, quiet):
+    quiet.setenv("PROPRIO_KEEPER", "1")
+    quiet.setattr(voice, "KEEPER_WAIT_S", 1.5)
+    pipewire.takes_s = 0.0
+    buds = voice.Headset(61, 261, 5, "AirPods Pro")
+    buds.open()
+    pipewire.stuck = True
+    quiet.setattr(voice.Headset, "find", staticmethod(lambda: voice.Headset(pipewire.device, 261, 5, "AirPods Pro")))
+    threading.Timer(1.0, lambda: pipewire.run(["bluetoothctl", "connect", "the keeper did this"])).start()
+    buds.close()
+    assert not [cmd for at, cmd in pipewire.commands if cmd[0] == "bluetoothctl" and "keeper" not in cmd[2]]    # none of ours
+    assert buds.device == 62 and voice.status()["ok"] is True                # the keeper brought them back, under a new number
+    buds.open()
+    pipewire.stuck = True
+    t = time.monotonic()
+    buds.close()                                            # this time nobody repairs them: wait, then carry on and say so
+    assert 1.5 <= time.monotonic() - t < 4.0             # bounded: the switch's own wait, then the wait for the keeper
+    assert voice.status()["ok"] is False and "stuck in headset mode" in voice.status()["message"]
+    assert not [cmd for at, cmd in pipewire.commands if cmd[0] == "bluetoothctl" and "keeper" not in cmd[2]]
