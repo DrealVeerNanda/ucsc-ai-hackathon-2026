@@ -643,11 +643,30 @@ def start(source: str | None = None, **kw) -> Stream:
 atexit.register(lambda: stop())
 
 
+_retry_at = 0.0
+_complained = None
+
+
 def get_frame(wait: float = 0.0) -> Frame | None:
     """Latest frame, or None if nothing new. `wait` (seconds) blocks for the next frame
-    instead of returning None at once, so a loop does not have to spin."""
+    instead of returning None at once, so a loop does not have to spin.
+
+    If the camera cannot be opened (the phone app is not streaming yet), this says so once and
+    returns None, then tries again every two seconds: the loop keeps running and picks the
+    stream up when it appears."""
+    global _retry_at, _complained
     if _default is None:
-        start()
+        if time.monotonic() < _retry_at:
+            return None
+        try:
+            start()
+            _complained = None
+        except SourceError as e:
+            _retry_at = time.monotonic() + 2.0
+            if str(e) != _complained:
+                _complained = str(e)
+                print(f"[stream] {e} Waiting for it.", file=sys.stderr)
+            return None
     return _default.get_frame(wait)
 
 

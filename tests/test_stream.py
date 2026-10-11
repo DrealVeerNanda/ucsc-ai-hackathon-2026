@@ -381,3 +381,17 @@ def test_auto_reports_both_reasons_when_nothing_streams(monkeypatch):
     monkeypatch.setattr(_FakeRecord3D, "devices", [])
     with pytest.raises(SourceError, match="no iPhone.*No Record3D device"):
         Stream("auto").start()
+
+
+def test_get_frame_waits_for_a_camera_that_is_not_there_yet(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("STREAM_SOURCE", str(tmp_path / "rec"))        # does not exist yet
+    monkeypatch.setattr(stream, "_retry_at", 0.0)
+    monkeypatch.setattr(stream, "_complained", None)
+    try:
+        assert stream.get_frame() is None and stream.get_frame() is None     # no exception: the loop lives
+        assert capsys.readouterr().err.count("Not a recording") == 1          # said once, not every frame
+        _record(tmp_path / "rec", n=4, dt=0.02)                               # the camera appears
+        monkeypatch.setattr(stream, "_retry_at", 0.0)                         # (two seconds later)
+        assert stream.get_frame(wait=1.0) is not None
+    finally:
+        stream.stop()
