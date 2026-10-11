@@ -1503,10 +1503,10 @@ audio_out.open_sink = lambda *a, **k: audio_out.PrintSink(quiet=True)
 import voice
 
 class Buds:
-    name, calls = "fake earbuds", 0
+    name, calls, device = "fake earbuds", 0, 1
     def open(self): pass
     def close(self): pass
-    def record(self, should_stop=None):
+    def record(self, should_stop=None, **kw):
         Buds.calls += 1
         if Buds.calls == 1:
             raise RuntimeError("Error opening InputStream: Device unavailable")
@@ -1579,22 +1579,27 @@ sys.path.insert(0, sys.argv[1])
 import numpy as np, audio_out
 audio_out.open_sink = lambda *a, **k: audio_out.PrintSink(quiet=True)
 import voice
-real, calls = subprocess.run, [0]
+real, calls, now = subprocess.run, [0], [3]      # now: the mode the pretend earbuds are in (3 = stereo)
 
 def run(cmd, *a, **k):
     if list(cmd[:2]) == ["wpctl", "set-profile"]:
         calls[0] += 1
         if calls[0] == 1:
             raise subprocess.TimeoutExpired(cmd, 3)
+        now[0] = int(cmd[3])
         return subprocess.CompletedProcess(cmd, 0, "", "")
     return real(cmd, *a, **k)
 
 voice.subprocess.run = run
-voice.time.sleep = lambda s: None
 buds = voice.Headset(1, 2, 3, "fake earbuds")
-buds.record = lambda should_stop=None: np.ones(16000, np.float32) * 0.1
+buds.mode = lambda: now[0]                        # the pretend earbuds do what the last command that got through said
+buds._is_up = lambda index: now[0] == index
+buds._match_volume = lambda: None
+buds.record = lambda should_stop=None, **kw: np.ones(16000, np.float32) * 0.1
 mic = voice.WebMic(int(sys.argv[2]), transcribe=lambda data: "", headset=buds, hear=lambda audio: "water bottle",
                    cert_dir=sys.argv[3], typed=False)
+voice.Headset.find = staticmethod(lambda: buds)
+mic._find_headset = True          # as in a real run, where it keeps looking for earbuds
 try:
     print("RESULT heard", repr(mic.listen()), flush=True)
 except BaseException as e:
