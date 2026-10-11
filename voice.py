@@ -236,6 +236,7 @@ LLM_SCHEMA = {"type": "object",
               "required": ["intent", "target"], "additionalProperties": False}
 _LIST = re.compile(r"\b(?:what(?:'s| is| are)?\b.*\b(?:on|in front|here|there|around|see|table|desk|pick up|grab|reach)"
                    r"|what do you see|what can you see|what can i|look around|describe|list (?:the )?(?:objects|things))\b")
+_ASKING = re.compile(r"\b(?:what|which|where|show|tell|list|describe|everything|anything|something|else|see|look|there|here|around)\b")
 _YES = re.compile(r"^(?:yes|yeah|yep|sure|ok|okay|please|that one|i want it|yes please|yes i do|get it)$")
 _NUMBER = {w: i + 1 for i, w in enumerate("one two three four five six seven eight nine ten eleven twelve".split())}
 _NUMBER_HEARD = {"won": 1, "to": 2, "too": 2, "for": 4, "ate": 8}       # what Whisper may write for a number said by itself
@@ -327,6 +328,10 @@ def interpret(text: str) -> tuple[str, str]:
     tracing.event("nemotron", (time.perf_counter() - t) * 1000, text=text, intent=intent, target=target)
     if by_rule[0] == "list" and intent != "pick":            # the rule is sure about this one
         return "list", ""
+    if intent == "list" and by_rule[0] == "pick" and len(clean.split()) <= 4 and not _ASKING.search(clean):
+        # A few words with nothing of a question in them are a name, whatever the model made of
+        # them: on 11 Oct "blue water cup" and "cylindrical object" were answered with the list.
+        return by_rule
     return intent, target
 
 

@@ -1332,3 +1332,16 @@ def test_of_two_connected_headsets_the_one_named_in_the_settings_is_used(monkeyp
     assert (h.name, h.device, h.stereo, h.headset) == ("WH-1000XM5", 61, 11, 262)
     monkeypatch.setenv("PROPRIO_HEADSET", "AA:BB:CC:DD:EE:FF")      # named, but not here: one that is here will do
     assert voice.Headset.find().name == "AirPods Pro"
+
+
+def test_a_short_name_is_a_name_even_when_nemotron_takes_it_for_a_question(quiet, monkeypatch):
+    # 11 Oct, on the Sony headphones: "blue water cup" and "cylindrical object" got the list read
+    # out instead of a reach, and had to be said again in other words.
+    monkeypatch.setenv("VOICE_LLM_URL", "http://127.0.0.1:9/v1")
+    monkeypatch.setattr(voice, "_llm_ok", None)
+    monkeypatch.setattr(voice, "ask_llm", lambda text, url: ("list", ""))
+    assert voice.interpret("blue water cup") == ("pick", "blue water cup")
+    assert voice.interpret("Cylindrical object.") == ("pick", "cylindrical object")
+    assert voice.interpret("show me everything") == ("list", "")        # still the model's to call
+    assert voice.interpret("anything else") == ("list", "")
+    assert voice.interpret("I wonder which of these is the heavy one") == ("list", "")
