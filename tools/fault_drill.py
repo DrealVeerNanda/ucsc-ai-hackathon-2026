@@ -1212,7 +1212,9 @@ def dash_port_taken(ctx) -> Result:
                    + f' "{last}"'))
 
 
-def _recording_ok(folder: Path) -> tuple[bool, str]:
+def _recording_ok(folder: Path, missing: float = 0.0) -> tuple[bool, str]:
+    """Is the recording whole? `missing` is the share of the colour frames that may be lost
+    (after kill -9 the last few never reached the disk)."""
     import cv2
     parts = sorted(p.name for p in folder.glob("*.part*")) if folder.exists() else []
     if not (folder / "frames.npz").exists() or not (folder / "meta.json").exists():
@@ -1226,7 +1228,7 @@ def _recording_ok(folder: Path) -> tuple[bool, str]:
     cap.release()
     data = np.load(folder / "frames.npz")
     depth = float((data["depth_mm"] > 0).mean())
-    ok = meta["frames"] > 0 and abs(n - meta["frames"]) <= 1 and not parts and depth > 0.2
+    ok = meta["frames"] > 0 and abs(n - meta["frames"]) <= max(1, missing * meta["frames"]) and not parts and depth > 0.2
     return ok, (f"{meta['frames']} frames with depth in frames.npz, {n} readable in {video.name}"
                 + (f", leftovers {parts}" if parts else "") + (", DEPTH IS EMPTY" if depth <= 0.2 else ""))
 
@@ -1287,7 +1289,7 @@ def kill9_recording(ctx) -> Result:
         packed = f"depth for {meta['frames']} frames recovered"
     except Exception as e:
         packed = f"depth NOT recovered ({e})"
-    good, what = _recording_ok(folder)
+    good, what = _recording_ok(folder, missing=0.1)
     # A replay of a recording whose video cannot be read must say so, not spin.
     code = ("import sys,threading,time,resource; sys.path.insert(0, sys.argv[1]); import stream\n"
             "got = []\n"
@@ -1614,7 +1616,9 @@ def stop_when_started_in_background(ctx) -> Result:
     tools/stop_live.sh does."""
     out = ctx["out"] / "stop_when_started_in_background"
     out.mkdir(parents=True, exist_ok=True)
-    script = (f'cd "{ROOT}" && "{sys.executable}" main.py --ui none --log-dir "{out}" > "{out}/main.log" 2>&1 & '
+    # `cd X; python ... &`, not `cd X && python ... &`: with && the job is a subshell, and $! is
+    # the subshell's number, not Python's.
+    script = (f'cd "{ROOT}"; "{sys.executable}" main.py --ui none --log-dir "{out}" > "{out}/main.log" 2>&1 & '
               f'echo $! > "{out}/pid"; wait')
     env = dict(os.environ, TRACE="0", GUIDANCE_AUDIO="off")
     shell = subprocess.Popen(["bash", "-c", script], env=env, stdin=subprocess.DEVNULL, start_new_session=True)
