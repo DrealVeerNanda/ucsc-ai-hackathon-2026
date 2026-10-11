@@ -136,6 +136,7 @@ class GuidanceConfig:
     give_up_s: float = 20.0      # searching this long without ever seeing it: go idle, so the wearer is asked
                                  # again. Misheard or simply not there, they could otherwise say nothing more:
                                  # the microphone is only open while a request is awaited. 0 = search for ever
+    hand_give_up_s: float = 30.0 # waiting for a hand this long: go idle too, for the same reason. 0 = wait for ever
     far_hold_s: float = 1.0      # the object has been out of arm's reach this long: say so...
     far_repeat_s: float = 8.0    # ...and again this often while it stays there
     words: bool = False          # fallback: spoken single words instead of tones
@@ -217,6 +218,7 @@ class Guidance:
         self._object_gone_t = None
         self._last_hand_t = None
         self._unseen_t = None        # since when the hand has been out of sight
+        self._waiting_t = now        # since when it has been waiting for a hand
         self._remind_t = None
         self._near_t = None          # since when the hand has been in grabbing distance
         self._out_t = None           # ...and since when it has been out of it again
@@ -780,6 +782,15 @@ class Guidance:
             elif self.state == GUIDING and missing < cfg.lost_s:
                 self._tone(self._silent)             # too old to steer by, not yet given up
             else:
+                if self.state != WAITING_HAND:
+                    self._waiting_t = now
+                elif cfg.hand_give_up_s and now - self._waiting_t > cfg.hand_give_up_s and not self.sink.saying():
+                    # Nobody is reaching. The object may be one the detector made up for a word
+                    # it misheard, and "show me your hand" for ever leaves the wearer no way to
+                    # say so: go idle, so they are asked what they want again.
+                    self.state = IDLE
+                    self._tone(self._silent)
+                    return self.state
                 if self.state != WAITING_HAND or now - self._remind_t >= cfg.remind_s:
                     self._remind_t = now
                     self.sink.say("show_me_your_hand")
@@ -858,6 +869,8 @@ def _get() -> Guidance:
         cfg = GuidanceConfig()
         if os.environ.get("GUIDANCE_GIVE_UP_S"):
             cfg.give_up_s = float(os.environ["GUIDANCE_GIVE_UP_S"])
+        if os.environ.get("GUIDANCE_HAND_GIVE_UP_S"):
+            cfg.hand_give_up_s = float(os.environ["GUIDANCE_HAND_GIVE_UP_S"])
         _default = Guidance(sink, cfg, tone)
         _default.set_option(key)
         _default.set_grab_option(grab)

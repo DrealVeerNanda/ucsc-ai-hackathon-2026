@@ -44,3 +44,17 @@ def test_grab_does_not_wait_for_ever_on_a_sound_card_that_has_stopped():
     g.state, g._grab_t = "grab", 10.0
     assert g.update(T.near(), now=10.0 + 2 * g.cfg.grab_state_s) == "grab"
     assert g.update(T.near(), now=10.0 + 4.1 * g.cfg.grab_state_s) == "idle"
+
+
+def test_a_hand_that_never_comes_is_given_up_on_too():
+    g = T.guide()
+    states = [g.update(T.scene(hand=None), now=1.0 + t) for t in range(60)]       # the object is "seen", nobody reaches
+    assert states[25] == "waiting_hand" and states[-1] == "idle"
+    assert 4 <= g.sink.spoken.count("show_me_your_hand") <= 7
+
+
+def test_a_hand_that_comes_and_goes_is_not_given_up_on():
+    g = T.guide()
+    for t in range(120):                                                            # a slow, real reach with pauses
+        state = g.update(T.scene(hand=None) if t % 30 < 20 else T.near(dx=0.2, dz=0.3), now=1.0 + t)
+    assert state != "idle"

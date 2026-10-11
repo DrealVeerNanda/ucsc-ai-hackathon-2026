@@ -24,6 +24,7 @@ source .venv/bin/activate
 : "${VIEW:=camera}"                      # the dashboard opens on the camera, not on the logs
 export GUIDANCE_AUDIO="${GUIDANCE_AUDIO:-on}"    # sound through the sound card or not at all (off: printed)
 export GUIDANCE_MODE="${GUIDANCE_MODE:-3}"       # option 3, the combined spoken directions
+export STREAM_RECORD_VIDEO="${STREAM_RECORD_VIDEO:-rgb.mkv}"   # a recording (STREAM_RECORD=folder) stays readable if the run is killed outright
 export VOICE_MODE="${VOICE_MODE:-web}"           # the earbuds (or the microphone page), never "press Enter"
 export TRANSFORMERS_VERBOSITY="${TRANSFORMERS_VERBOSITY:-error}" HF_HUB_DISABLE_PROGRESS_BARS="${HF_HUB_DISABLE_PROGRESS_BARS:-1}"
 : "${HOST:=127.0.0.1}"                   # the dashboard answers this machine only: the hall's network is public

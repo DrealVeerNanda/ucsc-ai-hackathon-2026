@@ -1659,9 +1659,12 @@ class WebMic:
                     reply = dict(reply, bytes=len(data), **mic.last_recording)
                 elif path == "/text":
                     try:
-                        text = str(json.loads(data or b"{}").get("text", "")).strip()[:200]
-                    except ValueError:
+                        text = json.loads(data or b"{}").get("text", "")
+                    except (ValueError, AttributeError):
                         text = ""
+                    # Only words count: a number or a list in that place is somebody's mistake, and
+                    # taking it for a request would stop the reach in progress.
+                    text = text.strip()[:200] if isinstance(text, str) else ""
                 elif path == "/log":                      # the page telling us what went wrong on its side
                     print(f"[voice] page: {data[:300].decode('utf-8', 'replace')}", file=sys.stderr)
                     tracing.event("voice.page", text=data[:300].decode("utf-8", "replace"))
