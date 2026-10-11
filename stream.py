@@ -18,8 +18,8 @@ Where frames come from is set by stream.start(SOURCE) or the STREAM_SOURCE envir
 
 STREAM_RECORD=recordings/NAME saves what a live source delivers while the pipeline is using it
 (10 frames a second, for STREAM_RECORD_SECONDS, default 180), so a real session can be replayed
-later without the phone. STREAM_RECORD_VIDEO=rgb.mkv writes the video in a form that is still
-readable if this program is killed (see Recorder); the phone bridge records that way always.
+later without the phone. The video is rgb.mkv, a form that is still readable if this program is
+killed outright (see Recorder); STREAM_RECORD_VIDEO=rgb.mp4 gives the older form.
 
 Frames arrive upright, with depth resized to the rgb size and K matching it, so nothing
 downstream has to think about resolution or rotation. Depth 0 means no lidar reading there.
@@ -835,7 +835,7 @@ class Stream:
         self._record_s = float(os.environ.get("STREAM_RECORD_SECONDS", "180"))
         if os.environ.get("STREAM_RECORD") and self.source.partition(":")[0] in ("auto", "bridge", "pathon", "record3d", "relay"):
             self._recorder = Recorder(os.environ["STREAM_RECORD"], fps=10.0,
-                                      video=os.environ.get("STREAM_RECORD_VIDEO", "rgb.mp4"))
+                                      video=os.environ.get("STREAM_RECORD_VIDEO", "rgb.mkv"))
 
     def _frames(self) -> Iterator[RawFrame]:
         kind, _, arg = self.source.partition(":")

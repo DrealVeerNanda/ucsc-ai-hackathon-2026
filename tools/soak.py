@@ -178,7 +178,7 @@ def encode_pictures(rgb: np.ndarray, depth_m: np.ndarray, quality: int = 85) -> 
 
 def video_of(folder) -> Path:
     """A recording's colour video, whichever container it was written in."""
-    return next((p for p in (Path(folder) / "rgb.mp4", Path(folder) / "rgb.avi") if p.exists()), Path(folder) / "rgb.mp4")
+    return next((p for p in (Path(folder) / n for n in ("rgb.mp4", "rgb.mkv", "rgb.avi")) if p.exists()), Path(folder) / "rgb.mp4")
 
 
 def recorded_frames(folders: list, loop: bool = True, first: int = 0, seek_s: float = 0.0):
