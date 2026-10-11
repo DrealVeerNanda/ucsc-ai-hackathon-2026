@@ -162,7 +162,8 @@ def describe(e: dict):
     name, ms = e.get("name", ""), e.get("ms")
     took = "" if ms is None else (f"{ms / 1000:.2f} s" if ms >= 100 else f"{ms:.0f} ms")
     if name == "whisper":
-        return "WHISPER", took, f'heard "{e.get("text", "")}"  ({e.get("audio_s", "?")} s of speech)'
+        where = f', on the {e["on"].upper()}' if e.get("on") else ""
+        return "WHISPER", took, f'heard "{e.get("text", "")}"  ({e.get("audio_s", "?")} s of speech{where})'
     if name == "nemotron":
         intent, target = e.get("intent", "pick"), e.get("target", "")
         answer = {"pick": f"wants: {target}" if target else "wants: (nothing named)", "list": "asks what is there",

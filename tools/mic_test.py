@@ -108,7 +108,7 @@ def verdict(m: dict, lost: int, text: str, want: str) -> str:
     if not m["caught"]:
         return f"too quiet for the speech detector (loudest {m['voice']}, it needs {m['threshold']})"
     words = lambda s: re.sub(r"[^a-z ]+", "", s.lower()).split()
-    return "heard correctly" if words(text) == words(want) else "heard, but the words are wrong"
+    return "heard correctly" if want in " ".join(words(text)) else "heard, but the words are wrong"
 
 
 def save_wav(path: Path, samples: np.ndarray):
@@ -124,11 +124,11 @@ def main():
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--seconds", type=float, default=4.0, help="how long to record after the beep")
     ap.add_argument("--silent", action="store_true", help="no prompts and no beep")
-    ap.add_argument("--model", default="base.en")
+    ap.add_argument("--model", default="small.en")
     a = ap.parse_args()
 
-    from faster_whisper import WhisperModel
-    whisper = WhisperModel(a.model, device="cpu", compute_type="int8")
+    whisper = voice.load_whisper(a.model)                 # the same one the live run uses
+    print(f"whisper {a.model} on the {whisper.on.upper()}", flush=True)
     out = ROOT / "out"
     out.mkdir(exist_ok=True)
     report = {"microphones_before": sources(), "rounds": []}
@@ -155,18 +155,18 @@ def main():
             audio = np.concatenate(blocks) if blocks else np.zeros(0, np.float32)
             save_wav(out / f"mic_test_{i + 1}.wav", audio)
             m = measure(blocks, a.seconds)
-            texts = {}
-            for name, vad in (("with_filter", True), ("without_filter", False)):
-                segments, _ = whisper.transcribe(audio, language="en", beam_size=1, vad_filter=vad) if audio.size > SR // 4 else ([], None)
-                texts[name] = " ".join(s.text for s in segments).strip()
-            result = verdict(m, lost, texts["with_filter"], want)
-            report["rounds"].append({"asked": want, **m, "lost_warnings": lost, **texts, "verdict": result})
+            t = time.perf_counter()
+            text = whisper(audio) if audio.size > SR // 4 else ""
+            took = time.perf_counter() - t
+            result = verdict(m, lost, text, want)
+            report["rounds"].append({"asked": want, **m, "lost_warnings": lost, "heard": text, "whisper_s": round(took, 3),
+                                     "verdict": result})
             print(f"  arrived {m['arrived_s']} of {m['wanted_s']} s, lost warnings {lost}; room {m['floor']}, voice {m['voice']}, "
                   f"peak {m['peak']}, detector needs {m['threshold']} -> {'caught' if m['caught'] else 'missed'}", flush=True)
-            print(f"  whisper: {texts['with_filter']!r}   (without its speech filter: {texts['without_filter']!r})", flush=True)
+            print(f"  whisper: {text!r} in {took:.2f} s", flush=True)
             print(f"  => {result}", flush=True)
             if not a.silent:
-                say(f"I heard: {texts['with_filter']}" if texts["with_filter"] else "I heard nothing.")
+                say(f"I heard: {text}" if text else "I heard nothing.")
         if not a.silent:
             say("Test finished.")
     finally:

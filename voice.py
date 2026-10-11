@@ -297,18 +297,72 @@ def typed() -> str:
         return ""
 
 
+def load_whisper(model: str = "small.en"):
+    """Whisper as a function: audio (mono float32 at 16 kHz) -> text. On the GPU through PyTorch
+    when there is one (about 0.05 s a request on the GX10). Otherwise faster-whisper on the CPU
+    (about 1.2 s): its build for the GX10's processor has no GPU support. VOICE_STT=cpu or gpu
+    forces one. Either way the stretches without speech are cut out first, because Whisper
+    writes sentences of its own when handed silence."""
+    want = os.environ.get("VOICE_STT", "auto")
+    if want != "cpu":
+        try:
+            return _gpu_whisper(model)
+        except Exception as e:
+            if want == "gpu":
+                raise
+            print(f"[voice] Whisper on the CPU ({e.__class__.__name__}: {e})", file=sys.stderr)
+    from faster_whisper import WhisperModel
+    whisper = WhisperModel(model, device="cpu", compute_type="int8")
+
+    def hear(audio: np.ndarray) -> str:
+        segments, _ = whisper.transcribe(audio, language="en", beam_size=1, vad_filter=True, hotwords=expected_words())
+        return " ".join(s.text for s in segments).strip()
+    hear.on = "cpu"
+    return hear
+
+
+def _gpu_whisper(model: str):
+    import torch
+    if not torch.cuda.is_available():
+        raise RuntimeError("no GPU here")
+    from faster_whisper.vad import get_speech_timestamps
+    from transformers import WhisperForConditionalGeneration, WhisperProcessor
+    name = model if "/" in model else f"openai/whisper-{model}"
+    proc = WhisperProcessor.from_pretrained(name)
+    net = WhisperForConditionalGeneration.from_pretrained(name, torch_dtype=torch.float16).to("cuda").eval()
+    fixed = {} if name.endswith(".en") else {"language": "en", "task": "transcribe"}
+
+    def write(audio: np.ndarray, hint: str | None) -> str:
+        kw = dict(fixed)
+        if hint:
+            kw["prompt_ids"] = proc.get_prompt_ids(hint, return_tensors="pt").to("cuda")
+        feats = proc(audio, sampling_rate=SR, return_tensors="pt").input_features.to("cuda", torch.float16)
+        with torch.no_grad():
+            ids = net.generate(feats, max_new_tokens=60, num_beams=1, do_sample=False, **kw)
+        text = proc.batch_decode(ids, skip_special_tokens=True)[0].strip()
+        return text[len(hint):].strip() if hint and text.startswith(hint) else text
+
+    def hear(audio: np.ndarray) -> str:
+        speech = get_speech_timestamps(audio)
+        if not speech:
+            return ""
+        return write(np.concatenate([audio[c["start"]:c["end"]] for c in speech]), expected_words())
+    write(np.zeros(SR, np.float32), None)                 # the first request is slow; get it over with now
+    hear.on = "gpu"
+    return hear
+
+
 class Listener:
-    """Records between two presses of Enter and transcribes with faster-whisper."""
+    """Records between two presses of Enter and transcribes with Whisper."""
 
     def __init__(self, model: str = "small.en", device=None):
         import sounddevice as sd
-        from faster_whisper import WhisperModel
 
         self.sd = sd
         self.device = device
         sd.check_input_settings(device=device, samplerate=SR, channels=1)   # fails if there is no microphone
         with tracing.timed("load.whisper", model=model):
-            self.whisper = WhisperModel(model, device="cpu", compute_type="int8")
+            self.whisper = load_whisper(model)
 
     def record(self) -> np.ndarray:
         chunks = []
@@ -324,8 +378,7 @@ class Listener:
     def transcribe(self, audio: np.ndarray) -> str:
         if audio.size < SR // 4:
             return ""
-        segments, _ = self.whisper.transcribe(audio, language="en", beam_size=1, vad_filter=True, hotwords=expected_words())
-        return " ".join(s.text for s in segments).strip()
+        return self.whisper(audio)
 
     def listen(self) -> str:
         invite()
@@ -509,18 +562,16 @@ class WebMic:
         self.headset, self._hear = headset, hear          # earbuds as the microphone; audio -> text
         self._find_headset = transcribe is None           # keep looking: earbuds may connect after the start
         if transcribe is None:
-            from faster_whisper import WhisperModel
             with tracing.timed("load.whisper", model=model):
-                whisper = WhisperModel(model, device="cpu", compute_type="int8")
+                whisper = load_whisper(model)
 
             def hear(audio: np.ndarray) -> str:
                 if audio.size < SR // 4:
                     return ""
                 t = time.perf_counter()
-                segments, _ = whisper.transcribe(audio, language="en", beam_size=1, vad_filter=True, hotwords=expected_words())
-                text = " ".join(s.text for s in segments).strip()
+                text = whisper(audio)
                 tracing.event("whisper", (time.perf_counter() - t) * 1000, audio_s=round(audio.size / SR, 2), text=text,
-                              level=round(float(np.sqrt(np.mean(np.square(audio)))), 4))
+                              level=round(float(np.sqrt(np.mean(np.square(audio)))), 4), on=whisper.on)
                 return text
 
             def transcribe(data: bytes) -> str:
