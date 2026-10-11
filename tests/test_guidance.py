@@ -149,9 +149,10 @@ def test_hand_blink_holds_the_sound_then_mutes_then_waits():
 def test_losing_the_object_says_so_and_searches_again():
     g = guide()
     g.update(scene(), now=1.0)
-    assert g.update(scene(obj=None), now=1.1) == "searching"
+    assert g.update(scene(obj=None), now=1.1) == "guiding" and g.sink.tone[3] == "silent"   # could be a blink
+    assert g.update(scene(obj=None), now=1.6) == "searching"
     assert g.sink.spoken[-1] == "i_lost_it" and g.sink.tone[3] == "silent"
-    assert g.update(scene(), now=1.2) == "guiding" and g.sink.spoken[-1] == "found_it"
+    assert g.update(scene(), now=1.7) == "guiding" and g.sink.spoken[-1] == "found_it"
 
 
 def test_words_mode_leaves_space_between_repeated_directions_and_plays_no_tone():
@@ -174,16 +175,16 @@ def test_words_finish_current_axis_before_switching_and_allow_correction():
     assert g.sink.spoken[-1] == "right"  # leave a pause before the next instruction
     g.update(near(dx=0.02, dz=0.16), now=4.7)
     assert g.sink.spoken[-1] == "forward"
-    g.update(near(dx=0.02, dz=-0.08), now=5.8)
+    g.update(near(dx=0.02, dz=-0.14), now=5.8)
     assert g.sink.spoken[-1] == "back"  # overshoot correction doesn't wait 2.5 seconds
 
 
 def test_words_mode_is_quiet_near_target_and_grab_is_immediate():
     g = guide(words=True)
     g.update(near(dz=0.2), now=1.0)
-    g.update(near(dz=0.03), now=1.1)
+    g.update(near(dz=0.03), now=1.4)
     assert g.sink.tone[3] == "silent"
-    assert g.update(near(dz=0.03), now=1.5) == "grab"
+    assert g.update(near(dz=0.03), now=1.8) == "grab"
     assert g.sink.spoken[-1] == "grab"
 
 
@@ -627,7 +628,7 @@ def test_a_quiet_return_to_the_line_still_says_forward_and_reaches_grab():
     g.update(near(dx=0.01, dy=0.0, dz=0.25), now=3.0)       # and straight back
     g.update(near(dx=0.01, dy=0.0, dz=0.25), now=3.8)
     assert said(g) == ["aligned", "forward", "right", "forward"]
-    for i in range(5):
+    for i in range(10):                                     # the jump forward is not believed for half a second
         state = g.update(near(dz=0.02), now=4.0 + 0.1 * i)
     assert state == "grab" and said(g)[-1] == "grab"
 
@@ -635,8 +636,9 @@ def test_a_quiet_return_to_the_line_still_says_forward_and_reaches_grab():
 def test_a_fresh_search_chimes_again():
     g = dyn(lead_s=0.0)
     g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.0)
-    g.update(scene(obj=None), now=1.2)                      # object lost: everything starts over
-    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.4)
+    g.update(scene(obj=None), now=1.2)
+    g.update(scene(obj=None), now=1.7)                      # object lost: everything starts over
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.9)
     assert said(g) == ["aligned", "i_lost_it", "aligned"]
 
 
@@ -660,7 +662,7 @@ def test_no_flip_flop_around_the_line():
 
 
 def test_back_is_only_said_when_clearly_past_the_object():
-    g = dyn(lead_s=0.0)
+    g = dyn(lead_s=0.0, grab_option="fingertip")
     g.update(near(dx=0.0, dy=0.0, dz=-0.06), now=1.0)       # 6 cm past: could be depth noise, say nothing
     g.update(near(dx=0.0, dy=0.0, dz=-0.06), now=2.0)
     assert "back" not in said(g)
@@ -717,5 +719,5 @@ def test_options_are_numbered_and_switchable(monkeypatch):
     assert guidance.set_option("clock") == "clock face" and guidance.option()[0] == 5
     assert guidance.set_option(2) == "one step at a time" and guidance._get().cfg.hybrid
     with pytest.raises(ValueError):
-        guidance.set_option("9")
+        guidance.set_option("99")
     monkeypatch.setattr(guidance, "_default", None)
