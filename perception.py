@@ -173,6 +173,7 @@ class OpenVocabDetector:
 
         weights = self.WEIGHTS.get(kind, kind)
         self.is_yoloe = "yoloe" in weights
+        self.name = "YOLOE" if self.is_yoloe else "YOLO-World"
         with _in_models_dir():
             self.model = (YOLOE if self.is_yoloe else YOLOWorld)(weights)
         self.device, self.conf, self.imgsz = device, conf, imgsz
@@ -207,6 +208,7 @@ class CocoDetector:
     def __init__(self, weights: str = "yolo11s.pt", device: str | None = None, conf: float = 0.2, imgsz: int = 640):
         from ultralytics import YOLO
 
+        self.name = "YOLO"
         with _in_models_dir():
             self.model = YOLO(weights)
         self.device, self.conf, self.imgsz = device, conf, imgsz
@@ -294,6 +296,7 @@ class MediaPipeHand:
             min_tracking_confidence=min_conf)
         with _on_cores(fast_cores()):   # MediaPipe's own threads start here and keep these cores
             self.landmarker = vision.HandLandmarker.create_from_options(opts)
+        self.name = "MediaPipe"
         self._last_ts = -1
 
     def detect(self, rgb: np.ndarray, t_ms: int) -> list[Hand]:
@@ -316,6 +319,8 @@ class MediaPipeHand:
 class StickerHand:
     """Fallback: a bright sticker or glove on the reaching hand, found by colour. Installs
     nowhere and runs at any frame rate. Default range is green; set PERCEPTION_STICKER_HSV."""
+
+    name = "Sticker"
 
     def __init__(self, lo=(35, 80, 80), hi=(85, 255, 255), min_area: int = 120):
         self.lo, self.hi, self.min_area = np.array(lo, np.uint8), np.array(hi, np.uint8), min_area
@@ -346,6 +351,8 @@ class PerceptionConfig:
     box_margin: float = 0.10     # hand inside the box grown by this fraction: the box shows the hand
     hand_patch: int = 6          # half-size in px of the depth patch at the fingertip
     max_hand_m: float = 0.90     # a hand farther from the camera than this is somebody else's
+    aim_inner: float = 0.7       # the hand is guided to the nearest point of the middle 70% of the
+                                 # object, so any part of it counts, not only its centre. 0 = centre only
     helper_after_s: float = 1.0  # detector has found nothing for this long: ask the helper (Cosmos)
     helper_every_s: float = 3.0  # ...and not more often than this; doubles after each "not there".
                                  # Each call loads the GPU for 0.6-2.6 s and slows the loop while it runs
@@ -438,6 +445,10 @@ class Perception:
         self._unseen_t = None        # since when the detector has found nothing
         self._helper_t = -1e9        # when the helper was last asked
         self._helper_gap = self.cfg.helper_every_s
+        self._score = 0.0
+        self._said_seen = None       # what the log last said about the object and the hand,
+        self._said_hand = None       # so it reports changes, not every frame
+        self._said_t = -1e9
         self._i = 0
         self._obj_avg.clear()
         self._hand_avg.clear()
@@ -542,7 +553,8 @@ class Perception:
                 t = time.perf_counter()
                 self.detector.set_target(target)     # encodes the text prompt: slow, once per target
                 t_models += time.perf_counter() - t
-                tracing.event("detector.set_target", (time.perf_counter() - t) * 1000, target=target)
+                tracing.event("detector.set_target", (time.perf_counter() - t) * 1000, target=target,
+                              model=getattr(self.detector, "name", "detector"))
 
         # Hand tracker starts first and runs alongside the detector: they share nothing.
         t_par = time.perf_counter()
@@ -561,6 +573,7 @@ class Perception:
                 det = self._pick(dets)
                 if det is not None:
                     self._box = det.box
+                    self._score = det.score
                 self._seen = det is not None
             self._i += 1
         seen = self._seen
@@ -635,13 +648,35 @@ class Perception:
         if hand_xyz is None:
             self._hand_avg.clear()
 
+        # Where to send the fingertip: the nearest point of the object's middle region, at the
+        # object's depth. Reaching any part of the object is a success, not only its centre.
+        aim = None
+        if object_xyz is not None and hand_xyz is not None and self._box is not None and cfg.aim_inner > 0:
+            b, z = self._box, object_xyz[2]
+            half = cfg.aim_inner * 0.5 * np.array([(b[2] - b[0]) * z / frame.K[0, 0], (b[3] - b[1]) * z / frame.K[1, 1]])
+            off = np.clip(hand_xyz[:2] - object_xyz[:2], -half, half)
+            aim = np.array([object_xyz[0] + off[0], object_xyz[1] + off[1], z])
+
+        self._log_changes(frame.t, target, seen, hand is not None)
         tracing.add("perception.depth", (time.perf_counter() - t_start - t_models) * 1000)
         return Scene(
             object_xyz=object_xyz, hand_xyz=hand_xyz,
             object_visible=visible, hand_visible=hand is not None,
             object_box=None if self._box is None else tuple(int(round(v)) for v in self._box),
             hand_px=None if hand is None else (int(round(hand.tip[0])), int(round(hand.tip[1]))),
-            t=frame.t)
+            t=frame.t, aim_xyz=aim)
+
+    def _log_changes(self, t: float, target: str, seen: bool, hand: bool):
+        """One log line when the detector finds or loses the object, or the hand tracker the hand."""
+        if t - self._said_t < 0.7:           # a flicker is not news
+            return
+        if self.detector is not None and seen != self._said_seen:
+            self._said_seen, self._said_t = seen, t
+            tracing.event("detector", found=seen, target=target, model=getattr(self.detector, "name", "detector"),
+                          score=round(self._score, 2) if seen else None)
+        if self.hands is not None and hand != self._said_hand:
+            self._said_hand, self._said_t = hand, t
+            tracing.event("hand", seen=hand, model=getattr(self.hands, "name", "hand tracker"))
 
 
 # ---------------------------------------------------------------------------

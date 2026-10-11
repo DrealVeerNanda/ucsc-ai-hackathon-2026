@@ -376,3 +376,30 @@ def test_lidar_reading_past_a_close_hand_is_overruled_by_its_size():
     f.depth[v - 20:v + 21, u - 20:u + 21] = 0.85         # lidar sees the table through the too-close hand
     s = Perception(FakeDetector(), _Hands(_sized(near)), PerceptionConfig(smooth=1)).locate(f, "mug")
     assert s.hand_xyz[2] == pytest.approx(0.18, abs=0.005)
+
+
+def test_the_hand_is_sent_to_the_nearest_part_of_the_object_not_its_middle():
+    from interfaces import hand_error
+    p = make()                                          # hand is 20 cm left of and 7 cm above the object's centre
+    s = p.locate(frame(hands=[HAND]), "mug")
+    assert np.allclose(s.object_xyz, OBJ, atol=0.004)   # the object itself has not moved
+    # the object is 8 cm wide and 10 cm tall: the middle 70% reaches 2.8 cm left and 3.5 cm up of centre
+    assert s.aim_xyz[0] == pytest.approx(OBJ[0] - 0.028, abs=0.004)
+    assert s.aim_xyz[1] == pytest.approx(OBJ[1] - 0.035, abs=0.004)
+    assert s.aim_xyz[2] == pytest.approx(OBJ[2], abs=0.004)
+    assert np.allclose(hand_error(s), s.aim_xyz - s.hand_xyz)
+
+
+def test_a_hand_already_over_the_object_only_has_to_reach_forward():
+    from interfaces import hand_error
+    over = OBJ + np.array([0.02, -0.03, -0.15])          # in line with the object, 15 cm short of it
+    p = make(hands=())
+    p.locate(frame(t=0.0), "mug")
+    p.hands = FakeHands(over)
+    err = hand_error(p.locate(frame(t=0.1, hands=[over]), "mug"))
+    assert abs(err[0]) < 0.004 and abs(err[1]) < 0.004 and err[2] == pytest.approx(0.15, abs=0.006)
+
+
+def test_aiming_at_the_centre_can_be_switched_back_on():
+    s = make(aim_inner=0.0).locate(frame(hands=[HAND]), "mug")
+    assert s.aim_xyz is None

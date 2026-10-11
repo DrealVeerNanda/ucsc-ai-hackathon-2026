@@ -174,11 +174,19 @@ def describe(e: dict):
     if name == "cosmos.find":
         return "COSMOS", took, f'where is the {e.get("target", "?")}?  ->  ' + ("found, box returned" if e.get("found") else "not visible")
     if name == "detector.set_target":
-        return "DETECTOR", took, f'now searching for "{e.get("target", "")}"'
+        return str(e.get("model", "detector")).upper(), took, f'now searching for "{e.get("target", "")}"'
+    if name == "detector":
+        sure = f'  ({e["score"]:.0%} sure)' if e.get("score") is not None else ""
+        return str(e.get("model", "detector")).upper(), "", (f'sees the {e.get("target", "object")}{sure}' if e.get("found")
+                                                                else f'lost the {e.get("target", "object")}')
+    if name == "hand":
+        return str(e.get("model", "hand")).upper(), "", "sees your hand" if e.get("seen") else "lost your hand"
     if name == "say":
         return "SPOKEN", "", f'"{e.get("text", "")}"'
     if name == "state":
-        return "STATE", "", str(e.get("state", "")).replace("_", " ") + (f'  ({e["target"]})' if e.get("target") else "")
+        return "GUIDANCE", "", str(e.get("state", "")).replace("_", " ") + (f'  ({e["target"]})' if e.get("target") else "")
+    if name == "option":
+        return "GUIDANCE", "", f'switched to option {e.get("number", "?")}: {e.get("title", e.get("option", ""))}'
     if name.startswith("load."):
         return "LOAD", took, f'{name[5:]} ({e.get("kind") or e.get("model") or ""}) ready'
     return None

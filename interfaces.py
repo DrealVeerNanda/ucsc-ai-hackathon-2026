@@ -35,11 +35,15 @@ class Scene:
     object_box: Optional[tuple]       # x1, y1, x2, y2 for the debug view
     hand_px: Optional[tuple]          # u, v for the debug view
     t: float
+    aim_xyz: Optional[np.ndarray] = None  # where the fingertip should go: the nearest part of the
+                                          # object, not its middle. None means the centre, object_xyz.
 
 
 def hand_error(scene: Scene) -> Optional[np.ndarray]:
-    """Where the hand has to move, in meters (object minus hand), or None."""
+    """Where the hand has to move, in meters, or None. Toward the nearest part of the object
+    when lane 2 provides it (aim_xyz), otherwise toward its centre."""
     if scene.object_xyz is None or scene.hand_xyz is None:
         return None
-    return np.asarray(scene.object_xyz, float) - np.asarray(scene.hand_xyz, float)
+    goal = scene.aim_xyz if getattr(scene, "aim_xyz", None) is not None else scene.object_xyz
+    return np.asarray(goal, float) - np.asarray(scene.hand_xyz, float)
 

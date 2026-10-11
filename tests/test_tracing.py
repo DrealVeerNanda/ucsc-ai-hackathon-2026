@@ -278,7 +278,11 @@ def test_recent_events_can_be_read_back_in_order(tmp_path):
 def test_log_lines_read_like_sentences():
     d = tracing.describe
     assert d({"name": "say", "text": "left"}) == ("SPOKEN", "", '"left"')
-    assert d({"name": "state", "state": "waiting_hand", "target": "mug"}) == ("STATE", "", "waiting hand  (mug)")
+    assert d({"name": "state", "state": "waiting_hand", "target": "mug"}) == ("GUIDANCE", "", "waiting hand  (mug)")
+    assert d({"name": "detector", "found": True, "target": "mug", "model": "YOLO-World", "score": 0.87}) == \
+        ("YOLO-WORLD", "", "sees the mug  (87% sure)")
+    assert d({"name": "detector", "found": False, "target": "mug", "model": "YOLO-World"})[2] == "lost the mug"
+    assert d({"name": "hand", "seen": True, "model": "MediaPipe"}) == ("MEDIAPIPE", "", "sees your hand")
     assert d({"name": "nemotron", "ms": 310, "text": "I am thirsty", "intent": "pick", "target": "water bottle"}) == \
         ("NEMOTRON", "0.31 s", '"I am thirsty"  ->  wants: water bottle')
     assert d({"name": "nemotron", "ms": 250, "text": "what is here", "intent": "list", "target": ""})[2].endswith("asks what is there")
