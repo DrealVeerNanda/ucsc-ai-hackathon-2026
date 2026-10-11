@@ -18,7 +18,8 @@ Where frames come from is set by stream.start(SOURCE) or the STREAM_SOURCE envir
 
 STREAM_RECORD=recordings/NAME saves what a live source delivers while the pipeline is using it
 (10 frames a second, for STREAM_RECORD_SECONDS, default 180), so a real session can be replayed
-later without the phone.
+later without the phone. STREAM_RECORD_VIDEO=rgb.mkv writes the video in a form that is still
+readable if this program is killed (see Recorder); the phone bridge records that way always.
 
 Frames arrive upright, with depth resized to the rgb size and K matching it, so nothing
 downstream has to think about resolution or rotation. Depth 0 means no lidar reading there.
@@ -823,10 +824,12 @@ class Stream:
         self._stop = threading.Event()
         self._thread = None
         self._recorder = None        # a copy of a live session, for replaying without the phone
+        self._packing = None         # the thread finishing a recording that has ended
         self._record_t0 = self._record_last = 0.0
         self._record_s = float(os.environ.get("STREAM_RECORD_SECONDS", "180"))
         if os.environ.get("STREAM_RECORD") and self.source.partition(":")[0] in ("auto", "bridge", "pathon", "record3d", "relay"):
-            self._recorder = Recorder(os.environ["STREAM_RECORD"], fps=10.0)
+            self._recorder = Recorder(os.environ["STREAM_RECORD"], fps=10.0,
+                                      video=os.environ.get("STREAM_RECORD_VIDEO", "rgb.mp4"))
 
     def _frames(self) -> Iterator[RawFrame]:
         kind, _, arg = self.source.partition(":")
@@ -866,16 +869,18 @@ class Stream:
                             print(f"[stream] {self.source} is back", file=sys.stderr)
                         self._latest = (raw, now)
                         self._cable_ms = self._delay_ms(raw, now)
-                        if self._recorder is not None and now - self._record_last >= 0.1:
-                            self._record_t0 = self._record_t0 or now
-                            self._record_last = now
-                            self._recorder.add(raw, now)
-                            if now - self._record_t0 >= self._record_s:
-                                self._finish_recording()
                         self._seq += 1
                         self._arrivals.append(now)
                         self._state, self._error = "streaming", None
                         self._cond.notify_all()
+                    # Recording comes after the frame is handed over, and outside the lock:
+                    # writing the video takes a few milliseconds the loop need not wait for.
+                    if self._recorder is not None and now - self._record_last >= 0.1:
+                        self._record_t0 = self._record_t0 or now
+                        self._record_last = now
+                        self._recorder.add(raw, now)
+                        if now - self._record_t0 >= self._record_s:
+                            self._finish_recording()
                 else:
                     self._set("ended")
                     return
@@ -972,17 +977,31 @@ class Stream:
                     "bridge": bridge}
 
     def _finish_recording(self):
+        """Close the recording on a thread of its own. Packing a long one compresses hundreds
+        of megabytes; done here it would hold up the reader, and the loop with it, for as long."""
         rec, self._recorder = self._recorder, None
-        if rec is not None:
-            meta = rec.close()
-            if meta.get("frames"):
-                print(f"[stream] saved {meta['frames']} frames ({meta['seconds']:.0f} s) to {rec.folder}", file=sys.stderr)
+        if rec is None:
+            return
+
+        def finish():
+            try:
+                meta = rec.close()
+                if meta.get("frames"):
+                    print(f"[stream] saved {meta['frames']} frames ({meta['seconds']:.0f} s) to {rec.folder}", file=sys.stderr)
+            except Exception as e:
+                print(f"[stream] could not finish the recording in {rec.folder}: {e}", file=sys.stderr)
+        self._packing = threading.Thread(target=finish, daemon=True, name="stream-pack")
+        self._packing.start()
 
     def close(self):
         self._stop.set()
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=5.0)
         self._finish_recording()
+        if self._packing is not None:
+            # Wait for the packing, within reason. Left half done it loses nothing: the .part
+            # files stay, and pack() finishes the job the next time the folder is opened.
+            self._packing.join(timeout=float(os.environ.get("STREAM_PACK_WAIT_S", "20")))
 
 
 # ---------------------------------------------------------------------------
