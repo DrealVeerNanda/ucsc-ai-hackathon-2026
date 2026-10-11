@@ -30,7 +30,8 @@ def body(md: str) -> str:
             elif line.startswith("- "):
                 items.append(f"<li>{inline(line[2:])}</li>")
             elif line.startswith("$$"):
-                out.append(f'<div class="math">{html.escape(line.strip("$"))}</div>')
+                # Devpost's Markdown eats a bare _ inside $$, so the file writes \_; KaTeX wants _
+                out.append(f'<div class="math">{html.escape(line.strip("$").replace(chr(92) + "_", "_"))}</div>')
             else:
                 out.append(f"<p>{inline(line)}</p>")
         if items:
@@ -56,7 +57,6 @@ def main(out_dir: str) -> None:
   <nav class="top" aria-label="Site"><a href="../">Presentation</a><a href="../readme/">README</a></nav>
   <main class="doc">
     <h1>Proprio</h1>
-    <p class="lede">{html.escape(PITCH)}</p>
 {body(md)}
   </main>
   <script src="../vendor/katex/katex.min.js"></script>
