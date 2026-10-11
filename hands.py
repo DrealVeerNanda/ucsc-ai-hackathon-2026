@@ -127,6 +127,7 @@ class Hand:
     px_per_m: float | None = None   # how big the hand looks: pixels per metre of real hand, if known
     kp: np.ndarray | None = None    # 21 x 2 px keypoints, numbered as above, if the tracker gives them
     world: np.ndarray | None = None  # 21 x 3 m, the hand's 3D shape about its own centre (MediaPipe)
+    sure: np.ndarray | None = None  # 21 x bool: which keypoints the tracker vouches for (None: all of them)
     box: tuple | None = None        # x1, y1, x2, y2 px around the hand
     z: float | None = None          # depth of `tip` in metres, when the tracker measured it itself
     source: str = ""                # which tracker found it
@@ -227,7 +228,7 @@ class YoloHand:
     It also finds the small far hands of bystanders: perception.py has to reject those."""
 
     def __init__(self, size: str = "small", device: str | None = None, conf: float = 0.3, imgsz: int = 512,
-                 kp_conf: float = 0.3):
+                 kp_conf: float = 0.15):
         from ultralytics import YOLO
 
         self.model = YOLO(str(weights_path(*YOLO_HAND[size])))
@@ -246,18 +247,20 @@ class YoloHand:
         hands = []
         for kp, box, score in zip(kps, boxes, scores):
             pts, sure = kp[:, :2].astype(np.float32), kp[:, 2] >= self.kp_conf
-            if not sure[list(PALM)].all():
+            box = tuple(float(v) for v in box)
+            if sure[list(PALM)].sum() < 3:
                 # The palm is what size, depth and "whose hand" are judged by. A hand with its
                 # palm out of the picture is reported, but as a blob: a place, not a pose.
-                c = (float(box[0] + box[2]) / 2, float(box[1] + box[3]) / 2)
+                c = (0.5 * (box[0] + box[2]), 0.5 * (box[1] + box[3]))
                 known = pts[sure] if sure.any() else np.array([c], np.float32)
-                hands.append(Hand(tip=c, points=known, samples=[c], score=float(score),
-                                  box=tuple(float(v) for v in box), source=self.name))
+                hands.append(Hand(tip=c, points=known, samples=[c], score=float(score), box=box, source=self.name))
                 continue
-            order = [i for i in (8, 7, 6, 5) if sure[i]]
-            hands.append(Hand(tip=tuple(pts[8]), points=pts, samples=[tuple(pts[i]) for i in order],
-                              score=float(score), px_per_m=_size_scale(pts), kp=pts,
-                              box=tuple(float(v) for v in box), source=self.name))
+            # A hand cut by the edge of the picture: the model still places the keypoints it
+            # cannot see, less surely. They are kept for drawing; only sure ones are measured from.
+            order = [i for i in (8, 7, 6, 5) if sure[i]] or [9]
+            hands.append(Hand(tip=tuple(pts[8]), points=pts[sure], samples=[tuple(pts[i]) for i in order],
+                              score=float(score), px_per_m=_size_scale(pts), kp=pts, sure=sure, box=box,
+                              source=self.name))
         return hands
 
 
@@ -495,12 +498,16 @@ def hand_points_3d(hand: Hand, K: np.ndarray) -> np.ndarray | None:
         return None
     kp = np.asarray(hand.kp, np.float64)
     fx = float(K[0, 0])
-    scale = max(float(np.linalg.norm(kp[a] - kp[b])) / m for a, b, m in PALM_SPANS)      # px per metre
+    sure = np.ones(21, bool) if hand.sure is None else hand.sure
+    scale = max((float(np.linalg.norm(kp[a] - kp[b])) / m for a, b, m in PALM_SPANS if sure[a] and sure[b]),
+                default=0.0)                                                            # px per metre
     if scale <= 1e-6:
         return None
     z = fx / scale
 
     def out_of_picture(a: int, b: int, length: float) -> float:
+        if not (sure[a] and sure[b]):
+            return 0.0
         seen = float(np.linalg.norm(kp[a] - kp[b])) / scale / length
         # Up to a tenth shorter is this hand's own proportions, not tilt.
         return length * math.sqrt(max(0.0, 1.0 - min(1.0, seen / 0.9) ** 2))
@@ -526,7 +533,7 @@ def palm_depth(hand: Hand, depth: np.ndarray, min_valid: float = 0.4):
     if hand.kp is None:
         return None, 0.0
     kp = np.asarray(hand.kp, np.float32)
-    palm = kp[list(PALM)]
+    palm = kp[[i for i in PALM if hand.sure is None or hand.sure[i]]]
     c = palm.mean(0)
     pts = np.concatenate([[c], 0.5 * (palm + c), 0.75 * palm + 0.25 * c])
     h, w = depth.shape[:2]
@@ -608,6 +615,26 @@ class HandDepth:
             self._corr *= k
             self._weight *= k
         return z_sized + self._corr, self._weight
+
+
+def box_depth(box, depth: np.ndarray):
+    """Lidar depth of a hand known only by its box: the nearest surface of some size in the
+    box's middle half. A hand is the nearest thing in its own box; its middle may be a gap
+    between fingers."""
+    h, w = depth.shape[:2]
+    x1, y1, x2, y2 = box
+    qx, qy = 0.25 * (x2 - x1), 0.25 * (y2 - y1)
+    xa, xb, ya, yb = int(max(0, x1 + qx)), int(min(w, x2 - qx)), int(max(0, y1 + qy)), int(min(h, y2 - qy))
+    if xb - xa < 4 or yb - ya < 4:
+        return None
+    vals = depth[ya:yb:2, xa:xb:2]
+    vals = np.sort(vals[(vals > DEPTH_MIN) & (vals < DEPTH_MAX)])
+    if vals.size < max(8, 0.2 * (xb - xa) * (yb - ya) / 4):
+        return None
+    end = np.searchsorted(vals, vals + 0.06, side="right")
+    big = np.nonzero(end - np.arange(len(vals)) >= 0.25 * len(vals))[0]
+    i = int(big[0]) if len(big) else 0
+    return float(np.median(vals[i:end[i]]))
 
 
 def arm_from_above(kp: np.ndarray) -> bool:

@@ -34,6 +34,7 @@ The detector and tracker wrappers are adapted from the RTHACK handguide target a
 """
 from __future__ import annotations
 
+import math
 import os
 import sys
 import threading
@@ -300,7 +301,9 @@ class PerceptionConfig:
     hand_filter: str = "average"   # smoothing of that point: average (of `smooth` frames), one_euro, kalman
     own_arm: bool = False        # a hand whose forearm leaves by the top of the picture is somebody else's
     hand_coast_s: float = 0.0    # hand not found for less than this: carry on along its path (kalman only)
-    stick_s: float = 0.5         # of several hands in reach, stay with the one followed this recently
+    stick_s: float = 0.5         # stay with the hand that was followed this recently: another one, elsewhere
+    hand_speed_px_s: float = 2500.0   # in the picture, is not it. Elsewhere = farther than its own size plus
+                                 # this speed (a fast reach at 30 cm crosses the picture in a third of a second)
 
 
 # Settings that go with each of HAND_OPTIONS: (tracker in hands.make, config).
@@ -484,12 +487,21 @@ class Perception:
         if box is None:
             return False
         h, w = depth.shape[:2]
-        xa, xb = int(max(0, box[0])), int(min(w, box[2] + 1))
-        ya, yb = int(max(0, box[1])), int(min(h, box[3] + 1))
-        if xb <= xa or yb <= ya:
+
+        def part(grow: float):
+            gx, gy = grow * (box[2] - box[0]), grow * (box[3] - box[1])
+            xa, xb = int(max(0, box[0] - gx)), int(min(w, box[2] + gx + 1))
+            ya, yb = int(max(0, box[1] - gy)), int(min(h, box[3] + gy + 1))
+            return depth[ya:yb:2, xa:xb:2]
+
+        vals = part(0.0)
+        if vals.size == 0:
             return False
-        vals = depth[ya:yb:2, xa:xb:2]
-        return float(np.mean((vals > DEPTH_MIN) & (vals < z - 0.06))) >= 0.3
+        if float(np.mean((vals > DEPTH_MIN) & (vals < z - 0.06))) >= 0.3:
+            return True
+        # A hand closer than lidar ranges leaves a hole, and a wide one: over the box and well
+        # past it. (A clear bottle is a hole too, but only as big as itself.)
+        return float(np.mean(part(0.5) <= DEPTH_MIN)) >= 0.8
 
     def _hand_xyz(self, hand: Hand, frame: Frame):
         """(fingertip position or None, where its depth came from, in reach?).
@@ -537,13 +549,15 @@ class Perception:
             z_lidar = hand.z
         elif hand.kp is not None:
             z_lidar, _ = trackers.palm_depth(hand, frame.depth)
+        elif hand.box is not None:
+            z_lidar = trackers.box_depth(hand.box, frame.depth)
         else:
             z_lidar = next((float(p[2]) for p in (to_xyz(u, v, frame.depth, frame.K, r=cfg.hand_patch, nearest=True)
                                                   for u, v in hand.samples) if p is not None), None)
         z_sized = hd.sized(z_shape)
         if hand.ours is not None:
             return z_lidar, z_shape, pts, hand.ours
-        if cfg.own_arm and hand.kp is not None and trackers.arm_from_above(hand.kp):
+        if cfg.own_arm and hand.kp is not None and (hand.sure is None or hand.sure[0]) and trackers.arm_from_above(hand.kp):
             return z_lidar, z_shape, pts, False
         # Lidar far beyond what the hand's size allows is reading past the hand, not the hand.
         past = z_lidar is not None and z_sized is not None and z_lidar > 1.5 * z_sized + 0.05
@@ -568,8 +582,13 @@ class Perception:
             return None, None, None, "none", None
         last = self._hand_last
         if last is not None and 0 <= frame.t - last[0] <= cfg.stick_s:
-            # Stay with the hand that was being followed: a second hand coming nearer the object
-            # (someone handing it over) must not take the guidance away.
+            # Stay with the hand that was being followed. A second hand coming nearer the object
+            # (someone handing it over) must not take the guidance away, and if the wearer's own
+            # hand is missed for a frame, the hand that is found somewhere else is not it.
+            reach_px = last[3] + cfg.hand_speed_px_s * (frame.t - last[0])
+            cands = [c for c in cands if math.hypot(c[0].tip[0] - last[1], c[0].tip[1] - last[2]) <= reach_px]
+            if not cands:
+                return None, None, None, "none", None
             hand, m = min(cands, key=lambda c: (c[0].tip[0] - last[1]) ** 2 + (c[0].tip[1] - last[2]) ** 2)
         elif self._box is not None:
             cx, cy = 0.5 * (self._box[0] + self._box[2]), 0.5 * (self._box[1] + self._box[3])
@@ -697,7 +716,8 @@ class Perception:
                 hand_uv = hand.tip
         if hand is not None:
             tracing.put(hand_depth=src)
-            self._hand_last = (frame.t, hand.tip[0], hand.tip[1])
+            size = 150.0 if hand.box is None else max(hand.box[2] - hand.box[0], hand.box[3] - hand.box[1])
+            self._hand_last = (frame.t, hand.tip[0], hand.tip[1], size)
         if hasattr(self.hands, "chosen"):
             self.hands.chosen(hand, int(frame.t * 1000), None if hand_raw is None else float(hand_raw[2]))
 
@@ -726,7 +746,7 @@ class Perception:
             guess = box_xyz(self._box, frame.depth, frame.K)
             if guess is not None and self._anchor is not None:
                 z = self._anchor[2] if pose is None else (pose[:3, :3].T @ (self._anchor - pose[:3, 3]))[2]
-                if abs(guess[2] - z) > max(0.06, 0.12 * z):
+                if abs(guess[2] - z) > max(0.05, 0.10 * z):
                     guess = None
             measured = guess
         if measured is None and seen and covered and self._anchor is None and hand is not None:

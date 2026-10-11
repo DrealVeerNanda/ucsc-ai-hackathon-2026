@@ -517,3 +517,19 @@ def test_an_arm_in_front_keeps_the_object_longer_even_if_the_hand_tracker_missed
     for t in (0.5, 1.5, 2.5, 3.5):
         assert p.locate(hidden(t), "mug").object_xyz is not None          # past the 2 s of an open view
     assert p.locate(hidden(4.6), "mug").object_xyz is None                # but not for ever
+
+
+def test_a_hand_too_close_for_lidar_also_counts_as_hiding_the_object():
+    p = Perception(FakeDetector(), None, PerceptionConfig())
+    p.locate(frame(t=0.0), "mug")
+    p.detector.obj = None
+    f = frame(t=3.0, obj=None)
+    f.depth[:] = 0.0                                      # the hand fills the view: no reading anywhere
+    assert p.locate(f, "mug").object_xyz is not None      # after 3 s it is still remembered
+    bottle = frame(t=3.0, obj=None)
+    x1, y1, x2, y2 = object_box(K, OBJ)
+    bottle.depth[y1:y2, x1:x2] = 0.0                      # a hole only as big as the object is not a hand
+    q = Perception(FakeDetector(), None, PerceptionConfig())
+    q.locate(frame(t=0.0), "mug")
+    q.detector.obj = None
+    assert q.locate(bottle, "mug").object_xyz is None

@@ -3,6 +3,7 @@
     python tools/bench_perception.py IMAGES... --target "water bottle"
     python tools/bench_perception.py frames/ hands.jpg --frames 300 --save out/bench_before.json
     python tools/bench_perception.py frames/ hands.jpg --frames 300 --compare out/bench_before.json
+    HAND_OPTION=3 python tools/bench_perception.py frames/ hands.jpg      # another hand tracker
 
 Runs the real models (the detector and hand tracker perception.build() picks, Cosmos off) on
 the given images, cycled as a video, with a flat depth map at 50 cm. Depth reading is a
@@ -53,9 +54,9 @@ class Timed:
     def __getattr__(self, attr):
         return getattr(self.model, attr)
 
-    def detect(self, *a):
+    def detect(self, *a, **kw):
         t = time.perf_counter()
-        out = self.model.detect(*a)
+        out = self.model.detect(*a, **kw)
         self.ms.append((time.perf_counter() - t) * 1000)
         return out
 
