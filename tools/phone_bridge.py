@@ -300,6 +300,22 @@ def _die_with_parent():
         pass
 
 
+def _use_fast_cores():
+    """Keep this program on the fastest processor cores. The GX10 has ten fast and ten slower
+    ones, and a program that mostly waits, as this one does, is put on a slow one: decoding a
+    picture then took 12 ms instead of 8."""
+    try:
+        cap = {}
+        for f in Path("/sys/devices/system/cpu").glob("cpu[0-9]*/cpu_capacity"):
+            cap[int(f.parent.name[3:])] = int(f.read_text())
+        fast = {c for c, v in cap.items() if v >= 0.95 * max(cap.values())} & os.sched_getaffinity(0)
+        if fast and len(fast) < len(cap):
+            os.sched_setaffinity(0, fast)
+            log.info("running on the fast cores: %s", sorted(fast))
+    except (OSError, ValueError, AttributeError):
+        pass                                     # not Linux, or all cores alike
+
+
 class UsbWatch:
     """Is an iPhone on a USB port? Read from the kernel's own list, which needs no helper
     program and no special rights, so it can be asked four times a second. On the evening
@@ -941,6 +957,9 @@ def _run(a, files: dict) -> int:
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: bridge.stop())
     signal.signal(signal.SIGHUP, signal.SIG_IGN)     # the terminal closing is not a reason to drop the phone
+    cv2.setNumThreads(1)                             # nothing here is big enough to share out: no idle pool of 20 threads
+    if not a.any_core:
+        _use_fast_cores()
     try:
         bridge.run()
     except AlreadyRunning as e:
@@ -970,6 +989,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--record-dir", default=env("PHONE_BRIDGE_RECORD_DIR"), help="default recordings/")
     p.add_argument("--record-minutes", type=float, default=float(env("PHONE_BRIDGE_RECORD_MINUTES", "15")))
     p.add_argument("--min-free-gb", type=float, default=5.0, help="do not record with less disk space than this")
+    p.add_argument("--any-core", action="store_true", default=env("PHONE_BRIDGE_ANY_CORE", "0") not in ("0", ""),
+                   help="do not keep to the fast processor cores")
     p.add_argument("--wait", type=float, default=45.0, help="for stop: seconds to wait before killing it")
     p.add_argument("--json", action="store_true", help="for status: print all of out/status/phone.json")
     a = p.parse_args(argv)

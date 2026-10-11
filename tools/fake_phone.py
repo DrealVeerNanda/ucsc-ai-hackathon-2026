@@ -131,6 +131,7 @@ class FakePhone:
         self.connections = self.turned_away = self.frames_sent = self.disconnects = 0
         self.needs_tap = False
         self._served = False                 # a client has connected since the last tap
+        self._late_ms = self._send_ms = 0.0
         self._corrupt = None
         self._down_until = 0.0
         self._empty_since = None
@@ -159,9 +160,14 @@ class FakePhone:
         self.needs_tap = self._served = False
 
     def stats(self) -> dict:
+        """late_ms and send_ms are the worst since the last call: how late a frame went out, and
+        how long the sending took. When a reader's latency jumps, they say whether this
+        program was the one held up."""
+        late, self._late_ms, send, self._send_ms = self._late_ms, 0.0, self._send_ms, 0.0
         return {"mode": self.mode, "fps": self.fps, "port": self.port, "connections": self.connections,
                 "clients": len(self._clients), "disconnects": self.disconnects, "turned_away": self.turned_away,
-                "frames_sent": self.frames_sent, "listening": self._listener is not None, "needs_tap": self.needs_tap}
+                "frames_sent": self.frames_sent, "listening": self._listener is not None, "needs_tap": self.needs_tap,
+                "late_ms": round(late, 2), "send_ms": round(send, 2)}
 
     # --- the server --------------------------------------------------------------
     def _open(self):
@@ -269,12 +275,14 @@ class FakePhone:
                 continue
             if now < due:
                 continue
+            self._late_ms = max(self._late_ms, (now - due) * 1000)
             data = self._packet(i)
             for conn in list(self._clients):
                 try:
                     conn.sendall(data)
                 except OSError:
                     self._hang_up(conn)
+            self._send_ms = max(self._send_ms, (time.monotonic() - now) * 1000)
             i += 1
             self.frames_sent += 1
             due = max(due + 1.0 / self.fps, now - 0.1)           # keep the rate, without a burst after a pause
