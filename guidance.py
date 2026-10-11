@@ -207,3 +207,19 @@ def update(scene: Scene) -> str:
 
 def reset(target: str) -> None:
     _get().reset(target)
+
+
+def say_text(text: str, wait: bool = False) -> None:
+    """Say any sentence to the wearer (used by voice.py for what Cosmos sees)."""
+    sink = _get().sink
+    sink.speak(text)
+    if wait:
+        sink.wait_quiet()
+
+
+def pop_phrases() -> list:
+    """Everything said since the last call, as words. main.py shows these on the dashboard."""
+    log = _get().sink.log
+    out = list(log)
+    del log[:len(out)]
+    return out

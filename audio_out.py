@@ -4,6 +4,7 @@ without gaps or clicks, and short spoken clips from audio/ mixed over it.
     sink = open_sink()                       # sound card if there is one, printed text if not
     sink.set_tone(pan, freq_hz, beeps_per_s, "beep")   # "beep", "steady" or "silent"
     sink.say("grab")                         # plays audio/grab.wav
+    sink.speak("I can see a mug and a phone.")   # any sentence, with a local voice (Piper)
 
 The tone generator is adapted from the RTHACK handguide synth: the oscillator phase is
 continuous, every parameter is ramped across each audio block, and beeps have fixed-length
@@ -12,7 +13,11 @@ edges. `Mixer.render()` is pure numpy so it can be tested and rendered to a WAV 
 from __future__ import annotations
 
 import math
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import wave
@@ -24,6 +29,11 @@ import numpy as np
 import tracing
 
 CLIPS_DIR = Path(__file__).resolve().parent / "audio"
+PIPER_VOICE = Path(os.environ.get("PIPER_VOICE") or
+                   Path(__file__).resolve().parent / "models" / "piper" / "en_US-lessac-medium.onnx")
+# What each clip says, for the dashboard and the printed log.
+CLIP_TEXT = {"looking": "Looking", "found_it": "Found it", "show_me_your_hand": "Show me your hand", "grab": "Grab",
+             "i_lost_it": "I lost it", "i_cant_see_that": "I can't see that"}
 
 
 @dataclass
@@ -119,6 +129,44 @@ def load_clip(path: str | Path, sr: int) -> np.ndarray:
     return x
 
 
+def _resample(x: np.ndarray, src: int, sr: int) -> np.ndarray:
+    if src == sr or not x.size:
+        return x.astype(np.float32)
+    n = int(round(x.size * sr / src))
+    return np.interp(np.arange(n) * (src / sr), np.arange(x.size), x).astype(np.float32)
+
+
+_piper = None
+
+
+def synthesize(text: str, sr: int) -> np.ndarray | None:
+    """A sentence as mono float32 samples, made on this machine: Piper if its voice file is
+    here (about 0.1 s on the GX10), the macOS voice on a Mac, otherwise None."""
+    global _piper
+    if PIPER_VOICE.exists() and _piper is not False:
+        try:
+            if _piper is None:
+                from piper import PiperVoice
+                _piper = PiperVoice.load(str(PIPER_VOICE))
+            chunks = [np.asarray(c.audio_float_array, dtype=np.float32) for c in _piper.synthesize(text)]
+            if chunks:
+                return _resample(np.concatenate(chunks) * 0.8, _piper.config.sample_rate, sr)
+        except Exception as e:
+            print(f"[audio] Piper could not speak ({e}); falling back", file=sys.stderr)
+            _piper = False
+    if sys.platform == "darwin" and shutil.which("say") and shutil.which("afconvert"):
+        with tempfile.TemporaryDirectory() as d:
+            aiff, wav = Path(d) / "s.aiff", Path(d) / "s.wav"
+            try:
+                subprocess.run(["say", "-o", str(aiff), text], check=True, capture_output=True, timeout=20)
+                subprocess.run(["afconvert", "-f", "WAVE", "-d", "LEI16@24000", "-c", "1", str(aiff), str(wav)],
+                               check=True, capture_output=True, timeout=20)
+                return load_clip(wav, sr)
+            except Exception:
+                return None
+    return None
+
+
 def load_clips(folder: str | Path = CLIPS_DIR, sr: int = 48000) -> dict:
     """Every WAV in the folder, keyed by file name without .wav (grab.wav -> "grab")."""
     clips = {}
@@ -139,6 +187,7 @@ class Mixer:
         self.clips = clips if clips is not None else load_clips(sr=self.cfg.sr)
         self.stale_s = stale_s
         self.spoken: list[str] = []          # names actually started, for tests and logs
+        self.log: list[str] = []             # the words of everything said, for the dashboard
         self._lock = threading.Lock()
         self._clip = None                    # samples of the clip being played
         self._pos = 0
@@ -160,18 +209,42 @@ class Mixer:
             else:
                 self._next = name
 
-    def _start(self, name: str):
-        self.spoken.append(name)
-        clip = self.clips.get(name)
+    def _start(self, name):
+        if isinstance(name, tuple):          # (text, samples) from speak()
+            text, clip = name
+            self.spoken.append(text)
+        else:
+            text = CLIP_TEXT.get(name, name.replace("_", " "))
+            self.spoken.append(name)
+            clip = self.clips.get(name)
+            if clip is None:
+                print(f"[audio] no clip audio/{name}.wav", file=sys.stderr)
+        self.log.append(text)
         if clip is None:
-            print(f"[audio] no clip audio/{name}.wav", file=sys.stderr)
             self._clip = None
         else:
             self._clip, self._pos = clip, 0
 
+    def speak(self, text: str, now: bool = False):
+        """Say any sentence. It is synthesised here first (a fraction of a second), then played
+        like a clip. With no voice available the words still reach the log and the dashboard."""
+        samples = synthesize(text, self.cfg.sr)
+        with self._lock:
+            if now or self._clip is None:
+                self._start((text, samples))
+                self._next = None
+            else:
+                self._next = (text, samples)
+
     def saying(self) -> bool:
         with self._lock:
             return self._clip is not None or self._next is not None
+
+    def wait_quiet(self, timeout_s: float = 15.0):
+        """Block until nothing is being said, e.g. before opening the microphone."""
+        end = time.monotonic() + timeout_s
+        while self.saying() and time.monotonic() < end:
+            time.sleep(0.05)
 
     def render(self, n: int) -> np.ndarray:
         # If nobody has updated the tone for a while (stream stalled, loop crashed), go quiet:
@@ -244,6 +317,7 @@ class PrintSink:
         self.every = 1.0 / print_hz
         self.quiet = quiet
         self.spoken: list[str] = []
+        self.log: list[str] = []
         self.tone = (0.0, 0.0, 0.0, "silent")
         self._last = 0.0
 
@@ -257,11 +331,21 @@ class PrintSink:
 
     def say(self, name: str, now: bool = False):
         self.spoken.append(name)
+        self.log.append(CLIP_TEXT.get(name, name.replace("_", " ")))
         if not self.quiet:
             print(f"[audio] says: {name.replace('_', ' ')}")
 
+    def speak(self, text: str, now: bool = False):
+        self.spoken.append(text)
+        self.log.append(text)
+        if not self.quiet:
+            print(f"[audio] says: {text}")
+
     def saying(self) -> bool:
         return False
+
+    def wait_quiet(self, timeout_s: float = 15.0):
+        pass
 
     def close(self):
         pass
