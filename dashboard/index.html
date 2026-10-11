@@ -21,6 +21,7 @@
     <p class="bar-item"><span class="bar-k" id="e2e-label">Camera to earbuds</span><b class="bar-v" id="e2e">–</b></p>
     <p class="bar-item bar-net" id="net-wrap"><span class="bar-k">Internet</span><b class="bar-v" id="net">Checking…</b></p>
     <p class="bar-sim" id="sim" hidden></p>
+    <button class="bar-mode" id="options-btn" type="button" aria-expanded="false" aria-controls="options" hidden title="Switch the guidance sound, the hand tracker or the grab rule (O)">Options</button>
     <button class="bar-mode" id="demo-btn" type="button" aria-pressed="false" title="Judge view: full-screen 3D, no developer info (D)">Demo</button>
     <button class="bar-mode" id="mode" type="button" aria-pressed="false" title="Hide the camera and the 3D view and keep only the live log (L)">Logs only</button>
   </header>
@@ -74,7 +75,13 @@
       <p class="logs-empty" id="logs-empty">Nothing yet. Ask for something.</p>
     </section>
   </main>
+  <aside class="options" id="options" aria-label="Options to try" hidden>
+    <p class="options-k">Click one to switch while it runs. The wearer hears its name. By voice: "option 3", "hand option 2", "grab option 1".</p>
+    <div id="options-list"></div>
+    <p class="options-note" id="options-note" role="status"></p>
+  </aside>
   <script src="app.js"></script>
   <script src="logs.js"></script>
+  <script src="options.js"></script>
 </body>
 </html>

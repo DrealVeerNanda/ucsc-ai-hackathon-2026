@@ -70,6 +70,55 @@ def _trial_stats():
     return out
 
 
+# What the wearer can switch between while it runs: (family, heading, module, the module's list,
+# how to read the current one, how to set it, what voice calls it). A family whose functions do
+# not exist yet is simply left out, so this works with whatever the modules offer.
+_FAMILIES = (("guidance", "Guidance sound", "guidance", "OPTIONS", "option", "set_option", "option"),
+             ("hand", "Hand tracking", "perception", "HAND_OPTIONS", "hand_option", "set_hand_option", "hand option"),
+             ("grab", "When it says grab", "guidance", "GRAB_OPTIONS", "grab_option", "set_grab_option", "grab option"))
+
+
+def _running(module) -> bool:
+    """Is the real module in use? Asking guidance for its option would otherwise start it,
+    and open the sound device, in a run that uses the fake one."""
+    return getattr(module, "_default", None) is not None
+
+
+def option_families() -> list[dict]:
+    """Every family of options with its choices and the one in use (None when not running)."""
+    import importlib
+    out = []
+    for family, heading, mod, names, current, _setter, say in _FAMILIES:
+        try:
+            module = importlib.import_module(mod)
+            options = [{"n": i + 1, "key": o[0], "title": o[1], "about": o[2] if len(o) > 2 else ""}
+                       for i, o in enumerate(getattr(module, names))]
+            now = getattr(module, current)()[0] if _running(module) else None
+        except Exception:
+            continue
+        out.append({"family": family, "heading": heading, "say": say, "current": now, "options": options})
+    return out
+
+
+def set_option(family: str, n: int) -> str:
+    """Switch one family to option n and tell the wearer. Returns the option's title."""
+    import importlib
+    for fam, _heading, mod, _names, _current, setter, say in _FAMILIES:
+        if fam == family:
+            module = importlib.import_module(mod)
+            if not _running(module):
+                raise RuntimeError("not running yet")
+            title = getattr(module, setter)(n)
+            try:
+                import guidance
+                if _running(guidance):
+                    guidance.say_text(f"{say.capitalize()} {n}: {title}.")
+            except Exception:
+                pass
+            return title
+    raise ValueError(f"no such family: {family}")
+
+
 class Dashboard:
     def __init__(self, host: str = "0.0.0.0", port: int = 8642):
         self.host, self.port = host, port
@@ -314,6 +363,8 @@ class Dashboard:
                     lines = [{"t": e.get("t"), "who": d[0], "took": d[1], "what": d[2]}
                              for e in events for d in [tracing.describe(e)] if d]
                     return self._send(json.dumps({"next": nxt, "lines": lines}).encode(), "application/json")
+                if path == "/options":
+                    return self._send(json.dumps({"families": option_families()}).encode(), "application/json")
                 if path == "/trials.json":
                     # readable from a deck served elsewhere (?dash=...): read-only, local numbers
                     return self._send(json.dumps(_trial_stats()).encode(), "application/json", cors=True)
@@ -350,14 +401,23 @@ class Dashboard:
                 self.wfile.write(data)
 
             def do_POST(self):
-                if self.path != "/key":
+                if self.path not in ("/key", "/option"):
                     self.send_error(404)
                     return
-                n = int(self.headers.get("Content-Length") or 0)
                 try:
-                    key = json.loads(self.rfile.read(n) or b"{}").get("key")
+                    n = int(self.headers.get("Content-Length") or 0)
+                    body = json.loads(self.rfile.read(n) or b"{}")
                 except ValueError:
-                    key = None
+                    body = {}
+                if not isinstance(body, dict):
+                    body = {}
+                if self.path == "/option":
+                    try:
+                        reply = {"ok": True, "title": set_option(str(body.get("family")), int(body.get("n")))}
+                    except Exception as e:
+                        reply = {"ok": False, "error": str(e)}
+                    return self._send(json.dumps(reply).encode(), "application/json")
+                key = body.get("key")
                 if isinstance(key, str) and len(key) <= 12:
                     with dash._lock:
                         dash._keys.append(key)

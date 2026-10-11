@@ -329,6 +329,33 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; o
 .bar-mode:focus-visible { outline: 2px solid var(--leg); outline-offset: 2px; }
 .bar-mode[aria-pressed="true"] { background: var(--leg); border-color: var(--leg); color: var(--on-leg); }
 
+/* options panel -------------------------------------------------------------
+   Opened from the bar: the choices to try while it runs. It lies over the right edge so the
+   camera and the word being said stay in view. */
+#options-btn + .bar-mode, #demo-btn + .bar-mode { margin-left: 0; }
+.options {
+  position: fixed; top: 4.75rem; right: var(--sp4); bottom: var(--sp4);
+  width: min(34rem, calc(100vw - 2 * var(--sp4))); overflow-y: auto; z-index: 20;
+  display: grid; align-content: start; gap: var(--sp4);
+  padding: var(--sp4); border: 1px solid var(--rule); border-radius: var(--radius); background: var(--scrim);
+  backdrop-filter: blur(6px);
+}
+.options-k, .options-about, .options-note { margin: 0; color: var(--muted); max-width: 60ch; }
+.options-note:empty { display: none; }
+.options-group { display: grid; gap: var(--sp2); }
+.options-h { margin: 0; font: 700 var(--s1, 1rem)/1.2 var(--display); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.options-row { display: flex; flex-wrap: wrap; gap: var(--sp2); }
+.options-b {
+  display: inline-flex; align-items: baseline; gap: var(--sp2);
+  padding: var(--sp2) var(--sp3); border: 1px solid var(--rule); border-radius: var(--radius);
+  background: var(--plate); color: var(--text); font: 600 var(--s0)/1.2 var(--font); cursor: pointer; text-align: left;
+}
+.options-b:hover { border-color: var(--muted); }
+.options-b:focus-visible { outline: 2px solid var(--leg); outline-offset: 2px; }
+.options-b[aria-pressed="true"] { background: var(--leg); border-color: var(--leg); color: var(--on-leg); }
+.options-n { font: 700 var(--s0)/1 var(--display); opacity: 0.75; }
+body.demo .options, body.demo #options-btn { display: none; }
+
 /* The log is always there: a strip under the camera view, the whole screen in logs-only view. */
 .screen { grid-template-rows: minmax(0, 1fr) auto; }
 .logs { display: grid; grid-template-rows: minmax(0, 1fr); gap: var(--sp4); min-height: 0; grid-column: 1 / -1; }
