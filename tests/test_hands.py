@@ -533,3 +533,75 @@ def test_a_hand_too_close_for_lidar_also_counts_as_hiding_the_object():
     q.locate(frame(t=0.0), "mug")
     q.detector.obj = None
     assert q.locate(bottle, "mug").object_xyz is None
+
+
+def test_a_blink_of_the_hand_tracker_does_not_put_the_object_at_the_hands_depth():
+    # The live run: the hand was on the bottle, the tracker lost it for two frames, the box's depth
+    # was read on the hand, and "Grab" was said 24 cm short.
+    over = place((OBJ[0], OBJ[1], OBJ[2] - 0.23), tilt_deg=20)
+    p = Perception(FakeDetector(), FakeHands(), PerceptionConfig(smooth=1))
+    p.locate(frame(t=0.0), "mug")
+    p.hands.xyz = [over]
+    assert p.locate(frame(t=0.03, hand_xyz=[over]), "mug").object_xyz[2] == pytest.approx(OBJ[2], abs=0.01)
+    p.hands.xyz = []                                      # the blink: the hand is still there in the depth
+    for t in (0.06, 0.09, 0.3):
+        assert p.locate(frame(t=t, hand_xyz=[over]), "mug").object_xyz[2] == pytest.approx(OBJ[2], abs=0.01)
+
+
+def test_the_object_does_not_leap_at_the_camera_even_with_no_hand_ever_seen():
+    p = Perception(FakeDetector(), None, PerceptionConfig(smooth=1))
+    p.locate(frame(t=0.0), "mug")
+    x1, y1, x2, y2 = object_box(K, OBJ)
+
+    def finger(t):
+        f = frame(t=t)
+        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+        f.depth[cy - 12:cy + 12, cx - 12:cx + 12] = OBJ[2] - 0.2          # a fingertip over the middle of the box
+        return f
+
+    for t in (0.03, 1.0, 3.0):
+        assert p.locate(finger(t), "mug").object_xyz[2] == pytest.approx(OBJ[2], abs=0.01)
+    assert p.locate(finger(4.2), "mug").object_xyz[2] == pytest.approx(OBJ[2] - 0.2, abs=0.01)   # it has stayed: believe it
+
+
+class TwoBottles:
+    """The detector's favourite is the bottle across the room; the one on the desk scores lower."""
+
+    def __init__(self, near=True):
+        self.near = near
+
+    def set_target(self, target):
+        pass
+
+    def detect(self, rgb):
+        far = Detection((300, 100, 324, 162), 0.8, "bottle")
+        return [far] + ([Detection(object_box(K, OBJ), 0.2, "bottle")] if self.near else [])
+
+
+def two_bottle_frame(t=0.0):
+    f = frame(t=t)
+    f.depth[100:162, 300:324] = 2.6
+    return f
+
+
+def test_the_bottle_within_reach_wins_over_a_better_scoring_one_across_the_room():
+    p = Perception(TwoBottles(), None, PerceptionConfig(smooth=1))
+    s = p.locate(two_bottle_frame(), "bottle")
+    assert s.object_xyz[2] == pytest.approx(OBJ[2], abs=0.01) and not s.object_out_of_reach
+    p.detector.near = False                               # only the far one is detected for a moment
+    s = p.locate(two_bottle_frame(0.1), "bottle")
+    assert s.object_xyz[2] == pytest.approx(OBJ[2], abs=0.01) and not s.object_visible     # the near one is remembered
+    s = p.locate(two_bottle_frame(2.5), "bottle")         # ...until it has been gone too long
+    assert s.object_xyz is None
+    s = p.locate(two_bottle_frame(2.6), "bottle")         # then the far one is all there is, and it says so
+    assert s.object_xyz[2] == pytest.approx(2.6, abs=0.01) and s.object_out_of_reach
+    p.detector.near = True                                # the near one is back: it wins at once, and is not "a leap"
+    s = p.locate(two_bottle_frame(2.7), "bottle")
+    assert s.object_xyz[2] == pytest.approx(OBJ[2], abs=0.01) and not s.object_out_of_reach
+
+
+def test_an_object_farther_than_an_arm_is_flagged():
+    far = np.array([0.0, 0.1, 0.85])
+    s = Perception(FakeDetector(far), None, PerceptionConfig()).locate(frame(obj=far), "mug")
+    assert s.object_out_of_reach
+    assert not Perception(FakeDetector(), None, PerceptionConfig()).locate(frame(), "mug").object_out_of_reach

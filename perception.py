@@ -286,6 +286,10 @@ class PerceptionConfig:
     box_margin: float = 0.10     # hand inside the box grown by this fraction: the box shows the hand
     hand_patch: int = 6          # half-size in px of the depth patch at the fingertip
     max_hand_m: float = 0.90     # a hand farther from the camera than this is somebody else's
+    shadow_s: float = 0.5        # the hand tracker lost the hand less than this ago: it is still over the object
+    leap_m: float = 0.10         # the object's depth cannot come nearer by more than this between two frames
+    pick_reach_m: float = 1.1    # of several things the detector takes for the target, one nearer than this wins
+    reach_m: float = 0.75        # farther from the camera than this, a seated wearer cannot reach it
     aim_inner: float = 0.7       # the hand is guided to the nearest point of the middle 70% of the
                                  # object, so any part of it counts, not only its centre. 0 = centre only
     helper_after_s: float = 1.0  # detector has found nothing for this long: ask the helper (Cosmos)
@@ -446,6 +450,8 @@ class Perception:
         self._from_helper = False    # did _anchor come from the helper rather than the detector?
         self._unseen_t = None        # since when the detector has found nothing
         self._blocked_t = None       # since when something nearer has stood in front of the object
+        self._shadow = None          # (the wearer's hand, when) the last time the tracker had it
+        self._other = False          # the detector has moved to a different thing than the one remembered
         self._helper_t = -1e9        # when the helper was last asked
         self._helper_gap = self.cfg.helper_every_s
         self._score = 0.0
@@ -465,12 +471,29 @@ class Perception:
             hands = self.hands.detect(frame.rgb, int(frame.t * 1000))
         return hands, (time.perf_counter() - t) * 1000
 
-    def _pick(self, dets: list[Detection]):
+    def _pick(self, dets: list[Detection], frame: Frame | None = None):
+        """The detection to follow. One the wearer can reach always wins over one they cannot:
+        there may be another bottle on a desk across the room, and the detector likes that one
+        just as much. Among those, the one already being followed, then the best score."""
         if not dets:
             return None
-        if self._box is not None:    # prefer the one we were already following
-            return max(dets, key=lambda d: d.score + 0.5 * iou(d.box, self._box))
-        return dets[0]
+
+        def within_reach(d: Detection) -> int:
+            if frame is None:
+                return 1
+            p = box_xyz(d.box, frame.depth, frame.K)
+            return 1 if p is None else (2 if p[2] <= self.cfg.pick_reach_m else 0)     # no reading: cannot rule it out
+
+        def rank(d: Detection):
+            return within_reach(d), d.score + (0.5 * iou(d.box, self._box) if self._box is not None else 0.0)
+
+        best = max(dets[:6], key=rank)
+        # While an object within reach is remembered, a different one out of reach is not "it":
+        # the near one is only missed for a moment (a clear bottle often is).
+        near = self._anchor is not None and not self._anchored and self._anchor[2] <= self.cfg.pick_reach_m
+        if near and within_reach(best) == 0 and iou(best.box, self._box) == 0.0:
+            return None
+        return best
 
     def _covered(self, box, hand: Hand | None) -> bool:
         """Is any part of the hand over the object's box? Then the box's depth is the hand's."""
@@ -705,8 +728,11 @@ class Perception:
                 if hand_job is None:
                     t_models += time.perf_counter() - t
                 tracing.add("perception.detector", (time.perf_counter() - t) * 1000)
-                det = self._pick(dets)
+                det = self._pick(dets, frame)
                 if det is not None:
+                    # A box that shares nothing with the last one is another thing altogether (the
+                    # bottle on this desk instead of the one across the room): start afresh on it.
+                    self._other = self._box is not None and iou(det.box, self._box) == 0.0
                     self._box = det.box
                     self._score = det.score
                 self._seen = det is not None
@@ -751,33 +777,45 @@ class Perception:
         self._anchored = pose is not None
         if self.helper is not None:
             self._ask_helper(frame, target, seen, pose)
-        covered = self._covered(self._box, hand)
-        if not covered and self._anchor is not None and not self._anchored:
-            # ...for hold_covered_s at most. Past that it is not an arm passing: the object
-            # itself has come nearer, and its depth has to be read again.
-            if not self._blocked(self._box, float(self._anchor[2]), frame.depth):
-                self._blocked_t = None
-            elif self._blocked_t is None:
-                self._blocked_t = frame.t
-            covered = self._blocked_t is not None and frame.t - self._blocked_t <= cfg.hold_covered_s
-        measured = box_xyz(self._box, frame.depth, frame.K, loose=False) if seen and not covered else None
-        if measured is None and seen and not covered:
-            # Nothing to read in the middle of the box (a clear bottle). The reading from the
-            # whole box is good enough to start from, or to confirm what is remembered, but
-            # not to move the object somewhere else.
-            guess = box_xyz(self._box, frame.depth, frame.K)
-            if guess is not None and self._anchor is not None:
-                z = self._anchor[2] if pose is None else (pose[:3, :3].T @ (self._anchor - pose[:3, 3]))[2]
-                if abs(guess[2] - z) > max(0.05, 0.10 * z):
-                    guess = None
-            measured = guess
-        if measured is None and seen and covered and self._anchor is None and hand is not None:
+        # The hand tracker blinks, a frame or two at a time, just when the hand is on the object.
+        # A hand seen a moment ago is still there for the question "whose depth is in this box".
+        if hand is not None:
+            self._shadow = (hand, frame.t)
+        shadow = hand if hand is not None else (
+            self._shadow[0] if self._shadow is not None and 0 <= frame.t - self._shadow[1] < cfg.shadow_s else None)
+        covered = self._covered(self._box, shadow)
+        z_was = None if self._anchor is None or self._other else float(
+            self._anchor[2] if pose is None else (pose[:3, :3].T @ (self._anchor - pose[:3, 3]))[2])
+        # Something in front of the object is believed for hold_covered_s at most. Past that it
+        # is not an arm passing: the object itself has come nearer, and is read again.
+        believe = self._blocked_t is None or frame.t - self._blocked_t <= cfg.hold_covered_s
+        in_front = not covered and z_was is not None and self._blocked(self._box, z_was, frame.depth)
+        measured = None
+        if seen and not covered and not (in_front and believe):
+            measured = box_xyz(self._box, frame.depth, frame.K, loose=False)
+            if measured is None:
+                # Nothing to read in the middle of the box (a clear bottle). The reading from the
+                # whole box is good enough to start from, or to confirm what is remembered, but
+                # not to move the object somewhere else.
+                measured = box_xyz(self._box, frame.depth, frame.K)
+                if measured is not None and z_was is not None and abs(measured[2] - z_was) > max(0.05, 0.10 * z_was):
+                    measured = None
+            if measured is not None and z_was is not None and measured[2] < z_was - cfg.leap_m and believe:
+                # An object does not leap toward the camera between two frames. What was read is
+                # a hand or an arm that neither test above caught: the middle of the box is enough.
+                in_front, measured = True, None
+        self._blocked_t = (self._blocked_t if self._blocked_t is not None else frame.t) if in_front else None
+        covered = covered or (in_front and believe)
+        if measured is None and seen and covered and self._anchor is None and shadow is not None:
             # First sight of the object with the hand already on it: nothing is remembered yet,
             # so read the depth from the part of the box the hand does not cover.
-            measured = box_xyz(self._box, frame.depth, frame.K, exclude=hand_mask(frame.depth.shape, hand.points))
+            measured = box_xyz(self._box, frame.depth, frame.K, exclude=hand_mask(frame.depth.shape, shadow.points))
         visible = measured is not None
         if measured is not None:
             p = measured if pose is None else pose[:3, :3] @ measured + pose[:3, 3]
+            if self._other:
+                self._obj_avg.clear()
+                self._other = False
             self._anchor = self._obj_avg.add(p)
             self._anchor_t = frame.t
             self._from_helper = False
@@ -852,7 +890,9 @@ class Perception:
             object_box=None if self._box is None else tuple(int(round(v)) for v in self._box),
             hand_px=None if hand is None else (int(round(hand_uv[0])), int(round(hand_uv[1]))),
             t=frame.t, aim_xyz=aim)
-        scene.hand = self.hand       # not in the agreed Scene yet: read it with getattr(scene, "hand", None)
+        # Not in the agreed Scene yet: read these with getattr(scene, name, None).
+        scene.hand = self.hand
+        scene.object_out_of_reach = object_xyz is not None and float(np.linalg.norm(object_xyz)) > cfg.reach_m
         return scene
 
     def _log_changes(self, t: float, target: str, seen: bool, hand: bool):
