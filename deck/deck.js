@@ -151,7 +151,7 @@ function transition(slide, forward) {
   const run = (kf, opt) => curtain.animate(kf, { duration: 850, easing: EASE, fill: "both", ...opt });
   switch (kind) {
     case "lights": // the room goes dark, then the points fade up
-      run([{ opacity: 1 }, { opacity: 1, offset: 0.35 }, { opacity: 0 }], { duration: 1600, easing: "ease-in" });
+      run([{ opacity: 1 }, { opacity: 1, offset: 0.2 }, { opacity: 0 }], { duration: 650, easing: "ease-in" });
       break;
     case "iris": { // a circle opens on the scene
       const t0 = performance.now(), dur = 950;
@@ -204,8 +204,8 @@ function transition(slide, forward) {
       }
       break;
     }
-    case "box": // the screen opens from its centre outward
-      run([{ clipPath: "inset(0% 0% 0% 0%)" }, { clipPath: "inset(0% 50% 0% 50%)" }], { duration: 900 });
+    case "fade":
+      run([{ opacity: 1 }, { opacity: 0 }], { duration: 500, easing: "ease-out" });
       break;
     case "lift":
       run([{ transform: "translateY(0)" }, { transform: "translateY(-100%)" }], { duration: 800 });

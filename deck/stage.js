@@ -26,25 +26,25 @@ const START = new THREE.Vector3(-0.11, 0.19, 0.38);  // where a reach starts: ne
 // width) so the slide's text has the left side. Levels are 0..1 and eased.
 const SHOTS = {
   // title: the whole idea, a guided reach
-  title:   { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1 } },
+  title:   { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
   // problem: the world as a blind wearer gets it, a fog of points nobody can read
   fog:     { pos: [-0.2, 0.45, -0.15], at: [0.0, 0.1, 0.6], shift: 0.22, lv: { reveal: 0.18, dim: 0.5 } },
   query:   { pos: [-0.22, 0.4, 0.1], at: [-0.06, 0.05, 0.6], shift: 0.22, lv: { reveal: 0.8, dim: 0.4, q: 1 } },
   phone:   { pos: [-0.55, 0.7, -0.7], at: [0.0, 0.22, 0.25], shift: 0.22, lv: { reveal: 1, dim: 0.55, frustum: 1 } },
   // the ask: low and close, the hand moving, a speech bubble with each word
-  ask:     { pos: [-0.36, 0.45, -0.1], at: [-0.02, 0.08, 0.5], shift: 0.0, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
+  ask:     { pos: [-0.36, 0.45, -0.1], at: [-0.02, 0.08, 0.5], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
   // competitors: the scene sinks far back behind the list
   recede:  { pos: [-0.9, 1.6, -1.5], at: [0.0, 0.0, 0.5], shift: 0.25, lv: { reveal: 1, dim: 0.85 } },
   // how it works, one look per word
-  sweep:   { pos: [-0.43, 0.85, -0.55], at: [0.0, 0.1, 0.45], shift: 0.16, lv: { sweep: 1, frustum: 1 } },
-  found:   { pos: [-0.36, 0.6, -0.3], at: [0.05, 0.08, 0.45], shift: 0.18, lv: { reveal: 1, box: 1, hand: 1, still: 1, tip: 1 } },
+  sweep:   { speed: 2.4, pos: [-0.43, 0.85, -0.55], at: [0.0, 0.1, 0.45], shift: 0.16, lv: { sweep: 1, frustum: 1 } },
+  found:   { speed: 2.4, pos: [-0.36, 0.6, -0.3], at: [0.05, 0.08, 0.45], shift: 0.18, lv: { reveal: 1, box: 1, hand: 1, still: 1, tip: 1 } },
   vector:  { speed: 2.6, pos: [-0.5, 0.55, 0.05], at: [0.0, 0.08, 0.48], shift: 0.2, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, axes: 1 } },
-  speak:   { pos: [-0.38, 0.42, -0.05], at: [-0.04, 0.1, 0.48], shift: 0.3, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, big: 1 } },
+  speak:   { speed: 2.4, pos: [-0.38, 0.42, -0.05], at: [-0.04, 0.1, 0.48], shift: 0.3, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, big: 1 } },
   // core loop: straight overhead, a coordinate gizmo at the fingertip
   plan:    { pos: [-0.02, 1.15, 0.35], at: [0.0, 0.0, 0.5], shift: 0.22, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, gizmo: 1 } },
   buzz:    { pos: [0.02, 0.5, -0.25], at: [0.2, 0.18, 0.32], shift: 0.24, lv: { reveal: 1, dim: 0.6, hand: 1, still: 1, motors: 1 } },
   overload:{ pos: [-0.2, 0.45, -0.15], at: [0.0, 0.1, 0.6], shift: 0.0, lv: { reveal: 0.2, dim: 0.8 } },
-  finale:  { pos: [-0.5, 0.6, -0.45], at: [-0.05, 0.05, 0.55], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, still: 1, grabbed: 1 } },
+  finale:  { pos: [-0.42, 0.55, -0.3], at: [-0.05, 0.05, 0.55], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, still: 1, grabbed: 1 } },
   off:     { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.0, lv: { reveal: 1, dim: 1 } },
   // results: overhead on the mug, where reaches ended
   camonly: { pos: [-0.06, 0.55, 0.4], at: [-0.08, 0.0, 0.63], shift: 0.3, lv: { reveal: 1, dim: 0.85, land2: 1, ring: 1 } },
@@ -53,7 +53,7 @@ const SHOTS = {
   dome:    { pos: [-1.2, 1.1, -1.4], at: [0.0, 0.2, 0.5], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, dome: 1, gx: 1 } },
   boxed:   { pos: [-0.8, 0.5, -0.38], at: [-0.32, 0.03, 0.22], shift: 0.2, lv: { reveal: 1, dim: 0.6, gx: 1 } },
   quick:   { pos: [-0.3, 0.55, -0.2], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, fast: 1 } },
-  cut:     { pos: [-0.95, 0.8, -0.7], at: [-0.4, 0.16, 0.5], shift: 0.18, lv: { reveal: 1, gx: 1, link: 1, cut: 1, hand: 1, leg: 1, guide: 1 } },
+  cut:     { pos: [-0.95, 0.8, -0.7], at: [-0.4, 0.16, 0.5], shift: 0.3, lv: { reveal: 1, gx: 1, link: 1, cut: 1, hand: 1, leg: 1, guide: 1 } },
 };
 const LEVELS = ["reveal", "dim", "hand", "leg", "guide", "wander", "words", "frustum", "sweep", "box",
   "still", "axes", "link", "cut", "grabbed", "big", "gizmo", "land1", "land2", "ring", "dome", "gx", "fast", "q", "motors", "all", "tip"];
@@ -201,7 +201,7 @@ export function createStage(canvas, labels) {
     new THREE.LineBasicMaterial({ color: C.text, transparent: true, opacity: 0 }));
   gx.position.copy(GX10);
   scene.add(gx);
-  const NET = new THREE.Vector3(0.62, 0.42, 0.95);
+  const NET = new THREE.Vector3(0.5, 0.26, 0.85);
   const cableMat = new THREE.LineDashedMaterial({ color: C.text, dashSize: 0.02, gapSize: 0.012, transparent: true, opacity: 0 });
   const cableA = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), cableMat);
   const cableB = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), cableMat);
@@ -297,9 +297,17 @@ export function createStage(canvas, labels) {
     const M = mvp.elements;
     // slides with text on the left: points fade out across the text column so type stays legible
     clear += ((shot.shift > 0.05 ? 1 : 0) - clear) * (snap() ? 1 : 1 - Math.exp(-dt * 3));
+    // every scene element (not just points) fades out across the text column, also mid-move
+    const colFade = (v) => {
+      if (clear < 0.01) return 1;
+      const w4 = M[3] * v.x + M[7] * v.y + M[11] * v.z + M[15];
+      const sx = (M[0] * v.x + M[4] * v.y + M[8] * v.z + M[12]) / w4;
+      const f = Math.min(1, Math.max(0, ((sx + 1) / 2 - 0.4) / 0.14));
+      return 1 - clear * (1 - f * f * (3 - 2 * f));
+    };
 
     // points: scatter in, dim, or sweep in
-    if (goal.sweep) sweepT = still ? 0.62 : Math.min(1.25, sweepT + dt / 3.2);
+    if (goal.sweep) sweepT = still ? 0.62 : Math.min(1.25, sweepT + dt / 1.3);
     const sweepZ = 0.1 + sweepT * 1.0;
     const reveal = lv.reveal, dim = 1 - 0.72 * lv.dim;
     for (let i = 0; i < n; i++) {
@@ -327,7 +335,7 @@ export function createStage(canvas, labels) {
 
     frustum.material.opacity = 0.9 * lv.frustum;
     body.material.opacity = 0.35 * lv.person;
-    box.material.opacity = lv.box;
+    box.material.opacity = lv.box * colFade(MUG);
 
     // hand
     let say = "", grabbed = lv.grabbed > 0.5;
@@ -337,10 +345,11 @@ export function createStage(canvas, labels) {
     hand.position.copy(handPos);
 
     shadow.position.set(handPos.x, 0.0015, handPos.z);
-    shadow.material.opacity = 0.5 * lv.hand;
+    const handFade = colFade(handPos);
+    shadow.material.opacity = 0.5 * lv.hand * handFade;
     drop.geometry.setFromPoints([handPos, new THREE.Vector3(handPos.x, 0, handPos.z)]);
     drop.computeLineDistances();
-    drop.material.opacity = 0.7 * lv.hand;
+    drop.material.opacity = 0.7 * lv.hand * handFade;
 
     // leg from fingertip to the mug, yellow; green on grab
     const to = lv.box > 0.5 || grabbed ? GRAB_AT : MUG_TOP.clone().add(new THREE.Vector3(0, -0.04, -0.04));
@@ -354,7 +363,7 @@ export function createStage(canvas, labels) {
     tip.position.copy(handPos).addScaledVector(dir, shown + 0.012);
     tip.quaternion.copy(leg.quaternion);
     legMat.color.copy(grabbed ? C.grab : C.leg);
-    legMat.opacity = lv.leg;
+    legMat.opacity = lv.leg * Math.min(handFade, colFade(to));
     leg.visible = tip.visible = lv.leg > 0.02 && d.length() > 0.035;
 
     // components of the leg: across, then down, then forward
@@ -362,7 +371,7 @@ export function createStage(canvas, labels) {
     a1.x = to.x; a2.x = to.x; a2.y = to.y;
     axes.geometry.setFromPoints([a0, a1, a2, to]);
     axes.computeLineDistances();
-    axisMat.opacity = lv.axes;
+    axisMat.opacity = lv.axes * handFade;
 
     gizmo.position.copy(handPos);
     gizmo.children.forEach((ar) => { ar.line.material.opacity = lv.gizmo; ar.cone.material.opacity = lv.gizmo; });
@@ -372,7 +381,7 @@ export function createStage(canvas, labels) {
     ring.material.opacity = 0.8 * lv.ring;
     dome.material.opacity = 0.28 * lv.dome;
     dome.rotation.y = still ? 0 : now / 9000;
-    gx.material.opacity = lv.gx;
+    gx.material.opacity = lv.gx * colFade(GX10);
     // the cable runs from the box toward the internet; on the cut it parts in the middle
     const top = GX10.clone().add(new THREE.Vector3(0, 0.026, 0));
     const gap = 0.5 * lv.cut;
@@ -391,7 +400,7 @@ export function createStage(canvas, labels) {
     const place = (el, v, on, dx = 0, dy = 0) => {
       if (!el) return;
       const [x, y, inFront] = project(v);
-      el.style.opacity = on && inFront && (el.textContent.trim() || el.querySelector("svg")) ? on * settle : 0;
+      el.style.opacity = on && inFront && (el.textContent.trim() || el.querySelector("svg")) ? on * colFade(v) : 0;
       // left/top, not transform: the pop and buzz effects scale the label in place
       el.style.left = `${x + dx}px`;
       el.style.top = `${y + dy}px`;
@@ -408,7 +417,7 @@ export function createStage(canvas, labels) {
       L.word.classList.toggle("is-big", lv.big > 0.5);
     }
     place(L.word, handPos, lv.words * (say ? 1 : 0), lv.big > 0.5 ? -16 : 26, lv.big > 0.5 ? -150 : -100);
-    place(L.mug, MUG_TOP, Math.max(lv.box, lv.words * 0.9, lv.axes), -18, -34);
+    place(L.mug, MUG_TOP, lv.words > 0.5 ? 0 : Math.max(lv.box, lv.axes), -18, -34);
     place(L.you, CHEST, lv.frustum, -14, -30);
     place(L.q, MUG_TOP, lv.q, -10, -110);
     // the visible hand is an icon label riding handPos: open on the way in, gripping on "Grab"

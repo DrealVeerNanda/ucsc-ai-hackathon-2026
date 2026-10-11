@@ -67,7 +67,6 @@ h1, h2, p, ol, ul, figure { margin: 0; }
   font: 600 var(--t-small)/1.25 var(--font);
   white-space: nowrap;
   opacity: 0;
-  transition: opacity 250ms var(--ease);
 }
 .lab-word {
   background: var(--text);
@@ -90,7 +89,7 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 .lab-word.is-big { font-size: min(6vw, 10vh); translate: -100% 0; }
 .lab-word.is-big::after { left: auto; right: 0.9em; border-left-width: 0.5em; border-right-width: 0; }
 .lab-word.pop { animation: pop 260ms cubic-bezier(0.22, 1, 0.36, 1); }
-@keyframes pop { from { scale: 0.6; opacity: 0.4; } }
+@keyframes pop { from { scale: 0.7; } }
 .lab-gx { background: var(--scrim); color: var(--text); }
 .lab-motor { width: 36px; height: 36px; padding: 0; border: 3px solid var(--muted); border-radius: 50%; background: transparent; }
 .lab-motor.is-on { border-color: var(--text); scale: 1.35; }
@@ -155,8 +154,8 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 /* builds that replace each other in place */
 .swap { display: grid; }
 .swap > * { grid-area: 1 / 1; }
-[data-only] { transition: opacity 380ms var(--ease), translate 380ms var(--ease); }
-[data-only].is-off { opacity: 0; translate: 0 1.5vh; pointer-events: none; }
+[data-only] { transition: opacity 260ms var(--ease) 40ms; }
+[data-only].is-off { opacity: 0; transition: none; pointer-events: none; }
 
 .stat { display: grid; gap: 1vh; }
 .stat-n { font: 700 min(14vw, 24vh)/0.9 var(--display); }
@@ -208,8 +207,8 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 
 /* how it works: words roll up like a counter */
 .roll { overflow: hidden; }
-.roll [data-only] { transition: translate 520ms cubic-bezier(0.65, 0, 0.35, 1), opacity 300ms linear; }
-.roll [data-only].is-off { translate: 0 100%; opacity: 0; }
+.roll [data-only] { transition: translate 360ms cubic-bezier(0.65, 0, 0.35, 1), opacity 200ms linear; }
+.roll [data-only].is-off { translate: 0 100%; opacity: 0; transition: none; }
 .roll [data-only].is-off.is-past { translate: 0 -100%; }
 
 /* core loop: each equation is written on, left to right, one after another */
