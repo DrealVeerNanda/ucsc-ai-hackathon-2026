@@ -710,12 +710,13 @@ def box_depth(box, depth: np.ndarray):
 def arm_from_above(kp: np.ndarray) -> bool:
     """Does the forearm come down from the top of the picture? The forearm runs from the
     knuckles through the wrist and on. A chest camera sees the wearer's own arm come up from
-    below or in from a side, never down from above: an arm that does belongs to someone
-    facing the wearer. "Down from above" is steeper than 37 degrees: a wearer's arm raised
-    to shoulder height still comes in flatter than that."""
+    below or in from a side: the wrist is level with the knuckles or lower. An arm sloping
+    down into the picture belongs to someone facing the wearer. On the recorded reaches the
+    wearer's wrist was higher than this limit (15 degrees) in one frame in a hundred, and the
+    bystander's hand reaching for the bottle was beyond it."""
     d = np.asarray(kp[WRIST], float) - np.asarray(kp[9], float)
     n = float(np.linalg.norm(d))
-    return n > 1e-6 and d[1] / n < -0.6
+    return n > 1e-6 and d[1] / n < -0.25
 
 
 def guided_point(kind: str, kp: np.ndarray, xyz: np.ndarray | None = None, goal: np.ndarray | None = None):

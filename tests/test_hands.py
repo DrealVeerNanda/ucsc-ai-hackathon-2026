@@ -179,7 +179,7 @@ def test_an_arm_hanging_from_the_top_of_the_picture_is_not_the_wearers():
     ours = seen(place((0.0, 0.05, 0.45), tilt_deg=30))
     theirs = seen(place((0.0, -0.05, 0.45), tilt_deg=30, turn_deg=180))     # fingers down, wrist above
     side = seen(place((0.0, 0.0, 0.45), tilt_deg=30, turn_deg=-90))         # in from the right edge
-    raised = seen(place((0.0, 0.0, 0.45), tilt_deg=30, turn_deg=-115))      # from the right, arm raised
+    raised = seen(place((0.0, 0.0, 0.45), tilt_deg=30, turn_deg=-100))      # from the right, arm a little raised
     assert not hands.arm_from_above(ours.kp) and not hands.arm_from_above(side.kp)
     assert not hands.arm_from_above(raised.kp) and hands.arm_from_above(theirs.kp)
 
