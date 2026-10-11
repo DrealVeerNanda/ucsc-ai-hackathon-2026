@@ -455,13 +455,13 @@ def _target_after(rig: Rig, since: float, timeout_s: float = 12.0) -> tuple[str 
     return ("the same as before" if rec is None else rec.get("target")), said["t"] - since
 
 
-def _nemotron(rig: Rig, name: str, what: str, mode: str, delay_s: float = 0.0) -> Result:
+def _nemotron(rig: Rig, name: str, what: str, mode: str, delay_s: float = 0.0, wait_s: float = 1.0) -> Result:
     rig.nemotron.set(mode, delay_s)
     t = rig.ask("I am thirsty")
     target, took = _target_after(rig, t, 15.0)
     used = rig.wait(soak.event("nemotron"), 0.5, t) is not None
     rig.nemotron.set("pass")
-    time.sleep(1.0)
+    time.sleep(wait_s)
     t2 = rig.ask("I am really thirsty")
     back = rig.wait(soak.event("nemotron"), 10.0, t2)
     target2, _ = _target_after(rig, t2, 6.0)
@@ -481,8 +481,8 @@ def nemotron_slow(rig: Rig) -> Result:
 
 @shared
 def nemotron_down(rig: Rig) -> Result:
-    """Nemotron's port is closed for one request."""
-    return _nemotron(rig, "nemotron_down", "port closed", "down")
+    """Nemotron's port is closed for one request; the next request comes half a minute later."""
+    return _nemotron(rig, "nemotron_down", "port closed", "down", wait_s=32.0)
 
 
 @shared
@@ -535,7 +535,7 @@ def cosmos_slow(rig: Rig) -> Result:
 @shared
 def cosmos_hangs(rig: Rig) -> Result:
     """Cosmos accepts the question and never answers."""
-    return _cosmos(rig, "cosmos_hangs", "no answer at all", "hang")
+    return _cosmos(rig, "cosmos_hangs", "no answer at all", "hang", limit_s=12.0)
 
 
 @shared
