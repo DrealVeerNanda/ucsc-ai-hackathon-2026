@@ -137,11 +137,23 @@ def _resample(x: np.ndarray, src: int, sr: int) -> np.ndarray:
 
 
 _piper = None
+_spoken_cache: dict = {}
 
 
 def synthesize(text: str, sr: int) -> np.ndarray | None:
     """A sentence as mono float32 samples, made on this machine: Piper if its voice file is
-    here (about 0.1 s on the GX10), the macOS voice on a Mac, otherwise None."""
+    here (about 0.1 s on the GX10), the macOS voice on a Mac, otherwise None. Short phrases are
+    kept, since guidance says the same few again and again."""
+    key = (text, sr)
+    if key not in _spoken_cache:
+        out = _synthesize(text, sr)
+        if out is None or len(text) > 40 or len(_spoken_cache) > 300:
+            return out
+        _spoken_cache[key] = out
+    return _spoken_cache[key]
+
+
+def _synthesize(text: str, sr: int) -> np.ndarray | None:
     global _piper
     if PIPER_VOICE.exists() and _piper is not False:
         try:

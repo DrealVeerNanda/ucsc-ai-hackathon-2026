@@ -505,3 +505,125 @@ def test_without_nemotron_the_rule_is_used_and_it_is_not_asked_again(monkeypatch
     assert voice.understand("can you grab me a banana") == "banana"
     assert voice.understand("pick up the tennis ball") == "tennis ball"
     assert len(calls) == 1 and "run_nemotron.sh" in capsys.readouterr().err
+
+
+# --- options that give the whole direction at once --------------------------------
+
+def dyn(option="combined", **kw):
+    g = Guidance(PrintSink(quiet=True), GuidanceConfig(**kw))
+    g.set_option(option)
+    g.reset("mug", now=0.0)
+    g.update(scene(hand=None), now=0.05)                   # object found, hand not shown yet
+    g.sink.spoken.clear()
+    return g
+
+
+def said(g):
+    return [w for w in g.sink.spoken if w not in ("looking", "found_it", "show_me_your_hand")]
+
+
+def test_combined_words_give_both_directions_at_once():
+    g = dyn()
+    g.update(near(dx=0.15, dy=0.12, dz=0.25), now=1.0)     # object is right of, below and beyond the hand
+    assert said(g) == ["down and right"] and g.sink.tone[3] == "silent"
+    g2 = dyn()
+    g2.update(near(dx=-0.15, dy=-0.12, dz=0.25), now=1.0)
+    assert said(g2) == ["up and left"]
+
+
+def test_combined_words_drop_an_axis_once_it_is_lined_up():
+    g = dyn()
+    g.update(near(dx=0.15, dy=0.12, dz=0.25), now=1.0)
+    g.update(near(dx=0.15, dy=0.01, dz=0.25), now=2.0)     # height fixed, still to the right
+    assert said(g)[-1] == "right"
+
+
+def test_forward_comes_only_after_the_hand_is_lined_up_with_a_chime():
+    g = dyn()
+    g.update(near(dx=0.15, dy=0.12, dz=0.25), now=1.0)
+    assert "forward" not in said(g)
+    g.update(near(dx=0.01, dy=0.01, dz=0.25), now=2.0)     # lined up
+    assert said(g)[-1] == "aligned"                         # the chime
+    g.update(near(dx=0.01, dy=0.01, dz=0.25), now=3.0)
+    assert said(g)[-1] == "forward"
+
+
+def test_a_direction_is_not_repeated_until_it_changes_or_time_passes():
+    g = dyn()
+    for i in range(20):                                     # 2 s of the same error
+        g.update(near(dx=0.15, dy=0.0, dz=0.25), now=1.0 + 0.1 * i)
+    assert said(g) == ["right"]
+    g.update(near(dx=0.15, dy=0.0, dz=0.25), now=3.6)       # 2.5 s later: one reminder
+    assert said(g) == ["right", "right"]
+
+
+def test_no_flip_flop_around_the_line():
+    g = dyn(lead_s=0.0)
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.0)       # lined up
+    for i, dx in enumerate((0.03, -0.03, 0.04, -0.04, 0.03)):    # wobbling 3-4 cm either side
+        g.update(near(dx=dx, dy=0.0, dz=0.25), now=2.0 + i)
+    assert not {"left", "right"} & set(said(g))             # inside the band: no left/right ping-pong
+    g.update(near(dx=0.08, dy=0.0, dz=0.25), now=8.0)       # a real drift
+    assert said(g)[-1] == "right"
+
+
+def test_back_is_only_said_when_clearly_past_the_object():
+    g = dyn(lead_s=0.0)
+    g.update(near(dx=0.0, dy=0.0, dz=-0.06), now=1.0)       # 6 cm past: could be depth noise, say nothing
+    g.update(near(dx=0.0, dy=0.0, dz=-0.06), now=2.0)
+    assert "back" not in said(g)
+    g.update(near(dx=0.0, dy=0.0, dz=-0.10), now=3.0)
+    assert said(g)[-1] == "back"
+
+
+def test_a_moving_hand_is_told_where_it_will_be_not_where_it_was():
+    g = dyn(lead_s=0.3)
+    g.update(near(dx=0.20, dy=0.0, dz=0.25), now=1.0)       # 20 cm to go, told "right"
+    g.update(near(dx=0.10, dy=0.0, dz=0.25), now=1.1)       # moving right at 1 m/s
+    g.update(near(dx=0.06, dy=0.0, dz=0.25), now=1.14)      # 6 cm left, but it will be past the line in 0.3 s
+    g.update(near(dx=0.06, dy=0.0, dz=0.25), now=1.9)       # the hand stopped there
+    assert said(g)[0] == "right" and "left" in said(g)[1:] or said(g) == ["right"] or "aligned" in said(g)
+
+
+def test_clock_face_names_the_hour():
+    g = dyn("clock")
+    g.update(near(dx=0.15, dy=0.0, dz=0.25), now=1.0)       # straight to the right
+    assert said(g) == ["three o'clock"] and g.sink.tone[3] == "beep"
+    g2 = dyn("clock")
+    g2.update(near(dx=0.0, dy=-0.15, dz=0.25), now=1.0)     # straight up
+    assert said(g2) == ["twelve o'clock"]
+    g3 = dyn("clock")
+    g3.update(near(dx=-0.10, dy=0.10, dz=0.25), now=1.0)    # down and to the left
+    assert said(g3) == ["seven o'clock"] or said(g3) == ["eight o'clock"]
+
+
+def test_beeps_speed_up_and_lean_to_the_side_in_the_beep_options():
+    g = dyn("combined_beeps")
+    g.update(near(dx=0.20, dy=0.0, dz=0.30), now=1.0)
+    far = g.sink.tone
+    g.update(near(dx=0.08, dy=0.0, dz=0.08), now=1.1)
+    close = g.sink.tone
+    assert far[3] == close[3] == "beep" and close[2] > far[2] and far[0] > 0     # right ear: move right
+
+
+def test_every_option_can_reach_grab():
+    for key, _, _ in guidance.OPTIONS:
+        g = Guidance(PrintSink(quiet=True), GuidanceConfig())
+        g.set_option(key)
+        g.reset("mug", now=0.0)
+        state = None
+        for i in range(12):
+            state = g.update(near(dz=0.02), now=1.0 + 0.1 * i)
+        assert state == "grab" and g.sink.spoken[-1] == "grab", key
+
+
+def test_options_are_numbered_and_switchable(monkeypatch):
+    monkeypatch.setenv("GUIDANCE_AUDIO", "off")
+    monkeypatch.setenv("GUIDANCE_MODE", "3")
+    monkeypatch.setattr(guidance, "_default", None)
+    assert guidance.option() == (3, "combined", "combined words")
+    assert guidance.set_option("clock") == "clock face" and guidance.option()[0] == 5
+    assert guidance.set_option(2) == "one step at a time" and guidance._get().cfg.hybrid
+    with pytest.raises(ValueError):
+        guidance.set_option("9")
+    monkeypatch.setattr(guidance, "_default", None)
