@@ -32,6 +32,11 @@ Other things that can be said: "stop" / "cancel" / "never mind", "again" / "repe
     VOICE_DEVICE=NAME    sounddevice input device (the earbuds' microphone)
     VOICE_LLM_URL=URL    Nemotron's address (default http://127.0.0.1:8000/v1); "off" uses the rule only
     VOICE_HEADSET=off    do not use Bluetooth earbuds as the microphone
+    VOICE_HEADSET_MODE=stay   keep the earbuds in headset mode for the whole run instead of switching to
+                         stereo for every reach: nothing to go wrong between reaches, but everything is
+                         heard in mono at telephone quality, so left and right tones mean nothing (default: switch)
+    VOICE_HEADSET_VOLUME=0.6  how loud the earbuds are in headset mode (wpctl's scale); "match" (default)
+                         copies the stereo volume, "keep" leaves it alone
     VOICE_DOWNLOAD=1     let Whisper be fetched from the internet; otherwise only what is on this machine is used
     VOICE_WEARER_LEVEL=0.015   how loud the wearer's own voice is in the earbuds (0 trusts every voice)
     VOICE_REQUEST_S=6.5  anything longer than this is a conversation, not a request
@@ -50,6 +55,7 @@ says whether everything it needs is on this machine, without loading anything.
 """
 from __future__ import annotations
 
+import atexit
 import io
 import json
 import os
@@ -62,6 +68,7 @@ import sys
 import threading
 import time
 import urllib.request
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -87,13 +94,17 @@ SILENCE_REMINDERS_S = (20.0, 60.0, 180.0)   # gaps before "I'm listening"; the l
 # requests came in at 0.03 to 0.09 (RMS of the cut-out recording) and lasted 2 to 4 s; people standing
 # further off 0.006 to 0.012; a conversation next to the wearer was as loud as a request but 5 to 14 s long.
 REQUEST_MAX_S = 6.5         # longer than this is not a request: it is dropped before Whisper hears it
-TALK_MAX_S = 20.0           # stop recording a monologue after this
+CLIP_MAX_S = 8.0            # no recording runs longer than this, however long the hall goes on
+LOUD_ROOM = 0.025           # a voice has to be 2.5 times the room; in a loud room, no more than this (or 1.5 times the room)
 WEARER_LEVEL = 0.015        # quieter than this is trusted only when it names something that was just listed
 COVERED_NEAR_M = 0.30       # the camera counts as covered when this much of the depth picture is nearer than this.
 COVERED_SHARE = 0.10        # (in recordings/live_2025 a clear view of the table never had more than 2% that near)
 FIND_EARBUDS_S = 3.0        # without earbuds, look for them this often; twice as long after each failure, up to...
 FIND_EARBUDS_MAX_S = 30.0
 CHECK_EARBUDS_S = 10.0      # while listening, make sure they are still there and still in headset mode
+SWITCH_GAP_S = 3.0          # never two changes of the earbuds' mode closer than this: one started while the last was
+                            # still coming up left them without stereo for minutes, three times on 10 October
+SWITCH_WAIT_S = 6.0         # a mode that is not up after this has failed
 
 _LEAD = re.compile(
     r"^(?:(?:please|hey|ok|okay|can you|could you|i want you to|i want to|i want|i need|help me)\s+)*"
@@ -272,6 +283,8 @@ def interpret(text: str) -> tuple[str, str]:
     if listed and not _LIST.search(clean):                   # they said one of the names they were just told
         return "pick", max(listed, key=len)
     by_rule = ("list", "") if _LIST.search(clean) else ("pick", extract_target(text))
+    if len(by_rule[1].split()) > 4:
+        by_rule = ("none", "")                               # the rule cannot read a whole sentence, and it is no object's name
     url = os.environ.get("VOICE_LLM_URL", "http://127.0.0.1:8000/v1")
     if url == "off" or len(clean.split()) < 2:               # one word is already a name
         return by_rule
@@ -605,18 +618,33 @@ def load_whisper(model: str | None = None):
     machine already (VOICE_DOWNLOAD=1 allows fetching it): the venue's network may be down, and
     a download that hangs is worse than a clear message at the start."""
     want = os.environ.get("VOICE_STT", "auto")
-    if want != "cpu":
+    why = None
+    for attempt in (1, 2):
+        if want == "cpu":
+            break
         try:
-            return _gpu_whisper(model or "large-v3")
+            hear = _gpu_whisper(model or "large-v3")
+            _now(whisper=f"{model or 'large-v3'} on the GPU")
+            return hear
         except Exception as e:
             if want == "gpu":
                 raise
-            print(f"[voice] Whisper on the CPU ({e.__class__.__name__}: {e})", file=sys.stderr)
+            why = e
+            if attempt == 2 or not isinstance(e, RuntimeError) or "not on this machine" in str(e) or "no GPU" in str(e):
+                break
+            time.sleep(3.0)               # a GPU busy loading the other models is worth one more try
     from faster_whisper import WhisperModel
     try:
         whisper = WhisperModel(model or "small.en", device="cpu", compute_type="int8", local_files_only=_offline())
     except Exception as e:
         raise _not_here(f"Whisper {model or 'small.en'} for the CPU", e) from e
+    _now(whisper=f"{model or 'small.en'} on the CPU")
+    if why is not None:
+        # Not the same thing more slowly: the small model hears a soft "blue cup" as "look up". Say so loudly.
+        _problem("whisper model", f"Whisper could not start on the GPU ({why.__class__.__name__}: {why}); running "
+                                  f"{model or 'small.en'} on the CPU instead, which hears worse and takes about a second",
+                 f"Whisper is on the CPU with the small model, not on the GPU: it will mishear more ({why.__class__.__name__}).")
+        tracing.event("voice.whisper_on_cpu", why=f"{why.__class__.__name__}: {why}"[:200])
 
     def hear(audio: np.ndarray) -> str:
         with _whisper_lock:
@@ -738,7 +766,10 @@ def _my_address() -> str:
 
 
 # Things Whisper writes when it is handed room noise instead of speech.
-_NOT_SPEECH = {"", "you", "thank you", "thanks", "thanks for watching", "bye", "okay", "ok", "so", "the", "uh", "um", "hmm"}
+# The second line is the rest of the most common ones measured for large-v3 (arXiv 2501.11378).
+_NOT_SPEECH = {"", "you", "thank you", "thanks", "thanks for watching", "bye", "okay", "ok", "so", "the", "uh", "um", "hmm",
+               "thank you for watching", "oh", "im sorry", "oh my god", "bye bye", "thank you very much",
+               "subtitles by the amaraorg community"}
 
 
 def expected_words() -> str | None:
@@ -797,34 +828,49 @@ def from_the_wearer(text: str, level: float) -> bool:
     return any(said & set(name.split()) for name in last_objects)
 
 
-def cut_speech(blocks, sr: int = SR, block_s: float = 0.03, start_wait_s: float = 6.0, max_s: float = 8.0,
-               quiet_s: float = 0.9, should_stop=None, min_level: float = 0.005, own_share: float = 0.2) -> np.ndarray | None:
+def voice_level(history, min_level: float = 0.005) -> float:
+    """How loud a block has to be to count as a voice, given the levels of the room lately. The
+    room is the quiet fifth of the last ten seconds, so a loud word from the hall's speakers at
+    the wrong moment does not deafen the next few seconds. A voice is 2.5 times the room; in a
+    loud room that would ask for more than the wearer's own voice gives (0.03 and up), so there
+    it is LOUD_ROOM, or 1.5 times the room once the room itself is louder than that."""
+    room = float(np.percentile(history, 20)) if len(history) else 0.0
+    return max(min_level, min(2.5 * room, max(LOUD_ROOM, 1.5 * room)))
+
+
+def cut_speech(blocks, sr: int = SR, block_s: float = 0.03, start_wait_s: float = 6.0, max_s: float = CLIP_MAX_S,
+               quiet_s: float = 0.9, should_stop=None, min_level: float = 0.005, own_share: float = 0.3,
+               history=None, abandon=None, info: dict | None = None) -> np.ndarray | None:
     """Take audio blocks as they arrive and return the stretch that holds speech: from a little
     before the voice starts until it has been quiet for `quiet_s`, or `max_s` after it started.
-    None if nobody spoke within `start_wait_s`, or `should_stop()` said to give up. The level
-    that counts as a voice is set from the first third of a second, so it adapts to a noisy hall,
-    and is never below `min_level`: earbuds silence the room, and a soft voice measured 0.006 to
+    None if nobody spoke within `start_wait_s`, or `should_stop()` said to give up, or
+    `abandon()` did in the middle of a sentence. The level that counts as a voice comes from
+    the room's own level (see voice_level; `history` carries it from one call to the next), and
+    is never below `min_level`: earbuds silence the room, and a soft voice measured 0.006 to
     0.010 through them. Once somebody speaks, "quiet" is measured against that voice: anything
     under `own_share` of its loudest moment is the room again. So the wearer's request ends when
     the wearer stops, though people further off go on talking, and what they said before the
-    wearer started is cut off the front."""
-    kept, levels, lead, lead_levels, floor = [], [], [], [], []
+    wearer started is cut off the front. `info` is filled with how it ended."""
+    history = deque(maxlen=333) if history is None else history      # ten seconds of block levels
+    info = {} if info is None else info
+    kept, levels, lead, lead_levels = [], [], [], []
     loud, quiet, started, t, t_voice, top, threshold = 0, 0.0, False, 0.0, 0.0, 0.0, min_level
+    info.update(ended="nobody spoke")
     for block in blocks:
         t += block_s
         level = float(np.sqrt(np.mean(np.square(block)))) if len(block) else 0.0
-        if t <= 0.3:
-            floor.append(level)
-            lead.append(block)
-            lead_levels.append(level)
-            continue
-        threshold = max(min_level, 2.5 * (float(np.median(floor)) if floor else 0.0))
         if not started:
+            history.append(level)
             lead = (lead + [block])[-10:]                 # keep 0.3 s from before the voice
             lead_levels = (lead_levels + [level])[-10:]
+            if t <= 0.3:
+                continue                                  # always a moment of the room first
+            threshold = voice_level(history, min_level)
             loud = loud + 1 if level > threshold else 0
             if loud >= 4:                                 # 120 ms of voice, not a click
                 started, kept, levels, t_voice = True, list(lead), list(lead_levels), t
+                for _ in range(4):
+                    history.pop()                         # those four were the voice, not the room
             elif t > start_wait_s or (should_stop is not None and should_stop()):
                 return None
             continue
@@ -832,27 +878,52 @@ def cut_speech(blocks, sr: int = SR, block_s: float = 0.03, start_wait_s: float 
         levels.append(level)
         top = max(top, float(np.mean(levels[-5:])))       # the loudest 150 ms so far: a voice, not a click
         quiet = quiet + block_s if level <= max(threshold, own_share * top) else 0.0
-        if quiet >= quiet_s or t - t_voice > max_s:
+        if quiet >= quiet_s:
+            info.update(ended="quiet")
             break
+        if t - t_voice > max_s:
+            # Never a pause: the hall itself is this loud. Let that count as the room from now
+            # on, or every next recording would start at once and run its full length too.
+            info.update(ended="max")
+            history.extend(levels)
+            break
+        if abandon is not None and abandon():
+            info.update(ended="abandoned")
+            return None
+    else:
+        info.update(ended="the sound stopped" if started else info["ended"])
     if not started or not kept:
         return None
     bar = max(threshold, own_share * top)
-    first = next((i for i, level in enumerate(levels) if level > bar), 0)
-    return np.concatenate(kept[max(0, first - 10):])
+    first = max(0, next((i for i, level in enumerate(levels) if level > bar), 0) - 10)
+    info.update(voice_at=round(t_voice - 4 * block_s, 2), skipped_s=round(first * block_s, 2), threshold=round(threshold, 4))
+    return np.concatenate(kept[first:])
 
 
 class MicLost(Exception):
     """The earbuds' microphone has stopped giving sound."""
 
 
+_switch_lock = threading.RLock()         # one change of the earbuds' mode at a time, anywhere in this process
+_switch_t = -1e9                         # when the last one was asked for
+_repair_t = -1e9
+_stereo_volume: float | None = None      # how loud the wearer has the earbuds in stereo, read before leaving it
+
+
+def _stays() -> bool:
+    return os.environ.get("VOICE_HEADSET_MODE", "switch") == "stay"
+
+
 class Headset:
     """Bluetooth earbuds as the microphone, through PipeWire. In stereo mode they have no
     microphone at all; in headset mode they have one but the sound is mono and coarse. So the
-    mode is switched just for the moments it listens."""
+    mode is switched just for the moments it listens (or, with VOICE_HEADSET_MODE=stay, once)."""
 
     def __init__(self, device: int, headset: int, stereo: int, name: str = "earbuds"):
         self.device, self.headset, self.stereo, self.name = device, headset, stereo, name
+        self.history: deque = deque(maxlen=333)       # the room's level lately, for cut_speech
         self._zeros_s = 0.0               # how long nothing but zeros has come in
+        self._ran_on = False              # the last recording ended at its full length, with the talk still going
 
     @staticmethod
     def find():
@@ -890,26 +961,143 @@ class Headset:
         m = re.search(r"Profile:index.*?Int (\d+)", out, re.S)
         return int(m.group(1)) if m else None
 
+    def _nodes(self) -> dict | None:
+        """The earbuds' sound nodes as PipeWire has them right now: {"Audio/Sink": id, "Audio/Source": id},
+        with the source only in headset mode. None if that cannot be read."""
+        try:
+            dump = json.loads(subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=3).stdout)
+            out = {}
+            for thing in dump:
+                props = (thing.get("info") or {}).get("props") or {}
+                if props.get("device.id") == self.device and props.get("media.class") in ("Audio/Sink", "Audio/Source"):
+                    out[props["media.class"]] = thing["id"]
+            return out
+        except Exception:
+            return None
+
+    def _is_up(self, index: int) -> bool | None:
+        """Are they in that mode, with its sound nodes really there? None if it cannot be told."""
+        mode, nodes = self.mode(), self._nodes()
+        if mode is None or nodes is None:
+            return None
+        return mode == index and "Audio/Sink" in nodes and ("Audio/Source" in nodes) == (index == self.headset)
+
+    def _switch(self, index: int) -> bool | None:
+        """Change mode and wait until it has really happened, rather than for a fixed moment:
+        True when it is up, False when it did not come up in SWITCH_WAIT_S, None when this
+        machine cannot tell (then it waits the fixed moment, as before)."""
+        global _switch_t, _stereo_volume
+        to = "headset" if index == self.headset else "stereo"
+        with _switch_lock:
+            t0 = time.monotonic()
+            if self._is_up(index):
+                return True                               # already there: no switch to get wrong
+            if index == self.headset and self.mode() == self.stereo:
+                _stereo_volume = self._volume() or _stereo_volume
+            time.sleep(max(0.0, _switch_t + SWITCH_GAP_S - time.monotonic()))
+            self._profile(index)
+            _switch_t = time.monotonic()
+            while True:
+                up = self._is_up(index)
+                if up is not False or time.monotonic() - _switch_t >= SWITCH_WAIT_S:
+                    break
+                time.sleep(0.15)
+            # Up is not yet playing: give the sound server a moment to move the streams over, so
+            # the next thing said does not start on the wrong speaker.
+            time.sleep(0.3 if up else 0.0 if up is False else 0.5 if index == self.headset else 1.0)
+            tracing.event("headset", to=to, ok=up, ms=round((time.monotonic() - t0) * 1000))
+            return up
+
+    def _volume(self) -> float | None:
+        """How loud their output is set, on wpctl's scale."""
+        try:
+            sink = (self._nodes() or {}).get("Audio/Sink")
+            out = subprocess.run(["wpctl", "get-volume", str(sink)], capture_output=True, text=True, timeout=3).stdout
+            return float(re.search(r"Volume:\s*([0-9.]+)", out).group(1))
+        except Exception:
+            return None
+
+    def _match_volume(self):
+        """Headset mode keeps its own volume, and the sound server starts it far below the stereo
+        one (0.40 against 0.53 on the slider), so the beep and the question came out much quieter
+        than the guidance. Make it as loud as stereo, or what VOICE_HEADSET_VOLUME says."""
+        want = os.environ.get("VOICE_HEADSET_VOLUME", "match")
+        try:
+            volume = _stereo_volume if want == "match" else None if want == "keep" else float(want)
+            sink = (self._nodes() or {}).get("Audio/Sink")
+            if volume is None or sink is None:
+                return
+            subprocess.run(["wpctl", "set-volume", str(sink), f"{min(1.0, volume):.3f}"], capture_output=True, timeout=3)
+            tracing.event("headset", volume=round(volume, 3))
+        except Exception as e:
+            _problem("earbuds volume", e)
+
     def open(self):
         """Headset mode: the microphone comes up, the sound drops to mono. Stay here for the whole
         wait rather than flipping back and forth, which the earbuds do not take well."""
-        self._profile(self.headset)
-        time.sleep(0.5)
+        if self._switch(self.headset) is False:
+            raise MicLost("the earbuds did not go into headset mode")
+        self._match_volume()
+        self.history.clear()              # a different microphone state: measure the room afresh
+        self._ran_on = False
 
     def close(self):
-        """Stereo again, for the guidance. Give the earbuds a moment to come back as the output,
-        so the next thing said does not start on the wrong speaker."""
-        self._profile(self.stereo)
-        time.sleep(1.0)
+        """Stereo again, for the guidance. If it does not come back, reconnect them."""
+        if self._switch(self.stereo) is False and not self.reconnect():
+            _problem("earbuds stereo", "the earbuds did not go back to stereo; the guidance is in mono until they do",
+                     "The earbuds are stuck in headset mode: the guidance sounds mono. Take them out and put them back in.")
+        else:
+            _fine("earbuds stereo")
 
-    def record(self, should_stop=None) -> np.ndarray | None:
+    def _address(self) -> str | None:
+        """Their Bluetooth address, for bluetoothctl."""
+        try:
+            out = subprocess.run(["pw-cli", "info", str(self.device)], capture_output=True, text=True, timeout=3).stdout
+            m = re.search(r'api\.bluez5\.address = "([0-9A-Fa-f:]{17})"', out) or re.search(r"bluez_card\.([0-9A-Fa-f_]{17})", out)
+            if m:
+                return m.group(1).replace("_", ":")
+            out = subprocess.run(["bluetoothctl", "devices"], capture_output=True, text=True, timeout=5).stdout
+            m = re.search(rf"Device ([0-9A-F:]{{17}}) {re.escape(self.name)}\s*$", out, re.M)
+            return m.group(1) if m else None
+        except Exception:
+            return None
+
+    def reconnect(self) -> bool:
+        """Stereo did not come back by itself (on 10 October it stayed away for up to two and a
+        half minutes). Disconnecting and connecting them again is what brings it back by hand."""
+        global _repair_t, _switch_t
+        with _switch_lock:
+            if time.monotonic() - _repair_t < 60:
+                return False                              # tried a moment ago: do not keep cutting them off
+            _repair_t, t0, address, found = time.monotonic(), time.monotonic(), self._address(), None
+            try:
+                if address is None:
+                    raise RuntimeError("their Bluetooth address could not be read")
+                subprocess.run(["bluetoothctl", "disconnect", address], capture_output=True, timeout=10)
+                time.sleep(2.0)
+                subprocess.run(["bluetoothctl", "connect", address], capture_output=True, timeout=15)
+                end = time.monotonic() + 10
+                while found is None and time.monotonic() < end:
+                    time.sleep(0.5)
+                    found = Headset.find()                # they come back under a new number
+                if found is not None:
+                    self.device, self.headset, self.stereo = found.device, found.headset, found.stereo
+                    _switch_t = time.monotonic()
+            except Exception as e:
+                _problem("earbuds", f"could not reconnect them ({e})")
+            ok = found is not None and self._switch(self.stereo) is not False
+            tracing.event("headset", to="stereo", reconnected=True, ok=ok, ms=round((time.monotonic() - t0) * 1000))
+            print(f"[voice] the earbuds did not go back to stereo; reconnected them ({'ok' if ok else 'still not right'})", file=sys.stderr)
+            return ok
+
+    def record(self, should_stop=None, abandon=None) -> np.ndarray | None:
         """Wait for someone to speak and return what they said (None if nobody did). Call
         between open() and close(). Raises MicLost when no sound arrives at all: the earbuds
         went away, or dropped out of headset mode."""
         import sounddevice as sd
         blocks: queue.Queue = queue.Queue()
         n = int(SR * 0.03)
-        lost, got, peak = [0], [0], [0.0]
+        lost, got, peak, info = [0], [0], [0.0], {}
 
         def arrived(data, frames, t, status):
             lost[0] += bool(status)                       # the sound server dropped some on the way in
@@ -926,7 +1114,7 @@ class Headset:
                     if block.size:
                         peak[0] = max(peak[0], float(np.abs(block).max()))
                     yield block
-            audio = cut_speech(incoming(), should_stop=should_stop, max_s=TALK_MAX_S)
+            audio = cut_speech(incoming(), should_stop=should_stop, abandon=abandon, history=self.history, info=info)
         if lost[0]:
             tracing.event("mic", lost=lost[0], heard=audio is not None)
         if not got[0]:
@@ -937,6 +1125,13 @@ class Headset:
         if self._zeros_s >= 15.0:
             self._zeros_s = 0.0
             raise MicLost("the earbuds' microphone gives only silence")
+        # Talk that filled the last recording and is loud again from the first moment of this one
+        # is the same talk going on, not a request: its tail would otherwise pass for a short sentence.
+        goes_on = self._ran_on and audio is not None and info.get("voice_at", 9.0) < 0.5 and info.get("skipped_s", 9.0) < 0.3
+        self._ran_on = info.get("ended") == "max"
+        if goes_on:
+            tracing.event("voice.dropped", why="goes on", audio_s=round(audio.size / SR, 2), level=round(loudness(audio), 4))
+            return None
         return audio
 
 
@@ -1038,6 +1233,9 @@ class _Wait:
             else:
                 _say("I'm listening. Say what you want to grab, or ask what is on the table." if first else "Still listening.",
                      reminder=True)
+
+
+_left_open: list = []           # earbuds kept in headset mode for the whole run
 
 
 class WebMic:
@@ -1161,18 +1359,22 @@ class WebMic:
         except Exception as e:
             _problem("answering", e)
             return ""
+        finally:
+            self.status.update(option_families())         # the page shows which options are on
 
     def listen(self) -> str:
         global _ask_next
-        buds = self._look_for_headset()
-        self._open(buds)                  # before the question: an answer given at once must not fall in the switch
         wait = _Wait()
         text, target = "", ""
+        buds = None
         try:
             self._waiting = True
             if _ask_next and self._requests.empty() and os.environ.get("VOICE_AUTO_LIST", "1") != "0":
                 _ask_next = False
-                wait.look()
+                wait.look()               # on its own thread, while the earbuds change mode
+            buds = self._look_for_headset()
+            self._open(buds)              # before the question: an answer given at once must not fall in the switch
+            self.status.update(option_families())
             beeped = -1
             while not target:
                 wait.speak()
@@ -1188,9 +1390,13 @@ class WebMic:
             wait.stop()
             for b in {buds, self.headset} - {None}:       # the one opened here, or one that connected during the wait
                 try:
-                    b.close()
-                except Exception:
-                    pass
+                    if not _stays():
+                        b.close()
+                    elif b not in _left_open:
+                        _left_open.append(b)
+                        atexit.register(b.close)          # stereo again when the run ends, for whoever uses them next
+                except Exception as e:
+                    _problem("earbuds", e)
         self.status["target"] = target or self.status["target"]
         self.status.update(option_families())
         _now("reaching", message=f"Guiding to {target}.")
@@ -1221,7 +1427,8 @@ class WebMic:
                     _beep()                               # "your turn": the microphone is open from here
                     beep = False
                 self._check()
-                audio = buds.record(should_stop=lambda: not self._requests.empty() or due())
+                audio = buds.record(should_stop=lambda: not self._requests.empty() or due(),
+                                    abandon=lambda: not self._requests.empty())
             except Exception as e:
                 self._lost(e)
                 continue

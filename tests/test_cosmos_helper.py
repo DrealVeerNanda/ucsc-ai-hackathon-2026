@@ -598,7 +598,7 @@ class _Earbuds:
     def close(self):
         self.modes.append("stereo")
 
-    def record(self, should_stop=None):
+    def record(self, should_stop=None, abandon=None):
         self.calls += 1
         return None if self.calls < 3 else np.full(16000, 0.1, np.float32)
 
@@ -622,7 +622,7 @@ def test_stray_talk_does_not_beep_again_or_switch_the_earbuds(quiet_voice, tmp_p
     heard = iter(["okay guys i am going", "each processor has its own memory", "the green can please"])
     quiet_voice.setattr(voice, "interpret", lambda text: ("pick", "green can") if "green" in text else ("none", ""))
     buds = _Earbuds()
-    buds.record = lambda should_stop=None: np.full(16000, 0.1, np.float32)
+    buds.record = lambda should_stop=None, abandon=None: np.full(16000, 0.1, np.float32)
     mic = voice.WebMic(port=0, transcribe=lambda data: "", cert_dir=tmp_path / "c", typed=False,
                        headset=buds, hear=lambda audio: next(heard))
     try:
