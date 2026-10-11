@@ -12,6 +12,10 @@ Where frames come from is set by stream.start(SOURCE) or the STREAM_SOURCE envir
     relay | relay:PORT     frames forwarded from a Mac by tools/relay_send.py
     recordings/NAME        a saved recording, looped and paced like a live camera
 
+STREAM_RECORD=recordings/NAME saves what a live source delivers while the pipeline is using it
+(10 frames a second, for STREAM_RECORD_SECONDS, default 180), so a real session can be replayed
+later without the phone.
+
 Frames arrive upright, with depth resized to the rgb size and K matching it, so nothing
 downstream has to think about resolution or rotation. Depth 0 means no lidar reading there.
 Camera axes are x right, y down, z forward.
@@ -503,6 +507,11 @@ class Stream:
         self._state, self._error = "connecting", None
         self._stop = threading.Event()
         self._thread = None
+        self._recorder = None        # a copy of a live session, for replaying without the phone
+        self._record_t0 = self._record_last = 0.0
+        self._record_s = float(os.environ.get("STREAM_RECORD_SECONDS", "180"))
+        if os.environ.get("STREAM_RECORD") and self.source.partition(":")[0] in ("auto", "pathon", "record3d", "relay"):
+            self._recorder = Recorder(os.environ["STREAM_RECORD"], fps=10.0)
 
     def _frames(self) -> Iterator[RawFrame]:
         kind, _, arg = self.source.partition(":")
@@ -534,6 +543,12 @@ class Stream:
                             print(f"[stream] {self.source} is back", file=sys.stderr)
                         self._latest = (raw, now)
                         self._cable_ms = self._delay_ms(raw, now)
+                        if self._recorder is not None and now - self._record_last >= 0.1:
+                            self._record_t0 = self._record_t0 or now
+                            self._record_last = now
+                            self._recorder.add(raw, now)
+                            if now - self._record_t0 >= self._record_s:
+                                self._finish_recording()
                         self._seq += 1
                         self._arrivals.append(now)
                         self._state, self._error = "streaming", None
@@ -619,10 +634,18 @@ class Stream:
                     "raw_rgb": None if latest is None else latest[0].rgb.shape[:2],
                     "raw_depth": None if latest is None else latest[0].depth.shape[:2]}
 
+    def _finish_recording(self):
+        rec, self._recorder = self._recorder, None
+        if rec is not None:
+            meta = rec.close()
+            if meta.get("frames"):
+                print(f"[stream] saved {meta['frames']} frames ({meta['seconds']:.0f} s) to {rec.folder}", file=sys.stderr)
+
     def close(self):
         self._stop.set()
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=5.0)
+        self._finish_recording()
 
 
 # ---------------------------------------------------------------------------

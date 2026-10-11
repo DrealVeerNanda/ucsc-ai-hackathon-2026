@@ -395,3 +395,34 @@ def test_get_frame_waits_for_a_camera_that_is_not_there_yet(tmp_path, monkeypatc
         assert stream.get_frame(wait=1.0) is not None
     finally:
         stream.stop()
+
+
+def test_a_live_session_can_be_saved_while_it_is_used(tmp_path, monkeypatch):
+    def frames(self):
+        def gen():
+            for i in range(40):
+                yield _raw(i)
+                time.sleep(0.02)
+        return gen()
+    monkeypatch.setattr(Stream, "_frames", frames)
+    monkeypatch.setenv("STREAM_RECORD", str(tmp_path / "session"))
+    s = Stream("pathon", reconnect=False).start()
+    try:
+        seen = 0
+        while s.status()["state"] == "streaming":
+            seen += s.get_frame(wait=0.1) is not None
+    finally:
+        s.close()
+    assert seen > 5                                             # the pipeline still got its frames
+    got = list(stream._replay_frames(tmp_path / "session", loop=False, paced=False))
+    assert 5 <= len(got) <= 12                                  # about 10 a second for 0.8 s
+    assert got[0].depth.shape == (48, 64) and got[0].kind == "pathon"
+
+
+def test_replaying_a_recording_is_never_recorded_again(tmp_path, monkeypatch):
+    _record(tmp_path / "rec", n=4, dt=0.02)
+    monkeypatch.setenv("STREAM_RECORD", str(tmp_path / "copy"))
+    s = Stream(str(tmp_path / "rec"), loop=False).start()
+    s.get_frame(wait=0.5)
+    s.close()
+    assert not (tmp_path / "copy" / "frames.npz").exists()
