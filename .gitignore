@@ -23,3 +23,6 @@ weights/
 
 # scratch checkouts made by coding agents
 .claude/worktrees/
+
+# camera recordings: large, and they show bystanders
+recordings/
