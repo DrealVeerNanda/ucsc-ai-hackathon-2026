@@ -24,6 +24,12 @@ silence wondering whether it stopped. VOICE_AUTO_LIST=0 switches that off.
     VOICE_MODEL=base.en  Whisper model size (tiny.en is faster, small.en is more accurate)
     VOICE_DEVICE=NAME    sounddevice input device (the earbuds' microphone)
     VOICE_LLM_URL=URL    Nemotron's address (default http://127.0.0.1:8000/v1); "off" uses the rule only
+    VOICE_HEADSET=off    do not use Bluetooth earbuds as the microphone
+
+Bluetooth earbuds (AirPods) are used as the microphone by themselves when they are connected. They
+cannot play stereo and record at once, so they are switched to headset mode only while it is
+listening, which is whenever it is waiting for a request, and back to stereo for the guidance.
+No button: it has just asked "What do you want to grab?", so you simply answer.
 
 Speech: press Enter, say "find my mug", press Enter again. A Bluetooth clicker that sends
 Enter works as the button.
@@ -343,6 +349,99 @@ def _my_address() -> str:
         return socket.gethostname()
 
 
+# Things Whisper writes when it is handed room noise instead of speech.
+_NOT_SPEECH = {"", "you", "thank you", "thanks", "thanks for watching", "bye", "okay", "ok", "so", "the", "uh", "um", "hmm"}
+
+
+def worth_hearing(text: str) -> bool:
+    return re.sub(r"[^a-z ]+", "", text.lower()).strip() not in _NOT_SPEECH
+
+
+def cut_speech(blocks, sr: int = SR, block_s: float = 0.03, start_wait_s: float = 6.0, max_s: float = 8.0,
+               quiet_s: float = 0.9, should_stop=None) -> np.ndarray | None:
+    """Take audio blocks as they arrive and return the stretch that holds speech: from a little
+    before the voice starts until it has been quiet for `quiet_s`. None if nobody spoke within
+    `start_wait_s`, or `should_stop()` said to give up. The level that counts as a voice is set
+    from the first third of a second, so it adapts to a noisy hall."""
+    kept, lead, floor, loud, quiet, started, t = [], [], [], 0, 0.0, False, 0.0
+    for block in blocks:
+        t += block_s
+        level = float(np.sqrt(np.mean(np.square(block)))) if len(block) else 0.0
+        if t <= 0.3:
+            floor.append(level)
+            lead.append(block)
+            continue
+        threshold = max(0.012, 2.5 * (float(np.median(floor)) if floor else 0.0))
+        if not started:
+            lead = (lead + [block])[-10:]                 # keep 0.3 s from before the voice
+            loud = loud + 1 if level > threshold else 0
+            if loud >= 4:                                 # 120 ms of voice, not a click
+                started, kept = True, list(lead)
+            elif t > start_wait_s or (should_stop is not None and should_stop()):
+                return None
+            continue
+        kept.append(block)
+        quiet = quiet + block_s if level <= threshold else 0.0
+        if quiet >= quiet_s or t > start_wait_s + max_s:
+            break
+    return np.concatenate(kept) if started and kept else None
+
+
+class Headset:
+    """Bluetooth earbuds as the microphone, through PipeWire. In stereo mode they have no
+    microphone at all; in headset mode they have one but the sound is mono and coarse. So the
+    mode is switched just for the moments it listens."""
+
+    def __init__(self, device: int, headset: int, stereo: int, name: str = "earbuds"):
+        self.device, self.headset, self.stereo, self.name = device, headset, stereo, name
+
+    @staticmethod
+    def find():
+        """The connected earbuds, or None. Reads PipeWire's device list and their profiles."""
+        import shutil
+        if os.environ.get("VOICE_HEADSET", "auto") == "off" or not (shutil.which("wpctl") and shutil.which("pw-cli")):
+            return None
+        try:
+            status = subprocess.run(["wpctl", "status"], capture_output=True, text=True, timeout=3).stdout
+            devices = status.split("Audio", 1)[1].split("Sinks:", 1)[0]
+            m = re.search(r"(\d+)\.\s+(.+?)\s+\[bluez5\]", devices)
+            if not m:
+                return None
+            params = subprocess.run(["pw-cli", "enum-params", m.group(1), "EnumProfile"], capture_output=True,
+                                    text=True, timeout=3).stdout
+        except Exception:
+            return None
+        found = dict(reversed(pair) for pair in re.findall(r'Profile:index.*?Int (\d+).*?Profile:name.*?String "([^"]+)"', params, re.S))
+        headset = found.get("headset-head-unit-msbc") or found.get("headset-head-unit")
+        stereo = found.get("a2dp-sink")
+        if headset is None or stereo is None:
+            return None
+        return Headset(int(m.group(1)), int(headset), int(stereo), m.group(2).strip())
+
+    def _profile(self, index: int):
+        subprocess.run(["wpctl", "set-profile", str(self.device), str(index)], capture_output=True, timeout=3)
+
+    def record(self, should_stop=None) -> np.ndarray | None:
+        """Switch to headset mode, wait for someone to speak, and return what they said."""
+        import sounddevice as sd
+        self._profile(self.headset)
+        try:
+            time.sleep(0.3)                               # let the microphone come up
+            blocks: queue.Queue = queue.Queue()
+            n = int(SR * 0.03)
+            with sd.InputStream(samplerate=SR, channels=1, dtype="float32", blocksize=n,
+                                callback=lambda data, frames, t, status: blocks.put(data[:, 0].copy())):
+                def incoming():
+                    while True:
+                        try:
+                            yield blocks.get(timeout=1.0)
+                        except queue.Empty:
+                            return
+                return cut_speech(incoming(), should_stop=should_stop)
+        finally:
+            self._profile(self.stereo)                    # stereo again, for the guidance
+
+
 def decode_recording(data: bytes) -> np.ndarray:
     """A recording as the browser sent it (webm/opus, mp4/aac or wav) -> mono float32 at 16 kHz.
     Done with PyAV directly: faster-whisper's own decoder does not work with the PyAV installed
@@ -366,18 +465,18 @@ class WebMic:
     served with a certificate made on the spot; the browser asks once whether to trust it."""
 
     def __init__(self, port: int = 8644, transcribe=None, model: str = "base.en", cert_dir: str | Path = "out/voice_cert",
-                 typed: bool = True):
+                 typed: bool = True, headset=None, hear=None):
         self.port = port
         self.status = {"heard": "", "target": ""}
         self._requests: queue.Queue = queue.Queue()
         self._waiting = False
+        self.headset, self._hear = headset, hear          # earbuds as the microphone; audio -> text
         if transcribe is None:
             from faster_whisper import WhisperModel
             with tracing.timed("load.whisper", model=model):
                 whisper = WhisperModel(model, device="cpu", compute_type="int8")
 
-            def transcribe(data: bytes) -> str:
-                audio = decode_recording(data)
+            def hear(audio: np.ndarray) -> str:
                 if audio.size < SR // 4:
                     return ""
                 t = time.perf_counter()
@@ -385,6 +484,13 @@ class WebMic:
                 text = " ".join(s.text for s in segments).strip()
                 tracing.event("whisper", (time.perf_counter() - t) * 1000, audio_s=round(audio.size / SR, 2), text=text)
                 return text
+
+            def transcribe(data: bytes) -> str:
+                return hear(decode_recording(data))
+            self._hear = hear
+            self.headset = Headset.find()
+            if self.headset is not None:
+                print(f"[voice] Using {self.headset.name} as the microphone: just answer when it asks.")
         self._transcribe = transcribe
         self._server = self._serve(Path(cert_dir))
         self.url = f"https://{_my_address()}:{self.port}/"
@@ -413,7 +519,7 @@ class WebMic:
         invite(pending=not self._requests.empty())
         self._waiting = True
         try:
-            text = self._requests.get()
+            text = self._next_request()
         finally:
             self._waiting = False
         target = respond(text)
@@ -425,6 +531,25 @@ class WebMic:
             pass
         print(f"[voice] heard {text!r} -> target {target!r}")
         return target
+
+    def _next_request(self) -> str:
+        """Whatever comes first: something typed or sent from the page, or, with earbuds as the
+        microphone, something said aloud."""
+        while True:
+            try:
+                return self._requests.get(timeout=0.05 if self.headset is not None else None)
+            except queue.Empty:
+                pass
+            try:
+                audio = self.headset.record(should_stop=lambda: not self._requests.empty())
+            except Exception as e:
+                print(f"[voice] the earbuds' microphone failed ({e}); use the page or type", file=sys.stderr)
+                self.headset = None
+                continue
+            text = self._hear(audio) if audio is not None else ""
+            if text and worth_hearing(text):
+                self.status["heard"] = text
+                return text
 
     def _serve(self, cert_dir: Path):
         mic = self

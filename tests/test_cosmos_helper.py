@@ -489,3 +489,90 @@ def test_switching_option_mid_reach_keeps_the_target(quiet_voice):
     assert guidance.option()[1] == "combined_beeps"
     assert voice.respond("next option") == "mug" and guidance.option()[1] == "clock"
     assert voice.respond("next option") == "mug" and guidance.option()[1] == "tones"      # wraps round
+
+
+# --- earbuds as the microphone ------------------------------------------------
+
+def _blocks(*parts, sr=16000, block_s=0.03):
+    """parts: (seconds, level). Returns a generator of 30 ms blocks of noise at each level."""
+    rng = np.random.default_rng(0)
+    n = int(sr * block_s)
+    for seconds, level in parts:
+        for _ in range(int(round(seconds / block_s))):
+            yield (rng.standard_normal(n) * level).astype(np.float32)
+
+
+def test_the_spoken_part_is_cut_out_of_the_recording():
+    audio = voice.cut_speech(_blocks((1.0, 0.004), (1.5, 0.08), (2.0, 0.004)))      # quiet, voice, quiet
+    assert audio is not None and 1.6 < audio.size / 16000 < 2.9                       # the voice plus the pause that ended it
+    assert np.sqrt((audio[4800:24000] ** 2).mean()) > 0.05
+
+
+def test_nobody_speaking_gives_nothing():
+    assert voice.cut_speech(_blocks((7.0, 0.004))) is None
+    assert voice.cut_speech(_blocks((7.0, 0.03))) is None             # a steadily noisy hall is not a voice
+    assert voice.cut_speech(_blocks((1.0, 0.004), (0.06, 0.2), (7.0, 0.004))) is None     # a click
+
+
+def test_listening_stops_when_a_typed_request_arrives():
+    seen = []
+    out = voice.cut_speech(_blocks((5.0, 0.004)), should_stop=lambda: seen.append(1) or len(seen) > 20)
+    assert out is None and len(seen) < 40
+
+
+def test_room_noise_transcripts_are_ignored():
+    assert not voice.worth_hearing("Thank you.") and not voice.worth_hearing(" you ") and not voice.worth_hearing("")
+    assert voice.worth_hearing("the green can") and voice.worth_hearing("option three")
+
+
+def test_earbuds_are_found_with_their_two_modes(quiet_voice):
+    import shutil
+    from types import SimpleNamespace
+    status = ("Audio\n ├─ Devices:\n │      42. Built-in Audio                      [alsa]\n"
+              " │      61. AirPods Pro                         [bluez5]\n ├─ Sinks:\n │  *   59. AirPods Pro [vol: 0.5]\nVideo\n")
+    profiles = "".join(f'  Object: size 1\n    Prop: key Spa:Pod:Object:Param:Profile:index (1), flags 0\n      Int {i}\n'
+                       f'    Prop: key Spa:Pod:Object:Param:Profile:name (2), flags 0\n      String "{n}"\n'
+                       for i, n in ((0, "off"), (3, "headset-head-unit"), (5, "a2dp-sink"), (261, "headset-head-unit-msbc")))
+
+    def run(cmd, **k):
+        return SimpleNamespace(stdout=status if cmd[0] == "wpctl" else profiles)
+    quiet_voice.setattr(shutil, "which", lambda name: "/usr/bin/" + name)
+    quiet_voice.setattr(voice.subprocess, "run", run)
+    h = voice.Headset.find()
+    assert (h.device, h.headset, h.stereo, h.name) == (61, 261, 5, "AirPods Pro")     # wideband mode preferred
+    quiet_voice.setenv("VOICE_HEADSET", "off")
+    assert voice.Headset.find() is None
+
+
+class _Earbuds:
+    """Hears nothing twice, then a sentence."""
+    name = "AirPods"
+
+    def __init__(self):
+        self.calls = 0
+
+    def record(self, should_stop=None):
+        self.calls += 1
+        return None if self.calls < 3 else np.full(16000, 0.1, np.float32)
+
+
+def test_a_spoken_answer_through_the_earbuds_becomes_the_target(quiet_voice, tmp_path):
+    quiet_voice.setattr(voice, "_poke_main", lambda: None)
+    buds = _Earbuds()
+    mic = voice.WebMic(port=0, transcribe=lambda data: "", cert_dir=tmp_path / "c", typed=False,
+                       headset=buds, hear=lambda audio: "the green can please")
+    try:
+        assert mic.listen() == "green can" and buds.calls == 3 and mic.status["heard"] == "the green can please"
+    finally:
+        mic.close()
+
+
+def test_typing_still_wins_while_the_earbuds_listen(quiet_voice, tmp_path):
+    quiet_voice.setattr(voice, "_poke_main", lambda: None)
+    mic = voice.WebMic(port=0, transcribe=lambda data: "", cert_dir=tmp_path / "c", typed=False,
+                       headset=_Earbuds(), hear=lambda audio: "thank you")      # only room noise is heard
+    try:
+        mic.submit("find the phone")
+        assert mic.listen() == "phone"
+    finally:
+        mic.close()
