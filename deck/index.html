@@ -21,7 +21,8 @@
     <span class="lab lab-you" id="lab-you">Chest camera</span>
     <span class="lab lab-cloud" id="lab-cloud">Internet</span>
     <span class="lab lab-q" id="lab-q">?</span>
-    <span class="lab lab-tip" id="lab-tip">Fingertip</span>
+    <span class="lab lab-tip" id="lab-tip">Hand</span>
+    <span class="lab lab-hand" id="lab-hand"><svg class="hi hi-open" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="hi hi-grab" viewBox="0 0 24 24"><path d="M18 11.5V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v1.4"/><path d="M14 10V8a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 9.9V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v5"/><path d="M6 14a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-4a8 8 0 0 1-8-8 2 2 0 1 1 4 0"/></svg></span>
     <span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span>
     <span class="lab lab-gx" id="lab-gx10">GX10</span>
     <span class="lab lab-axis" id="lab-gxx">x right</span>
@@ -63,19 +64,23 @@
       <ol class="vs">
         <li data-step="1"><span class="vs-n">Meta glasses</span><span class="vs-w">a volunteer talks you through it</span><span class="vs-r">needs internet and a person</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
         <li data-step="2"><span class="vs-n">Be My AI</span><span class="vs-w">describes a photo</span><span class="vs-r">never guides your hand</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
-        <li data-step="3"><span class="vs-n">Seeing AI</span><span class="vs-w">leads you toward an item</span><span class="vs-r">stops at arm's reach</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li data-step="3"><span class="vs-n">Seeing AI</span><span class="vs-w">leads you toward an item</span><span class="vs-r">gets you near it, not onto it</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
         <li data-step="4"><span class="vs-n">AIGuide</span><span class="vs-w">guides your hand</span><span class="vs-r">handheld, objects scanned first</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
         <li class="us" data-step="5"><span class="vs-n">[Project name]</span><span class="vs-w">guides your hand by voice</span><span class="vs-r">hands-free, offline, any object</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Fills it"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></li>
       </ol>
       <p class="fine" data-step="1">Be My Eyes on Ray-Ban Meta, 2024; Microsoft Research, Find My Things; Lee et al., TACCESS 2022.</p>
-      <aside class="notes">One Enter per tool: say what it does, then the gap. Meta glasses: hands-free, "Hey Meta, Be My Eyes" calls a sighted volunteer; needs internet and a person; 56% retrieval accuracy in an ASSETS 2025 study. Be My AI sends a photo to the cloud and describes it. Seeing AI Find My Things needs four videos per item and stops at arm's reach. AIGuide guides the hand but is handheld with pre-scanned objects. Last Enter: ours fills every gap.</aside>
+      <aside class="notes">One Enter per tool: say what it does, then the gap. Meta glasses: hands-free, "Hey Meta, Be My Eyes" calls a sighted volunteer; needs internet and a person; 56% retrieval accuracy in an ASSETS 2025 study. Be My AI sends a photo to the cloud and describes it. Seeing AI Find My Things needs four videos per item and leads you until the item is within arm's reach, then stops: it never steers your hand onto it. AIGuide guides the hand but is handheld with pre-scanned objects. Last Enter: ours fills every gap.</aside>
     </section>
 
     <section class="slide" data-id="haptics" data-shots="overload" data-trans="columns" data-dur="8">
       <h2 class="head">Why not vibration?</h2>
-      <div class="stat"><p class="stat-n" data-count="26" data-suffix="%">26%</p><p class="stat-l">could tell which buzzes fired when they came at once</p></div>
-      <p class="fine">Yeganeh, University of Iceland 2026: 93% when one at a time.</p>
-      <aside class="notes">Vibration needs a motor per direction spread over the body (a wrist band, a belt, a face rig), and the buzzes overlap: people picked out simultaneous buzzes 26% of the time vs 93% one at a time. Even single wrist buzzes were felt in the wrong spot 1 time in 10 (Trant et al., Sci Rep 2025, 41 blind participants), and spoken cues gave faster grasps. One word in an earbud needs no decoding.</aside>
+      <div class="stat"><p class="stat-n" data-count="74" data-suffix="%">74%</p><p class="stat-l">of overlapping buzzes were misread</p></div>
+      <p class="fine">Yeganeh, University of Iceland 2026: 26% read correctly when buzzes overlapped, 93% one at a time.</p>
+      <div class="buzz-fig" aria-hidden="true">
+        <figure class="buzz-item"><div class="buzz-art"><svg class="hi" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><span class="mot" style="left:30%;top:78%"></span><span class="mot" style="left:55%;top:90%"></span><span class="mot" style="left:78%;top:72%"></span></div><figcaption>wrist band</figcaption></figure>
+        <figure class="buzz-item"><div class="buzz-art"><svg class="hi" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8.2" ry="10"/><path d="M8.6 10.2h1.6M13.8 10.2h1.6M12 11.5v3.2l-1 .6M9.6 17.4c1.5 1 3.3 1 4.8 0"/></svg><span class="mot" style="left:50%;top:12%"></span><span class="mot" style="left:24%;top:36%"></span><span class="mot" style="left:76%;top:36%"></span><span class="mot" style="left:26%;top:66%"></span><span class="mot" style="left:74%;top:66%"></span><span class="mot" style="left:50%;top:90%"></span></div><figcaption>face</figcaption></figure>
+      </div>
+      <aside class="notes">Vibration needs a motor per direction spread over the body (a wrist band, a belt, a face rig), and the buzzes overlap: when buzzes overlapped, 74% were misread (26% read correctly, vs 93% one at a time). A face rig has the same problem with more motors. Even single wrist buzzes were felt in the wrong spot 1 time in 10 (Trant et al., Sci Rep 2025, 41 blind participants), and spoken cues gave faster grasps. One word in an earbud needs no decoding.</aside>
     </section>
 
     <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="3" data-trans="blinds" data-dur="10">

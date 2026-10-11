@@ -9,7 +9,7 @@ const stage = createStage($("stage"), {
   word: $("lab-word"), mug: $("lab-mug"), you: $("lab-you"), cloud: $("lab-cloud"),
   ax: $("lab-ax"), ay: $("lab-ay"), az: $("lab-az"),
   gx10: $("lab-gx10"), gxx: $("lab-gxx"), gxy: $("lab-gxy"), gxz: $("lab-gxz"),
-  q: $("lab-q"), tip: $("lab-tip"),
+  q: $("lab-q"), tip: $("lab-tip"), hand: $("lab-hand"),
   motors: [...document.querySelectorAll(".lab-motor")],
 });
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("deck") : null;

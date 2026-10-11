@@ -19,8 +19,8 @@ function color(name) {
 const CHEST = new THREE.Vector3(0, 0.45, 0);
 const MUG = new THREE.Vector3(0.09, 0, 0.62);       // base centre of the mug
 const MUG_TOP = new THREE.Vector3(0.09, 0.1, 0.62);
-const GRAB_AT = new THREE.Vector3(0.09, 0.06, 0.57); // where the fingertip ends: the mug's side
-const START = new THREE.Vector3(-0.2, 0.2, 0.32);    // where a reach starts
+const GRAB_AT = new THREE.Vector3(0.035, 0.055, 0.62); // where the grip closes: the mug's near side
+const START = new THREE.Vector3(-0.11, 0.19, 0.38);  // where a reach starts: near the mug, clear of the text
 
 // Camera shots: position, look-at target, and how far to push the subject right (fraction of
 // width) so the slide's text has the left side. Levels are 0..1 and eased.
@@ -39,11 +39,11 @@ const SHOTS = {
   sweep:   { pos: [-0.43, 0.85, -0.55], at: [0.0, 0.1, 0.45], shift: 0.16, lv: { sweep: 1, frustum: 1 } },
   found:   { pos: [-0.36, 0.6, -0.3], at: [0.05, 0.08, 0.45], shift: 0.18, lv: { reveal: 1, box: 1, hand: 1, still: 1, tip: 1 } },
   vector:  { speed: 2.6, pos: [-0.5, 0.55, 0.05], at: [0.0, 0.08, 0.48], shift: 0.2, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, axes: 1 } },
-  speak:   { pos: [-0.3, 0.35, 0.05], at: [-0.05, 0.15, 0.4], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, big: 1 } },
+  speak:   { pos: [-0.38, 0.42, -0.05], at: [-0.04, 0.1, 0.48], shift: 0.3, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, big: 1 } },
   // core loop: straight overhead, a coordinate gizmo at the fingertip
   plan:    { pos: [-0.02, 1.15, 0.35], at: [0.0, 0.0, 0.5], shift: 0.22, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, gizmo: 1 } },
   buzz:    { pos: [0.02, 0.5, -0.25], at: [0.2, 0.18, 0.32], shift: 0.24, lv: { reveal: 1, dim: 0.6, hand: 1, still: 1, motors: 1 } },
-  overload:{ pos: [0.02, 0.5, -0.25], at: [0.2, 0.18, 0.32], shift: 0.24, lv: { reveal: 1, dim: 0.6, hand: 1, still: 1, motors: 1, all: 1 } },
+  overload:{ pos: [-0.2, 0.45, -0.15], at: [0.0, 0.1, 0.6], shift: 0.0, lv: { reveal: 0.2, dim: 0.8 } },
   finale:  { pos: [-0.5, 0.6, -0.45], at: [-0.05, 0.05, 0.55], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, still: 1, grabbed: 1 } },
   off:     { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.0, lv: { reveal: 1, dim: 1 } },
   // results: overhead on the mug, where reaches ended
@@ -132,28 +132,7 @@ export function createStage(canvas, labels) {
   box.position.set(MUG.x, 0.055, MUG.z);
   scene.add(box);
 
-  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.007, 16, 12), new THREE.MeshBasicMaterial({ color: C.text, transparent: true, side: DS }));
-  // the reaching hand as lidar would see it: points on a palm-down right hand, index finger out,
-  // the fingertip (the point we track) at the origin. x = wearer's right, z = forward.
-  const handPts = [];
-  const tube = (x0, y0, z0, x1, y1, z1, r, n) => {
-    for (let i = 0; i < n; i++) {
-      const k = Math.random(), a = Math.random() * Math.PI * 2;
-      handPts.push(x0 + (x1 - x0) * k + r * Math.cos(a), y0 + (y1 - y0) * k + r * Math.sin(a), z0 + (z1 - z0) * k);
-    }
-  };
-  tube(0, 0, -0.004, 0, 0.004, -0.075, 0.0075, 170);            // index
-  tube(0.019, -0.006, -0.04, 0.02, 0.004, -0.095, 0.0078, 130);  // middle, curled under
-  tube(0.036, -0.008, -0.05, 0.037, 0.003, -0.1, 0.0074, 120);   // ring
-  tube(0.051, -0.008, -0.065, 0.052, 0.0, -0.1, 0.0065, 100);    // little
-  tube(-0.024, -0.008, -0.06, -0.016, -0.002, -0.105, 0.0085, 110); // thumb
-  for (let i = 0; i < 420; i++) {                                   // palm, a flat slab
-    handPts.push(-0.012 + Math.random() * 0.072, (Math.random() < 0.5 ? -1 : 1) * 0.011 + (Math.random() - 0.5) * 0.004, -0.1 - Math.random() * 0.085);
-  }
-  tube(0.02, 0, -0.185, 0.02, 0.005, -0.25, 0.028, 220);           // wrist
-  const handCloud = new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(handPts, 3)),
-    new THREE.PointsMaterial({ size: 0.0045, color: C.text, transparent: true, opacity: 0 }));
-  scene.add(handCloud);
+  const hand = new THREE.Object3D();  // the tracked grip point; the visible hand is the landmark skeleton below
   scene.add(hand);
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.022, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, side: DS, opacity: 0.5 }));
   shadow.rotation.x = -Math.PI / 2;
@@ -356,9 +335,7 @@ export function createStage(canvas, labels) {
     else if (lv.still > 0.5 || reduced.matches) handPos.lerp(lv.grabbed > 0.5 ? GRAB_AT : START, still ? 1 : 0.08);
     else if (lv.guide > 0.5) { const g = guidedHand(still ? 2.3 : guideT); handPos.copy(g.p); say = g.say; grabbed = grabbed || g.grabbed; }
     hand.position.copy(handPos);
-    hand.material.opacity = lv.hand;
-    handCloud.position.copy(handPos);
-    handCloud.material.opacity = 0.9 * lv.hand;
+
     shadow.position.set(handPos.x, 0.0015, handPos.z);
     shadow.material.opacity = 0.5 * lv.hand;
     drop.geometry.setFromPoints([handPos, new THREE.Vector3(handPos.x, 0, handPos.z)]);
@@ -414,7 +391,7 @@ export function createStage(canvas, labels) {
     const place = (el, v, on, dx = 0, dy = 0) => {
       if (!el) return;
       const [x, y, inFront] = project(v);
-      el.style.opacity = on && inFront && el.textContent.trim() ? on * settle : 0;
+      el.style.opacity = on && inFront && (el.textContent.trim() || el.querySelector("svg")) ? on * settle : 0;
       // left/top, not transform: the pop and buzz effects scale the label in place
       el.style.left = `${x + dx}px`;
       el.style.top = `${y + dy}px`;
@@ -434,7 +411,10 @@ export function createStage(canvas, labels) {
     place(L.mug, MUG_TOP, Math.max(lv.box, lv.words * 0.9, lv.axes), -18, -34);
     place(L.you, CHEST, lv.frustum, -14, -30);
     place(L.q, MUG_TOP, lv.q, -10, -110);
-    place(L.tip, handPos, lv.tip, -40, 26);
+    // the visible hand is an icon label riding handPos: open on the way in, gripping on "Grab"
+    if (L.hand) L.hand.classList.toggle("is-grab", grabbed);
+    place(L.hand, handPos, lv.hand, 0, 0);
+    place(L.tip, handPos, lv.tip, -22, 58);
     // four vibration motors around the wrist, buzzing one at a time (why not vibration)
     (L.motors || []).forEach((el, k) => {
       const [dx, dy] = [[-18, -96], [-18, 60], [60, -18], [-96, -18]][k];

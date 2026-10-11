@@ -95,6 +95,24 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 .lab-motor { width: 36px; height: 36px; padding: 0; border: 3px solid var(--muted); border-radius: 50%; background: transparent; }
 .lab-motor.is-on { border-color: var(--text); scale: 1.35; }
 .lab-tip { background: var(--text); color: var(--ground); }
+/* the hand: a Lucide outline icon riding the 3D grip point (vendor/lucide, ISC) */
+.lab-hand { padding: 0; background: none; translate: -50% -55%; width: min(6.4vw, 11.5vh); height: min(6.4vw, 11.5vh); }
+.hi { width: 100%; height: 100%; fill: none; stroke: var(--text); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.lab-hand .hi { position: absolute; inset: 0; filter: drop-shadow(0 0 0.35vh oklch(0.12 0.02 255)); transition: opacity 150ms linear; }
+.lab-hand .hi-grab, .lab-hand.is-grab .hi-open { opacity: 0; }
+.lab-hand.is-grab .hi-grab { opacity: 1; stroke: var(--grab); }
+
+/* why not vibration: a hand and a face, every motor rippling at once */
+.buzz-fig { position: fixed; right: 7vw; top: 50%; translate: 0 -50%; display: flex; gap: 6vw; align-items: end; pointer-events: none; }
+.buzz-item { margin: 0; display: grid; justify-items: center; gap: 2vh; }
+.buzz-item figcaption { font-size: var(--t-small); color: var(--muted); }
+.buzz-art { position: relative; width: min(15vw, 27vh); aspect-ratio: 1; }
+.buzz-art .hi { stroke-width: 1.1; stroke: var(--muted); }
+.mot { position: absolute; width: 1.1vh; height: 1.1vh; margin: -0.55vh 0 0 -0.55vh; border-radius: 50%; background: var(--text); }
+.mot::before, .mot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--text); animation: ripple 900ms cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.mot::after { animation-delay: 450ms; }
+@keyframes ripple { from { scale: 1; opacity: 0.9; } to { scale: 4.2; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .mot::before, .mot::after { animation: none; scale: 2.4; opacity: 0.4; } }
 .lab-q { background: var(--text); color: var(--ground); font: 700 min(5vw, 9vh)/1 var(--display); padding: 0.15em 0.4em; }
 .lab-word.is-grab { background: var(--grab); color: var(--on-grab); }
 .lab-mug { background: var(--text); color: var(--ground); }
