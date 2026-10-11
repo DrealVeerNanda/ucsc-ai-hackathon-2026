@@ -1,7 +1,7 @@
 """Fault drills: break one thing at a time under the running pipeline and see whether it carries
 on, how long it takes to be useful again, and whether it got there by itself.
 
-  python tools/fault_drill.py                    # every drill (about 25 minutes), a table at the end
+  python tools/fault_drill.py                    # every drill (about 37 minutes), a table at the end
   python tools/fault_drill.py --list             # what there is
   python tools/fault_drill.py camera_stops nemotron_slow     # only these
   python tools/fault_drill.py --quick            # the ones a stage demo is most likely to meet (about 10 minutes)
