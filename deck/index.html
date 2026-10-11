@@ -17,7 +17,11 @@
     <span class="lab lab-word" id="lab-word"></span>
     <span class="lab lab-mug" id="lab-mug">mug</span>
     <span class="lab lab-you" id="lab-you">Chest camera</span>
-    <span class="lab lab-cloud" id="lab-cloud">Cloud</span>
+    <span class="lab lab-cloud" id="lab-cloud">Internet</span>
+    <span class="lab lab-gx" id="lab-gx10">GX10</span>
+    <span class="lab lab-axis" id="lab-gxx">x right</span>
+    <span class="lab lab-axis" id="lab-gxy">y up</span>
+    <span class="lab lab-axis" id="lab-gxz">z forward</span>
     <span class="lab lab-axis" id="lab-ax"></span>
     <span class="lab lab-axis" id="lab-ay"></span>
     <span class="lab lab-axis" id="lab-az"></span>
@@ -25,32 +29,32 @@
 
   <main class="deck" id="deck">
 
-    <section class="slide" data-id="title" data-shots="title" data-enter="rise" data-dur="6">
-      <h1 class="poster">[Project name]</h1>
+    <section class="slide" data-id="title" data-shots="title" data-trans="none" data-dur="6">
+      <h1 class="poster" data-scramble>[Project name]</h1>
       <p class="lede">Find it. Grab it. Eyes closed.</p>
       <aside class="notes">One sentence: a blind person asks for something on the table and spoken words walk their hand to it. Every model runs on the ASUS GX10.</aside>
     </section>
 
-    <section class="slide" data-id="problem" data-shots="dark,dark,dark" data-steps="3" data-enter="wipe" data-dur="12">
+    <section class="slide" data-id="problem" data-shots="fog,fog,fog" data-steps="2" data-trans="lights" data-dur="12">
       <div class="swap">
-        <div class="stat" data-only="1"><p class="stat-n">43M</p><p class="stat-l">people are blind</p></div>
-        <div class="stat" data-only="2"><p class="stat-n">41%</p><p class="stat-l">of their questions are “what is this?”</p></div>
-        <div class="stat" data-only="3"><p class="stat-n">56%</p><p class="stat-l">success with Meta glasses</p></div>
+        <div class="stat" data-only="0"><p class="stat-n" data-count="43" data-suffix="M">43M</p><p class="stat-l">people are blind</p></div>
+        <div class="stat" data-only="1"><p class="stat-n" data-count="41" data-suffix="%">41%</p><p class="stat-l">of their questions are “what is this?”</p></div>
+        <div class="stat" data-only="2"><p class="stat-n" data-count="4250" data-prefix="$" data-group>$4,250</p><p class="stat-l">for a wearable AI camera built for them</p></div>
       </div>
       <p class="fine swap">
-        <span data-only="1">Lancet Global Health, 2020</span>
-        <span data-only="2">Brady et al., CHI 2013</span>
-        <span data-only="3">Sridhar et al., ASSETS 2025: blind users retrieving objects. Be My AI: 86%.</span>
+        <span data-only="0">Lancet Global Health, 2020</span>
+        <span data-only="1">Brady et al., CHI 2013</span>
+        <span data-only="2">OrCam MyEye 3 Pro, US retail. We use a phone and earbuds.</span>
       </p>
-      <aside class="notes">43M blind worldwide, 61M by 2050. 41%: VizWiz Social, 40,748 questions from 5,329 blind users. 56%: NaviSense study (ASSETS 2025, 12 blind or low-vision participants); Meta glasses 55.9% accuracy, Be My AI 85.7%.</aside>
+      <aside class="notes">43M blind worldwide, 61M by 2050 (Lancet GH 2020). 41%: VizWiz Social, 40,748 questions from 5,329 blind users (Brady et al., CHI 2013). $4,250: OrCam MyEye 3 Pro at a US retailer; Envision Glasses $1,899. Ours runs on an iPhone and earbuds plus one shared box.</aside>
     </section>
 
-    <section class="slide" data-id="provide" data-shots="provide" data-enter="scale" data-dur="8">
-      <p class="poster quote">“Find my mug.”</p>
-      <aside class="notes">That's all the wearer says. Watch the hand: the word above it is what they hear. Hands-free, any object by name, no setup.</aside>
+    <section class="slide" data-id="provide" data-shots="ask" data-trans="iris" data-dur="8">
+      <p class="poster quote" data-type>“Find my mug.”</p>
+      <aside class="notes">That's all the wearer says. Watch the hand: each bubble is a word they hear. Hands-free, any object by name, no setup.</aside>
     </section>
 
-    <section class="slide" data-id="others" data-shots="recede" data-enter="slide" data-dur="10">
+    <section class="slide" data-id="others" data-shots="recede" data-trans="wipe" data-dur="10">
       <h2 class="head">They describe. We guide.</h2>
       <ol class="vs">
         <li><span class="vs-n">Meta glasses</span><span class="vs-r">a volunteer talks you there</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="No"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
@@ -60,60 +64,61 @@
         <li class="us"><span class="vs-n">[Project name]</span><span class="vs-r">guides your hand, offline</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Yes"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></li>
       </ol>
       <p class="fine">Be My Eyes on Ray-Ban Meta, 2024; Microsoft Research, Find My Things; Lee et al., TACCESS 2022.</p>
-      <aside class="notes">Meta glasses: hands-free, "Hey Meta, Be My Eyes" calls a sighted volunteer who talks you through it; needs internet and a person; 56% retrieval accuracy in the ASSETS 2025 study. Be My AI sends a photo to the cloud and describes it. Seeing AI's Find My Things needs four videos per item and stops at arm's reach. AIGuide guides the hand, but handheld with pre-scanned objects. We guide the hand, hands-free, offline, any object by name.</aside>
+      <aside class="notes">Meta glasses: hands-free; "Hey Meta, Be My Eyes" calls a sighted volunteer who talks you through it; needs internet and a person. Be My AI sends a photo to the cloud and describes it. Seeing AI's Find My Things needs four videos per item and stops at arm's reach. AIGuide guides the hand, but handheld with pre-scanned objects.</aside>
     </section>
 
-    <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="4" data-enter="drop" data-dur="10">
+    <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="3" data-trans="blinds" data-dur="10">
       <h2 class="head">How it works</h2>
-      <div class="swap words">
-        <p class="word" data-only="1">See</p>
-        <p class="word" data-only="2">Find</p>
-        <p class="word" data-only="3">Measure</p>
-        <p class="word" data-only="4">Speak</p>
+      <div class="swap words roll">
+        <p class="word" data-only="0">See</p>
+        <p class="word" data-only="1">Find</p>
+        <p class="word" data-only="2">Measure</p>
+        <p class="word" data-only="3">Speak</p>
       </div>
-      <aside class="notes">See: iPhone color + lidar to the GX10. Find: YOLO-World finds the mug, MediaPipe the fingertip. Measure: lidar turns both into 3D points. Speak: the biggest gap becomes one word.</aside>
+      <aside class="notes">See: iPhone color + lidar to the GX10. Find: YOLO-World finds the mug, MediaPipe the fingertip. Measure: lidar turns both into 3D points. Speak: the biggest gap becomes one word in the earbuds.</aside>
     </section>
 
-    <section class="slide" data-id="math" data-shots="vector" data-enter="stagger" data-dur="10">
+    <section class="slide" data-id="math" data-shots="plan" data-trans="split" data-dur="10">
       <h2 class="head">The core loop</h2>
-      <ol class="math">
+      <ol class="math write">
         <li><span class="eq">p = d · K<sup>−1</sup> [u, v, 1]</span><span class="eq-l">pixel and lidar depth to 3D</span></li>
         <li><span class="eq">e = p<sub>mug</sub> − p<sub>finger</sub></span><span class="eq-l">where the hand must go</span></li>
         <li><span class="eq">say argmax |e<sub>i</sub>| &gt; 3 cm</span><span class="eq-l">one word: right, down, forward</span></li>
         <li><span class="eq">|e| &lt; 5 cm for 0.3 s → grab</span><span class="eq-l">then “grab”</span></li>
       </ol>
-      <aside class="notes">Median depth over a small patch, ignoring holes. Table plane by RANSAC to level the 3D view. Words at most twice a second. About 35 ms per frame on the GX10.</aside>
+      <aside class="notes">Median depth over a small patch, ignoring holes. Table plane by RANSAC. Words at most twice a second. About 35 ms per frame on the GX10.</aside>
     </section>
 
-    <section class="slide slide-live" data-id="live" data-shots="off" data-enter="fade" data-dur="12">
+    <section class="slide slide-live" data-id="live" data-shots="off" data-trans="screen" data-dur="12">
       <iframe class="live" id="live" title="Live dashboard" tabindex="-1" data-src="/"></iframe>
       <p class="live-note" id="live-note">Live demo</p>
       <aside class="notes">Blindfold on. "Find my mug." Move the mug and repeat. Pull the network cable and run it again. Fallback: the recorded run.</aside>
     </section>
 
-    <section class="slide" data-id="results" data-shots="grab" data-enter="zoom" data-dur="10">
+    <section class="slide" data-id="results" data-shots="land1,land2" data-steps="1" data-trans="lift" data-dur="10">
       <div class="duo">
-        <div class="stat"><p class="stat-n is-grab">99%</p><p class="stat-l">lidar + camera</p></div>
-        <div class="stat"><p class="stat-n">52%</p><p class="stat-l">camera only</p></div>
+        <div class="stat"><p class="stat-n is-grab" data-count="99" data-suffix="%">99%</p><p class="stat-l">lidar + camera</p></div>
+        <div class="stat" data-step="1"><p class="stat-n" data-count="52" data-suffix="%">52%</p><p class="stat-l">camera only</p></div>
       </div>
       <p class="lede small">Reaches that ended on the mug</p>
-      <p class="fine">Simulated: 1,000 blindfold reaches through our real perception and guidance code.</p>
-      <aside class="notes">Same 1,000 mugs, starts and wearer movements in both. Lidar median miss 3.1 cm; camera only 5.8 cm, 1 in 10 off by over 15 cm. The killer for camera-only: hand and mug get different depth errors, so the gap never shrinks. Camera error sizes are our assumptions, not measured on the phone. Lidar struggles with glass and shiny things.</aside>
+      <p class="fine">Simulated: 1,000 blindfold reaches through our real perception and guidance code. Dots illustrate the median misses.</p>
+      <aside class="notes">Same 1,000 mugs, starts and wearer movements in both. Lidar median miss 3.1 cm; camera only 5.8 cm, 1 in 10 off by over 15 cm. Camera-only fails because hand and mug get different depth errors, so the gap never shrinks. Camera error sizes are our assumptions, not measured on the phone. The ring is the 6 cm that counts as on the mug.</aside>
     </section>
 
-    <section class="slide" data-id="local" data-shots="local,local,cut,grab" data-steps="4" data-enter="rise" data-dur="10">
-      <h2 class="head">Why the GX10</h2>
-      <div class="swap words">
-        <p class="word" data-only="1">Private</p>
-        <p class="word" data-only="2">All models, one box</p>
-        <p class="word" data-only="3">No internet</p>
-        <p class="word is-grab" data-only="4">Grab.</p>
+    <section class="slide" data-id="local" data-shots="dome,boxed,quick,cut" data-steps="3" data-trans="diagonal" data-dur="12">
+      <h2 class="head">Why local</h2>
+      <div class="swap">
+        <div class="stat" data-only="0"><p class="stat-n sm" data-scramble>Private</p><p class="stat-l">video of your home never leaves the room</p></div>
+        <div class="stat" data-only="1"><p class="stat-n sm" data-count="128" data-suffix=" GB">128 GB</p><p class="stat-l">holds every model at once: YOLO-World, MediaPipe, Whisper, Cosmos Reason 8B</p></div>
+        <div class="stat" data-only="2"><p class="stat-n sm" data-count="35" data-suffix=" ms">35 ms</p><p class="stat-l">per frame, with no trip to a server</p></div>
+        <div class="stat" data-only="3"><p class="stat-n sm" data-scramble>Offline</p><p class="stat-l">works with the internet unplugged</p></div>
       </div>
-      <aside class="notes">Private: a camera in someone's home never streams out. Every model at once: YOLO-World, MediaPipe, Whisper and the 8B Cosmos Reason model all stay loaded in 128 GB of unified memory. No internet: we just pulled the cable. Steady ~35 ms loop, no cloud round trip. End on Grab; thank the judges.</aside>
+      <aside class="notes">Private: a camera in someone's home never streams out. 128 GB unified memory keeps YOLO-World, MediaPipe, Whisper and the 8B Cosmos Reason model loaded together; most laptops can't hold the 8B model next to the rest. 35 ms: measured perception per frame on the GX10; guidance needs a steady loop and a cloud round trip adds varying delay. Offline: in the demo we unplug the GX10's internet and it keeps guiding, because nothing needs the network. Then thank the judges.</aside>
     </section>
 
   </main>
 
+  <div class="curtain" id="curtain" aria-hidden="true"></div>
   <p class="counter" id="counter" aria-live="polite"></p>
   <script type="module" src="deck.js"></script>
 </body>

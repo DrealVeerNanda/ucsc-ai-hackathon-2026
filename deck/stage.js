@@ -25,23 +25,33 @@ const START = new THREE.Vector3(-0.2, 0.2, 0.32);    // where a reach starts
 // Camera shots: position, look-at target, and how far to push the subject right (fraction of
 // width) so the slide's text has the left side. Levels are 0..1 and eased.
 const SHOTS = {
-  title:     { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1 } },
-  dark:      { pos: [-0.32, 0.55, -0.25], at: [0.0, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, dim: 1, hand: 1, wander: 1 } },
-  provide:   { pos: [-0.34, 0.6, -0.3], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
-  wide:      { pos: [-0.63, 1.1, -0.9], at: [0.0, 0.1, 0.45], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, frustum: 1 } },
-  recede:    { pos: [-0.72, 1.3, -1.2], at: [0.0, 0.0, 0.5], shift: 0.0, lv: { reveal: 1, dim: 0.75 } },
-  differ:    { pos: [-0.36, 0.65, -0.35], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, frustum: 1 } },
-  sweep:     { pos: [-0.43, 0.85, -0.55], at: [0.0, 0.1, 0.45], shift: 0.16, lv: { sweep: 1, frustum: 1 } },
-  found:     { pos: [-0.38, 0.75, -0.45], at: [0.05, 0.05, 0.5], shift: 0.16, lv: { reveal: 1, frustum: 1, box: 1, hand: 1, still: 1 } },
-  vector:    { pos: [-0.02, 1.0, -0.2], at: [0.0, 0.0, 0.48], shift: 0.2, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, axes: 1 } },
-  speak:     { pos: [-0.34, 0.6, -0.3], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
-  off:       { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.0, lv: { reveal: 1, dim: 1 } },
-  local:     { pos: [-0.5, 0.95, -0.7], at: [0.0, 0.15, 0.45], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1 } },
-  cut:       { pos: [-0.5, 0.95, -0.7], at: [0.0, 0.15, 0.45], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1 } },
-  grab:      { pos: [-0.25, 0.42, 0.12], at: [0.08, 0.06, 0.58], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, still: 1, grabbed: 1 } },
+  // title: the whole idea, a guided reach
+  title:   { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1 } },
+  // problem: the world as a blind wearer gets it, a fog of points nobody can read
+  fog:     { pos: [-0.2, 0.45, -0.15], at: [0.0, 0.1, 0.6], shift: 0.16, lv: { reveal: 0.22, dim: 0.5, hand: 1, wander: 1 } },
+  // the ask: low and close, the hand moving, a speech bubble with each word
+  ask:     { pos: [-0.22, 0.32, 0.12], at: [0.05, 0.08, 0.55], shift: 0.18, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1 } },
+  // competitors: the scene sinks far back behind the list
+  recede:  { pos: [-0.9, 1.6, -1.5], at: [0.0, 0.0, 0.5], shift: 0.25, lv: { reveal: 1, dim: 0.85 } },
+  // how it works, one look per word
+  sweep:   { pos: [-0.43, 0.85, -0.55], at: [0.0, 0.1, 0.45], shift: 0.16, lv: { sweep: 1, frustum: 1 } },
+  found:   { pos: [-0.38, 0.75, -0.45], at: [0.05, 0.05, 0.5], shift: 0.16, lv: { reveal: 1, frustum: 1, box: 1, hand: 1, still: 1 } },
+  vector:  { pos: [-0.5, 0.55, 0.05], at: [0.0, 0.08, 0.48], shift: 0.2, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, axes: 1 } },
+  speak:   { pos: [-0.3, 0.35, 0.05], at: [-0.05, 0.15, 0.4], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, big: 1 } },
+  // core loop: straight overhead, a coordinate gizmo at the fingertip
+  plan:    { pos: [-0.02, 1.15, 0.35], at: [0.0, 0.0, 0.5], shift: 0.22, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, gizmo: 1 } },
+  off:     { pos: [-0.38, 0.75, -0.35], at: [0.05, 0.05, 0.55], shift: 0.0, lv: { reveal: 1, dim: 1 } },
+  // results: overhead on the mug, where reaches ended
+  land1:   { pos: [-0.06, 0.55, 0.4], at: [-0.08, 0.0, 0.63], shift: 0.3, lv: { reveal: 1, dim: 0.85, land1: 1, ring: 1 } },
+  land2:   { pos: [-0.06, 0.55, 0.4], at: [-0.08, 0.0, 0.63], shift: 0.3, lv: { reveal: 1, dim: 0.85, land1: 1, land2: 1, ring: 1 } },
+  // why the GX10, one look per reason
+  dome:    { pos: [-1.2, 1.1, -1.4], at: [0.0, 0.2, 0.5], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, dome: 1, gx: 1 } },
+  boxed:   { pos: [-0.8, 0.5, -0.38], at: [-0.32, 0.03, 0.22], shift: 0.2, lv: { reveal: 1, dim: 0.6, gx: 1 } },
+  quick:   { pos: [-0.3, 0.55, -0.2], at: [0.05, 0.05, 0.55], shift: 0.16, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, fast: 1 } },
+  cut:     { pos: [-0.95, 0.8, -0.7], at: [-0.4, 0.16, 0.5], shift: 0.18, lv: { reveal: 1, gx: 1, link: 1, cut: 1, hand: 1, leg: 1, guide: 1 } },
 };
-const LEVELS = ["reveal", "dim", "hand", "leg", "guide", "wander", "words", "frustum", "person", "sweep",
-  "box", "still", "axes", "link", "cut", "grabbed"];
+const LEVELS = ["reveal", "dim", "hand", "leg", "guide", "wander", "words", "frustum", "sweep", "box",
+  "still", "axes", "link", "cut", "grabbed", "big", "gizmo", "land1", "land2", "ring", "dome", "gx", "fast"];
 
 export function createStage(canvas, labels) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -138,17 +148,63 @@ export function createStage(canvas, labels) {
   const axes = new THREE.Line(new THREE.BufferGeometry().setFromPoints([0, 1, 2, 3].map(() => new THREE.Vector3())), axisMat);
   scene.add(axes);
 
-  // a link up to "the cloud" that gets cut
-  const linkMat = new THREE.LineDashedMaterial({ color: C.muted, dashSize: 0.03, gapSize: 0.02, transparent: true, opacity: 0 });
-  const CLOUD = new THREE.Vector3(0.32, 0.62, 1.0); // upper right of the shot, clear of the text
-  const link = new THREE.Line(new THREE.BufferGeometry().setFromPoints([CHEST.clone(), CLOUD.clone()]), linkMat);
-  scene.add(link);
-  const cloud = new THREE.Mesh(new THREE.SphereGeometry(0.05, 20, 14), new THREE.MeshBasicMaterial({ color: C.muted, wireframe: true, transparent: true, side: DS, opacity: 0 }));
-  cloud.position.copy(CLOUD);
-  scene.add(cloud);
+  // coordinate gizmo at the fingertip (core loop slide)
+  const gizmo = new THREE.Group();
+  for (const [dir, c] of [[[1, 0, 0], C.text], [[0, 1, 0], C.text], [[0, 0, 1], C.text]]) {
+    const arrow = new THREE.ArrowHelper(new THREE.Vector3(...dir), new THREE.Vector3(), 0.11, c, 0.025, 0.014);
+    arrow.line.material.transparent = true;
+    arrow.cone.material.transparent = true;
+    arrow.cone.material.side = DS;
+    gizmo.add(arrow);
+  }
+  scene.add(gizmo);
+
+  // where reaches ended (results slide): an illustration drawn from the simulation's medians,
+  // lidar about 3 cm out, camera only about 6 cm with one in ten far off
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const rayleigh = (sigma) => sigma * Math.sqrt(-2 * Math.log(1 - rand() * 0.999));
+  function landings(sigma, wide) {
+    const pts = [];
+    for (let i = 0; i < 100; i++) {
+      const r = wide && rand() < 0.1 ? 0.15 + rand() * 0.12 : rayleigh(sigma);
+      const a = rand() * Math.PI * 2;
+      pts.push(MUG.x + r * Math.cos(a), 0.003, MUG.z + r * Math.sin(a));
+    }
+    return new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(pts, 3)),
+      new THREE.PointsMaterial({ size: 0.011, transparent: true, opacity: 0 }));
+  }
+  const land1 = landings(0.0263, false);
+  land1.material.color.copy(C.grab);
+  const land2 = landings(0.045, true);
+  land2.material.color.copy(C.muted);
+  scene.add(land1, land2);
+  const ringPts = [];
+  for (let i = 0; i <= 64; i++) { const a = (i / 64) * Math.PI * 2; ringPts.push(new THREE.Vector3(MUG.x + 0.06 * Math.cos(a), 0.004, MUG.z + 0.06 * Math.sin(a))); }
+  const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(ringPts), new THREE.LineBasicMaterial({ color: C.text, transparent: true, opacity: 0 }));
+  scene.add(ring);
+
+  // privacy dome over the whole scene (why the GX10)
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.85, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: C.near, wireframe: true, transparent: true, opacity: 0, side: DS }));
+  dome.position.set(0.05, 0, 0.45);
+  scene.add(dome);
+
+  // the GX10 on the table, and its internet cable that gets cut
+  const GX10 = new THREE.Vector3(0.36, 0.026, 0.2);
+  const gx = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.15, 0.052, 0.15)),
+    new THREE.LineBasicMaterial({ color: C.text, transparent: true, opacity: 0 }));
+  gx.position.copy(GX10);
+  scene.add(gx);
+  const NET = new THREE.Vector3(0.62, 0.42, 0.95);
+  const cableMat = new THREE.LineDashedMaterial({ color: C.text, dashSize: 0.02, gapSize: 0.012, transparent: true, opacity: 0 });
+  const cableA = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), cableMat);
+  const cableB = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), cableMat);
+  scene.add(cableA, cableB);
 
   // lidar sweep plane
-  const sweep = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.5), new THREE.MeshBasicMaterial({ color: C.near, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+  const sweep = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.55, 0.003, 0), new THREE.Vector3(0.55, 0.003, 0)]),
+    new THREE.LineBasicMaterial({ color: C.near, transparent: true, opacity: 0 }));
   scene.add(sweep);
 
   // --- state -------------------------------------------------------------------------------
@@ -255,8 +311,8 @@ export function createStage(canvas, labels) {
     geo.attributes.position.needsUpdate = true;
     geo.attributes.color.needsUpdate = true;
     grid.material.opacity = 0.5 * Math.max(reveal, lv.sweep) * dim;
-    sweep.material.opacity = lv.sweep * (sweepT < 1.05 ? 0.12 : 0);
-    sweep.position.set(0, 0.2, sweepZ);
+    sweep.material.opacity = lv.sweep * (sweepT < 1.05 ? 1 : 0);
+    sweep.position.set(0, 0, sweepZ);
 
     frustum.material.opacity = 0.9 * lv.frustum;
     body.material.opacity = 0.35 * lv.person;
@@ -266,7 +322,7 @@ export function createStage(canvas, labels) {
     let say = "", grabbed = lv.grabbed > 0.5;
     if (lv.wander > 0.5) handPos.lerp(wanderHand(now / 1000), 0.08);
     else if (lv.still > 0.5 || reduced.matches) handPos.lerp(lv.grabbed > 0.5 ? GRAB_AT : START, still ? 1 : 0.08);
-    else if (lv.guide > 0.5) { const g = guidedHand(still ? 2.3 : t); handPos.copy(g.p); say = g.say; grabbed = grabbed || g.grabbed; }
+    else if (lv.guide > 0.5) { const g = guidedHand(still ? 2.3 : t * (lv.fast > 0.5 ? 1.8 : 1)); handPos.copy(g.p); say = g.say; grabbed = grabbed || g.grabbed; }
     hand.position.copy(handPos);
     hand.material.opacity = lv.hand;
     shadow.position.set(handPos.x, 0.0015, handPos.z);
@@ -297,9 +353,25 @@ export function createStage(canvas, labels) {
     axes.computeLineDistances();
     axisMat.opacity = lv.axes;
 
-    linkMat.opacity = 0.9 * lv.link * (1 - lv.cut);
-    cloud.material.opacity = 0.7 * lv.link * (1 - 0.6 * lv.cut);
-    link.computeLineDistances();
+    gizmo.position.copy(handPos);
+    gizmo.children.forEach((ar) => { ar.line.material.opacity = lv.gizmo; ar.cone.material.opacity = lv.gizmo; });
+    gizmo.visible = lv.gizmo > 0.02;
+    land1.material.opacity = lv.land1;
+    land2.material.opacity = lv.land2;
+    ring.material.opacity = 0.8 * lv.ring;
+    dome.material.opacity = 0.28 * lv.dome;
+    dome.rotation.y = still ? 0 : now / 9000;
+    gx.material.opacity = lv.gx;
+    // the cable runs from the box toward the internet; on the cut it parts in the middle
+    const top = GX10.clone().add(new THREE.Vector3(0, 0.026, 0));
+    const gap = 0.5 * lv.cut;
+    const m1 = top.clone().lerp(NET, Math.max(0.05, 0.5 - gap * 0.6));
+    const m2 = top.clone().lerp(NET, Math.min(0.95, 0.5 + gap * 0.6));
+    cableA.geometry.setFromPoints([top, m1]);
+    cableB.geometry.setFromPoints([m2, NET]);
+    cableA.computeLineDistances();
+    cableB.computeLineDistances();
+    cableMat.opacity = 0.95 * lv.link;
 
     renderer.render(scene, camera);
 
@@ -313,14 +385,24 @@ export function createStage(canvas, labels) {
     };
     if (say && say !== word) { word = say; wordT = now; }
     if (L.word) {
-      L.word.textContent = say || word;
+      if (L.word.textContent !== (say || word)) {
+        L.word.textContent = say || word;
+        L.word.classList.remove("pop");
+        void L.word.offsetWidth;
+        L.word.classList.add("pop");
+      }
       L.word.classList.toggle("is-grab", (say || word) === "Grab");
+      L.word.classList.toggle("is-big", lv.big > 0.5);
     }
-    place(L.word, handPos, lv.words * (say ? 1 : 0), 18, -46);
+    place(L.word, handPos, lv.words * (say ? 1 : 0), lv.big > 0.5 ? -16 : 22, lv.big > 0.5 ? -150 : -70);
     place(L.mug, MUG_TOP, Math.max(lv.box, lv.words * 0.9, lv.axes), -18, -34);
     place(L.you, CHEST, lv.frustum, -14, -30);
-    place(L.cloud, CLOUD, lv.link * (1 - lv.cut * 0.4), -30, -40);
+    place(L.cloud, NET, lv.link, -40, -40);
     if (L.cloud) L.cloud.classList.toggle("is-cut", lv.cut > 0.5);
+    place(L.gx10, GX10.clone().add(new THREE.Vector3(0, 0.06, 0)), lv.gx, -26, -34);
+    place(L.gxx, handPos.clone().add(new THREE.Vector3(0.12, 0, 0)), lv.gizmo, 8, -10);
+    place(L.gxy, handPos.clone().add(new THREE.Vector3(0, 0.12, 0)), lv.gizmo, 8, -20);
+    place(L.gxz, handPos.clone().add(new THREE.Vector3(0, 0, 0.12)), lv.gizmo, 8, -10);
     const mid = (p, q) => p.clone().add(q).multiplyScalar(0.5);
     place(L.ax, mid(a0, a1), lv.axes, -20, -28);
     place(L.ay, mid(a1, a2), lv.axes, 10, -10);

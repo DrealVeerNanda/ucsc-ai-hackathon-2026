@@ -8,6 +8,7 @@ const slides = [...document.querySelectorAll(".slide")];
 const stage = createStage($("stage"), {
   word: $("lab-word"), mug: $("lab-mug"), you: $("lab-you"), cloud: $("lab-cloud"),
   ax: $("lab-ax"), ay: $("lab-ay"), az: $("lab-az"),
+  gx10: $("lab-gx10"), gxx: $("lab-gxx"), gxy: $("lab-gxy"), gxz: $("lab-gxz"),
 });
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("deck") : null;
 const params = new URLSearchParams(location.search);
@@ -20,6 +21,7 @@ if (new URLSearchParams(location.search).has("still")) document.documentElement.
 
 let index = 0;
 let step = 0;
+let shownIndex = -1;
 let started = null;
 
 const stepsOf = (s) => Number(s.dataset.steps || 0);
@@ -38,10 +40,19 @@ function show(i, s) {
   slides.forEach((el, k) => el.classList.toggle("is-on", k === i));
   const slide = slides[i];
   slide.querySelectorAll("[data-step]").forEach((el) => el.classList.toggle("is-later", Number(el.dataset.step) > s));
-  // data-only: shown at exactly that build, so builds can replace each other in place
-  slide.querySelectorAll("[data-only]").forEach((el) => el.classList.toggle("is-off", Number(el.dataset.only) !== Math.max(1, s)));
+  // data-only: shown at exactly that build (0-based), so builds replace each other in place
+  slide.querySelectorAll("[data-only]").forEach((el) => {
+    const n = Number(el.dataset.only);
+    el.classList.toggle("is-off", n !== s);
+    el.classList.toggle("is-past", n < s);
+  });
+  if (i !== shownIndex) {
+    transition(slide, i > shownIndex || shownIndex < 0);
+    shownIndex = i;
+  }
+  effects(slide);
   const shots = shotsOf(slide);
-  stage.setShot(shots[Math.min(shots.length - 1, Math.max(0, s - 1))] || shots[0]);
+  stage.setShot(shots[Math.min(shots.length - 1, s)] || shots[0]);
   if (slide.dataset.id === "live") loadLive();
   history.replaceState(null, "", `#${i + 1}${s ? `.${s}` : ""}${location.search ? "" : ""}`);
   $("counter").textContent = `${i + 1} / ${slides.length}`;
@@ -116,6 +127,122 @@ async function loadLive() {
   } else {
     note.textContent = "Live demo runs here. Start main.py, or add media/demo-run.mp4 for the recorded run.";
   }
+}
+
+// --- transitions: each slide arrives its own way --------------------------------------------
+const curtain = $("curtain");
+const still = params.has("still");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+const EASE = "cubic-bezier(0.65, 0, 0.35, 1)";
+
+function transition(slide, forward) {
+  curtain.getAnimations().forEach((a) => a.cancel());
+  curtain.replaceChildren();
+  curtain.style.cssText = "";
+  const kind = slide.dataset.trans || "none";
+  if (still || kind === "none" || shownIndex < 0) return;
+  if (reduced.matches) {
+    curtain.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, easing: "linear" });
+    return;
+  }
+  const dir = forward ? 1 : -1;
+  const run = (kf, opt) => curtain.animate(kf, { duration: 850, easing: EASE, fill: "both", ...opt });
+  switch (kind) {
+    case "lights": // the room goes dark, then the points fade up
+      run([{ opacity: 1 }, { opacity: 1, offset: 0.35 }, { opacity: 0 }], { duration: 1600, easing: "ease-in" });
+      break;
+    case "iris": { // a circle opens on the scene
+      const t0 = performance.now(), dur = 950;
+      const tick = (now) => {
+        const k = Math.min(1, (now - t0) / dur), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+        const r = `${e * 160}vmax`;
+        const g = `radial-gradient(circle at 70% 55%, transparent ${r}, var(--ground) calc(${r} + 1px))`;
+        curtain.style.maskImage = curtain.style.webkitMaskImage = g;
+        if (k < 1) requestAnimationFrame(tick); else curtain.style.cssText = "opacity:0";
+      };
+      requestAnimationFrame(tick);
+      break;
+    }
+    case "wipe":
+      run([{ transform: "translateX(0)" }, { transform: `translateX(${100 * dir}%)` }]);
+      break;
+    case "blinds": { // horizontal slats close away one after another
+      curtain.style.background = "transparent";
+      for (let k = 0; k < 8; k++) {
+        const slat = document.createElement("div");
+        slat.className = "slat";
+        curtain.append(slat);
+        slat.animate([{ transform: "scaleY(1)" }, { transform: "scaleY(0)" }], { duration: 520, delay: k * 70, easing: EASE, fill: "both" });
+      }
+      break;
+    }
+    case "split": { // the screen opens like doors, top and bottom
+      curtain.style.background = "transparent";
+      for (const sign of [-1, 1]) {
+        const half = document.createElement("div");
+        half.className = sign < 0 ? "half top" : "half bottom";
+        curtain.append(half);
+        half.animate([{ transform: "translateY(0)" }, { transform: `translateY(${sign * 100}%)` }], { duration: 900, easing: EASE, fill: "both" });
+      }
+      break;
+    }
+    case "screen": // the live view grows out of a small screen
+      curtain.style.opacity = "0";
+      $("live").animate([{ transform: "scale(0.28)", opacity: 0.4 }, { transform: "scale(1)", opacity: 1 }],
+        { duration: 1000, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+      break;
+    case "lift":
+      run([{ transform: "translateY(0)" }, { transform: "translateY(-100%)" }], { duration: 800 });
+      break;
+    case "diagonal":
+      run([{ clipPath: "polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)" }, { clipPath: "polygon(100% 0%, 100% 0%, 100% 100%, 135% 100%)" }], { duration: 950 });
+      break;
+  }
+}
+
+// --- text effects: count-ups, typing, decoding ------------------------------------------------
+const fmt = new Intl.NumberFormat("en-US");
+const playing = new WeakMap();
+
+function visible(el, slide) {
+  if (!slide.classList.contains("is-on")) return false;
+  const off = el.closest("[data-only]");
+  const later = el.closest("[data-step]");
+  return !(off && off.classList.contains("is-off")) && !(later && later.classList.contains("is-later"));
+}
+
+function animateText(el, render, dur) {
+  const t0 = performance.now();
+  const tick = (now) => {
+    if (playing.get(el) !== t0) return;
+    const k = Math.min(1, (now - t0) / dur);
+    el.textContent = render(k);
+    if (k < 1) requestAnimationFrame(tick);
+  };
+  playing.set(el, t0);
+  requestAnimationFrame(tick);
+}
+
+function effects(slide) {
+  const instant = still || reduced.matches;
+  slide.querySelectorAll("[data-count], [data-type], [data-scramble]").forEach((el) => {
+    const on = visible(el, slide);
+    if (!on) { el.dataset.played = ""; return; }
+    if (el.dataset.played) return;
+    el.dataset.played = "1";
+    const final = el.dataset.final || (el.dataset.final = el.textContent);
+    if (instant) { el.textContent = final; return; }
+    if (el.hasAttribute("data-count")) {
+      const n = Number(el.dataset.count), pre = el.dataset.prefix || "", suf = el.dataset.suffix || "";
+      const show = (v) => pre + (el.hasAttribute("data-group") ? fmt.format(v) : String(v)) + suf;
+      animateText(el, (k) => show(Math.round(n * (1 - Math.pow(1 - k, 3)))), 1200);
+    } else if (el.hasAttribute("data-type")) {
+      animateText(el, (k) => final.slice(0, Math.round(final.length * k)) || "\u200b", final.length * 70);
+    } else {
+      const glyphs = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#%&";
+      animateText(el, (k) => [...final].map((c, i) => (c === " " || i / final.length < k ? c : glyphs[(Math.random() * glyphs.length) | 0])).join(""), 800);
+    }
+  });
 }
 
 // --- input ------------------------------------------------------------------------------------
