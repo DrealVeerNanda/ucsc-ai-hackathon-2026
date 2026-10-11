@@ -364,7 +364,7 @@ def main(argv=None):
 
 def run(args, mods, beat: Heartbeat | None = None):
     """The loop. Returns when asked to quit (q, esc, Ctrl-C, --frames); nothing else ends it."""
-    beat = beat or Heartbeat(args.status_dir).start()
+    beat = (beat or Heartbeat(args.status_dir)).start()
     faults = beat.faults
     beat.voice = getattr(mods, "voice", None)
     view = args.ui in ("cv", "both")
