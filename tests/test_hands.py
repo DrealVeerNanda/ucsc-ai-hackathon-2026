@@ -375,7 +375,7 @@ def running(monkeypatch):
     """perception with a default instance and fake models, as in the middle of a run."""
     made = []
 
-    def fake_make(kind, device=None):
+    def fake_make(kind, device=None, fetch=True):
         if kind == "yolo_medium":
             raise RuntimeError("weights missing")
         made.append(kind)
@@ -548,9 +548,11 @@ def test_a_blink_of_the_hand_tracker_does_not_put_the_object_at_the_hands_depth(
         assert p.locate(frame(t=t, hand_xyz=[over]), "mug").object_xyz[2] == pytest.approx(OBJ[2], abs=0.01)
 
 
-def test_the_object_does_not_leap_at_the_camera_even_with_no_hand_ever_seen():
-    p = Perception(FakeDetector(), None, PerceptionConfig(smooth=1))
-    p.locate(frame(t=0.0), "mug")
+def test_the_object_does_not_leap_to_the_hands_depth_when_the_tracker_misplaces_the_hand():
+    beside = place((OBJ[0] - 0.15, OBJ[1], OBJ[2] - 0.2), tilt_deg=20)   # the hand, 20 cm short, beside the box
+    p = Perception(FakeDetector(), FakeHands(beside), PerceptionConfig(smooth=1))
+    p.locate(frame(t=0.0, hand_xyz=[beside]), "mug")
+    p.hands.xyz = []
     x1, y1, x2, y2 = object_box(K, OBJ)
 
     def finger(t):
@@ -559,9 +561,26 @@ def test_the_object_does_not_leap_at_the_camera_even_with_no_hand_ever_seen():
         f.depth[cy - 12:cy + 12, cx - 12:cx + 12] = OBJ[2] - 0.2          # a fingertip over the middle of the box
         return f
 
-    for t in (0.03, 1.0, 3.0):
+    for t in (0.7, 1.0, 1.3):                             # too long ago for the hand to count as "still over it"
         assert p.locate(finger(t), "mug").object_xyz[2] == pytest.approx(OBJ[2], abs=0.01)
-    assert p.locate(finger(4.2), "mug").object_xyz[2] == pytest.approx(OBJ[2] - 0.2, abs=0.01)   # it has stayed: believe it
+
+
+def test_a_reading_that_was_too_far_is_corrected_at_once():
+    # A clear bottle first read as the wall behind it: the nearer reading that follows is the truth, not a hand.
+    p = Perception(FakeDetector(), None, PerceptionConfig(smooth=1))
+    f = frame(t=0.0)
+    x1, y1, x2, y2 = object_box(K, OBJ)
+    f.depth[y1:y2, x1:x2] = 1.4
+    assert p.locate(f, "mug").object_xyz[2] == pytest.approx(1.4, abs=0.01)
+    assert p.locate(frame(t=0.03), "mug").object_xyz[2] == pytest.approx(OBJ[2], abs=0.01)
+
+
+def test_the_front_of_a_clear_bottle_wins_over_what_is_seen_through_it():
+    f = frame()
+    x1, y1, x2, y2 = object_box(K, OBJ)
+    f.depth[y1:y2, x1:x2] = 1.3                           # the chair behind, seen through the bottle
+    f.depth[(y1 + y2) // 2:(y1 + y2) // 2 + 8, x1:x2] = OBJ[2]            # a band of label
+    assert box_xyz((x1, y1, x2, y2), f.depth, K)[2] == pytest.approx(OBJ[2], abs=0.005)
 
 
 class TwoBottles:
@@ -605,3 +624,14 @@ def test_an_object_farther_than_an_arm_is_flagged():
     s = Perception(FakeDetector(far), None, PerceptionConfig()).locate(frame(obj=far), "mug")
     assert s.object_out_of_reach
     assert not Perception(FakeDetector(), None, PerceptionConfig()).locate(frame(), "mug").object_out_of_reach
+
+
+def test_missing_weights_fail_at_once_instead_of_downloading_mid_run(monkeypatch, tmp_path):
+    monkeypatch.setattr(hands, "MODELS_DIR", tmp_path)
+    with pytest.raises(FileNotFoundError):
+        hands.weights_path("wilor_hand_small.pt", "http://example.invalid/x.pt", fetch=False)
+    monkeypatch.setenv("YOLO_OFFLINE", "true")            # the launcher's offline run: never the network
+    with pytest.raises(FileNotFoundError):
+        hands.weights_path("wilor_hand_small.pt", "http://example.invalid/x.pt")
+    (tmp_path / "wilor_hand_small.pt").write_bytes(b"x")
+    assert hands.weights_path("wilor_hand_small.pt") == tmp_path / "wilor_hand_small.pt"

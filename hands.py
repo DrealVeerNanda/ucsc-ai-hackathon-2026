@@ -18,7 +18,7 @@ The camera is on the chest, so the wearer's own hand is seen from behind, comes 
 bottom or a side edge, is often cut by the edge, and at arm's length or closer. A bystander's
 hand is across the table and hangs from the top of the picture.
 
-Weights (all in MODELS_DIR, fetched on first use; ~/.cache/proprio is looked in as well):
+Weights (all in MODELS_DIR; fetched when a run starts with them missing, never during one):
     hand_landmarker.task     MediaPipe, 8 MB
     wilor_hand_small.pt      YOLOv8n-pose with 21 hand keypoints, 7 MB   } the hand detector of WiLoR
     wilor_hand_medium.pt     YOLO11m-pose, 42 MB                          } (CC BY-NC: not for sale)
@@ -63,18 +63,26 @@ FINGERS = [((1, 2, 3, 4), (0.045, 0.033, 0.028)), ((5, 6, 7, 8), (0.040, 0.025, 
            ((17, 18, 19, 20), (0.032, 0.019, 0.021))]
 
 
-def weights_path(name: str, url: str | None = None) -> Path:
-    """Where a weights file is, downloading it into MODELS_DIR if it is nowhere yet."""
-    for folder in (MODELS_DIR, Path.home() / ".cache" / "proprio"):
-        if (folder / name).exists():
-            return folder / name
-    if url is None:
-        raise FileNotFoundError(f"{name} is not in {MODELS_DIR}")
+def offline() -> bool:
+    """Has the launcher told the libraries to stay off the network?"""
+    return any(os.environ.get(k, "").lower() in ("1", "true") for k in ("YOLO_OFFLINE", "HF_HUB_OFFLINE"))
+
+
+def weights_path(name: str, url: str | None = None, fetch: bool = True) -> Path:
+    """Where a weights file is. If it is not in MODELS_DIR it is downloaded, but only when
+    that is allowed (fetch, and not offline) and with a time limit: a tracker picked in the
+    middle of a run must fail at once and leave the old one in place, not wait on a download."""
     path = MODELS_DIR / name
+    if path.exists():
+        return path
+    if url is None or not fetch or offline():
+        raise FileNotFoundError(f"{name} is not in {MODELS_DIR}" + (f" (get it from {url})" if url else ""))
     path.parent.mkdir(parents=True, exist_ok=True)
     print(f"[hands] downloading {name} to {path}", file=sys.stderr)
     part = path.with_suffix(path.suffix + ".part")     # a download cut short must not pass for the file
-    urllib.request.urlretrieve(url, part)
+    with urllib.request.urlopen(url, timeout=10) as src, open(part, "wb") as dst:
+        while chunk := src.read(1 << 20):
+            dst.write(chunk)
     os.replace(part, path)
     return path
 
@@ -159,11 +167,11 @@ class MediaPipeHand:
     track_conf below min_conf keeps following a blurred hand the detector would not find anew."""
 
     def __init__(self, model_path: str | Path | None = None, num_hands: int = 2, min_conf: float = 0.5,
-                 track_conf: float | None = None, pad: int = 0, name: str = "MediaPipe"):
+                 track_conf: float | None = None, pad: int = 0, name: str = "MediaPipe", fetch: bool = True):
         import mediapipe as mp
         from mediapipe.tasks.python import BaseOptions, vision
 
-        path = Path(model_path) if model_path else weights_path("hand_landmarker.task", HAND_MODEL_URL)
+        path = Path(model_path) if model_path else weights_path("hand_landmarker.task", HAND_MODEL_URL, fetch)
         self._mp = mp
         track = min_conf if track_conf is None else track_conf
         opts = vision.HandLandmarkerOptions(
@@ -228,10 +236,10 @@ class YoloHand:
     It also finds the small far hands of bystanders: perception.py has to reject those."""
 
     def __init__(self, size: str = "small", device: str | None = None, conf: float = 0.3, imgsz: int = 512,
-                 kp_conf: float = 0.15):
+                 kp_conf: float = 0.15, fetch: bool = True):
         from ultralytics import YOLO
 
-        self.model = YOLO(str(weights_path(*YOLO_HAND[size])))
+        self.model = YOLO(str(weights_path(*YOLO_HAND[size], fetch)))
         self.device, self.conf, self.imgsz, self.kp_conf = device, conf, imgsz, kp_conf
         self.quantize = 16 if fp16(device) else None
         self.name = f"YOLO hand ({size})"
@@ -813,20 +821,21 @@ def make_filter(kind: str):
 
 # ---------------------------------------------------------------------------
 
-def make(kind: str, device: str | None = None):
-    """A tracker by name. Loads its model, so call it off the frame loop."""
+def make(kind: str, device: str | None = None, fetch: bool = True):
+    """A tracker by name. Loads its model, so call it off the frame loop. fetch=False: do not
+    download weights that are missing, raise instead."""
     if kind == "mediapipe":
-        return MediaPipeHand()
+        return MediaPipeHand(fetch=fetch)
     if kind == "mediapipe_wide":
-        return MediaPipeHand(min_conf=0.3, track_conf=0.3, pad=160, name="MediaPipe (wide)")
+        return MediaPipeHand(min_conf=0.3, track_conf=0.3, pad=160, name="MediaPipe (wide)", fetch=fetch)
     if kind in ("yolo", "yolo_small"):
-        return YoloHand("small", device=device)
+        return YoloHand("small", device=device, fetch=fetch)
     if kind == "yolo_medium":
-        return YoloHand("medium", device=device)
+        return YoloHand("medium", device=device, fetch=fetch)
     if kind == "arm":
         return DepthArm()
     if kind == "hybrid":
-        return Hybrid(YoloHand("small", device=device))
+        return Hybrid(YoloHand("small", device=device, fetch=fetch))
     if kind == "sticker":
         hsv = os.environ.get("PERCEPTION_STICKER_HSV")
         v = [int(x) for x in hsv.split(",")] if hsv else [35, 80, 80, 85, 255, 255]
