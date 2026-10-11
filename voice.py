@@ -20,7 +20,8 @@ switches that off).
 
 Other things that can be said: "stop" / "cancel" / "never mind", "again" / "repeat", "help",
 "which option". "Option 3" (or "next option") changes the way guidance sounds without stopping
-(guidance.OPTIONS); "hand option 2" changes the hand tracker and "grab option 2" the grab rule.
+(guidance.OPTIONS); "hand option 2" changes the hand tracker, "grab option 2" the grab rule and
+"object option 2" how the object is kept track of.
 
     VOICE_MODE=auto      a microphone on this machine if there is one; otherwise the web page below
                          if faster-whisper is installed; otherwise typed (default)
@@ -238,9 +239,9 @@ _LIST = re.compile(r"\b(?:what(?:'s| is| are)?\b.*\b(?:on|in front|here|there|ar
 _YES = re.compile(r"^(?:yes|yeah|yep|sure|ok|okay|please|that one|i want it|yes please|yes i do|get it)$")
 _NUMBER = {w: i + 1 for i, w in enumerate("one two three four five six seven eight nine ten eleven twelve".split())}
 _NUMBER_HEARD = {"won": 1, "to": 2, "too": 2, "for": 4, "ate": 8}       # what Whisper may write for a number said by itself
-_OPTION = re.compile(rf"\b(?:(hand|grab) )?(?:option|mode|version|style|scheme) (?:number )?(\d{{1,2}}|{'|'.join(_NUMBER)})\b")
-_OPTION_HEARD = re.compile(rf"^(?:(hand|grab) )?option (?:number )?({'|'.join(_NUMBER_HEARD)})$")
-_OPTION_STEP = re.compile(r"^(next|previous) (?:(hand|grab) )?(?:option|one|mode|version|style)$")
+_OPTION = re.compile(rf"\b(?:(hand|grab|object) )?(?:option|mode|version|style|scheme) (?:number )?(\d{{1,2}}|{'|'.join(_NUMBER)})\b")
+_OPTION_HEARD = re.compile(rf"^(?:(hand|grab|object) )?option (?:number )?({'|'.join(_NUMBER_HEARD)})$")
+_OPTION_STEP = re.compile(r"^(next|previous) (?:(hand|grab|object) )?(?:option|one|mode|version|style)$")
 _OPTION_WHICH = re.compile(r"^(?:what|which|what's)\b.{0,20}\b(?:option|mode)\b.{0,12}$")
 # The whole of what was said has to be one of these, so a sentence from the room with "stop" in it is not a command.
 _STOP = re.compile(r"^(?:(?:please|ok|okay|no) )*(?:stop|stop it|stop that|cancel|cancel it|cancel that|never mind|nevermind|"
@@ -506,6 +507,10 @@ def _family(kind: str | None):
         module = sys.modules.get("perception")           # never loaded just for this: with fake perception there is no hand tracker to switch
         return ("hand option", getattr(module, "HAND_OPTIONS", None), getattr(module, "set_hand_option", None),
                 getattr(module, "hand_option", None))
+    if kind == "object":
+        module = sys.modules.get("perception")
+        return ("object option", getattr(module, "OBJECT_OPTIONS", None), getattr(module, "set_object_option", None),
+                getattr(module, "object_option", None))
     if kind == "grab":
         return ("grab option", getattr(guidance, "GRAB_OPTIONS", None), getattr(guidance, "set_grab_option", None),
                 getattr(guidance, "grab_option", None))
@@ -523,7 +528,7 @@ def switch_option(text: str) -> str | None:
     which = not m and len(words) <= 7 and _OPTION_WHICH.match(clean)
     if not m and not which:
         return None
-    kind = (m.group(2 if m.re is _OPTION_STEP else 1) if m else None) or next((k for k in ("hand", "grab") if k in words), None)
+    kind = (m.group(2 if m.re is _OPTION_STEP else 1) if m else None) or next((k for k in ("hand", "grab", "object") if k in words), None)
     name, options, choose, current = _family(kind)
     said = name.capitalize()
     try:
@@ -1759,7 +1764,7 @@ def _tls_context(cert_dir: Path, address: str) -> ssl.SSLContext:
 def option_families() -> dict:
     """What can be switched and what is on, for the page's buttons."""
     out = {}
-    for kind in ("", "hand", "grab"):
+    for kind in ("", "hand", "grab", "object"):
         try:
             name, options, choose, current = _family(kind)
             if options and choose is not None:

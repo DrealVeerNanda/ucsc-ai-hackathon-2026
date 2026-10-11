@@ -94,8 +94,9 @@ _FLIP_YZ = np.diag([1.0, -1.0, -1.0])
 ROTATE = {"record3d": 0, "pathon": 90}
 # Turns the pose each app reports (ARKit camera axes: x right, y up, z backward, on the
 # landscape sensor image) into camera-to-world for our axes on the frame as the app sent it.
-# These are derived from the ARKit convention, not yet measured on a phone:
-# `python tools/check_pose.py` measures it and prints the matrix that belongs here.
+# These are derived from the ARKit convention. `python tools/check_pose.py` measures it and prints
+# the matrix that belongs here: "pathon" was measured on 11 Oct 2026 on the iPhone 15 Pro Max
+# (0.4 cm between frames a second apart); "record3d" has not been measured on a phone.
 POSE_FIX = {"record3d": _FLIP_YZ @ _ROT[90], "pathon": _FLIP_YZ}
 
 

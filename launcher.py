@@ -73,9 +73,9 @@ SETTLED_S = 60.0        # a run this long was a good run
 STOP_WAIT_S = 20.0      # after Ctrl-C the pipeline closes its recording; give it time before killing it
 
 
-# The three things the wearer can switch between, and the setting that picks each one when the
+# The four things the wearer can switch between, and the setting that picks each one when the
 # pipeline starts (guidance.py and perception.py read them).
-OPTION_ENV = {"guidance": "GUIDANCE_MODE", "hand": "HAND_OPTION", "grab": "GUIDANCE_GRAB"}
+OPTION_ENV = {"guidance": "GUIDANCE_MODE", "hand": "HAND_OPTION", "grab": "GUIDANCE_GRAB", "object": "OBJECT_OPTION"}
 # What there is to choose from, asked of the code itself in a short run of its own, so the keeper
 # never loads the detector or the hand models. Each family comes back with the number it starts on.
 LIST_OPTIONS = r"""
@@ -83,9 +83,10 @@ import json, os, dashboard, guidance
 out = []
 for f in dashboard.option_families():
     keys = [o["key"] for o in f["options"]]
-    want = os.environ.get({"guidance": "GUIDANCE_MODE", "hand": "HAND_OPTION", "grab": "GUIDANCE_GRAB"}[f["family"]], "")
+    want = os.environ.get({"guidance": "GUIDANCE_MODE", "hand": "HAND_OPTION", "grab": "GUIDANCE_GRAB",
+                           "object": "OBJECT_OPTION"}.get(f["family"], ""), "")
     if not want:
-        want = {"guidance": "tones", "hand": keys[0], "grab": guidance.GuidanceConfig.grab_option}[f["family"]]
+        want = {"guidance": "tones", "grab": guidance.GuidanceConfig.grab_option}.get(f["family"], keys[0])
     f["default"] = int(want) if want.isdigit() else (keys.index(want) + 1 if want in keys else 1)
     out.append(f)
 print("OPTIONS " + json.dumps(out))

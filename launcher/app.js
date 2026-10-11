@@ -51,7 +51,7 @@ function drawChoices(s) {
   if (key === choicesShown) return;
   choicesShown = key;
   $("choices-k").textContent = running
-    ? "Click one to switch now. The wearer hears its name. By voice: \"option 3\", \"hand option 5\", \"grab option 2\"."
+    ? "Click one to switch now. The wearer hears its name. By voice: \"option 3\", \"hand option 5\", \"grab option 2\", \"object option 3\"."
     : "Click one to start with it. It can be changed while it runs, here or by voice.";
   $("choices-reset").hidden = !families.some((f) => f.changed) || !s.can_control;
   const rows = $("choices-rows");

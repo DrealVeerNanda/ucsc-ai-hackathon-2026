@@ -47,11 +47,12 @@ the pipeline; `python launcher.py quit` ends everything. Settings are in `launch
 dashboard from a laptop: by default it answers on the GX10 only.
 
 The **Options to try** card at the top of that page switches, with one click, between the ways of
-guiding (`guidance.OPTIONS`, 12 of them), of tracking the hand (`perception.HAND_OPTIONS`, 7) and of
-deciding "Grab" (`guidance.GRAB_OPTIONS`, 5). Before Start a click sets what the run starts with;
+guiding (`guidance.OPTIONS`, 12 of them), of tracking the hand (`perception.HAND_OPTIONS`, 7), of
+deciding "Grab" (`guidance.GRAB_OPTIONS`, 5) and of keeping track of the object
+(`perception.OBJECT_OPTIONS`, 3). Before Start a click sets what the run starts with;
 while it runs it switches at once and the wearer hears the name. The choice is remembered (also
 across a restart of the pipeline); **Back to the usual ones** undoes it. The same switches work by
-voice ("option 3", "hand option 5", "grab option 2") and from the live dashboard's **Options**
+voice ("option 3", "hand option 5", "grab option 2", "object option 3") and from the live dashboard's **Options**
 button. Hear every option without the rig: `python tools/audio_demo.py --all`, then open
 `out/options/index.html`.
 
@@ -210,6 +211,14 @@ It finds the object's box (YOLO-World, any name you type) and the index fingerti
 
 Seven hand trackers can be switched while it runs (`HAND_OPTION=1..7`, `perception.HAND_OPTIONS`): 1 is MediaPipe as the demo was built on; 3 and 4 are a YOLO hand-keypoint model on the GPU; 5 adds a depth-and-skin follower that carries on when the model loses the hand (found on 94% of frames of a recorded reach against 81% for option 1); 7 guides the palm, not the fingertip. Compare them on a recording with `python tools/eval_hands.py`.
 
+The object can be kept track of in three ways (`OBJECT_OPTION=1..3`, `perception.OBJECT_OPTIONS`), switched while it runs:
+
+1. **watched** (default, as it always was): the detector finds it in every frame; behind the hand it is remembered for 2 to 4 s where it was in the picture.
+2. **remembered in the room**: the detector still looks in every frame, but the place is kept in room coordinates from the phone's own motion tracking (ARKit's pose), so a hidden object stays put for 15 s, also when the wearer leans or turns.
+3. **found once**: after ten clear looks that agree to 3 cm (about a third of a second live), the place is fixed and the detector is not run again for that reach. Only the hand and the camera's motion are followed, so an arm in front of the object cannot move it or lend it its depth. The place is let go when the object is asked for again, the target changes, or the phone's tracking starts afresh. If the object itself is moved during a reach, it is not noticed: ask again.
+
+Options 2 and 3 depend on the pose. On the reaches recorded on 11 October it carried lidar points from one frame to one a second later to within 0.4 cm (`python tools/check_pose.py recordings/NAME --seconds 100`), against 2.5 cm with the motion ignored. Played back over those reaches, "found once" kept the box on the bottle while the camera moved, read 0.68 m where "watched" read the arm in front of it at 0.48 m, and took 17 ms a frame against 28.
+
 ```bash
 python tools/check_perception.py recordings/NAME mug    # no window: prints fps, hit rates, distance. Saves out/perception.jpg
 python main.py --stream real --perception real          # with the debug view
@@ -220,7 +229,8 @@ python main.py --stream real --perception real          # with the debug view
 | `PERCEPTION_DETECTOR` | `yoloworld` (default), `yoloe`, `coco` (fixed classes: cup, bottle, banana...), `none` |
 | `PERCEPTION_HAND` | `mediapipe` (default), `sticker` (a green sticker on the hand), `none` |
 | `HAND_OPTION` | `1` (default) to `7`, or a key from `perception.HAND_OPTIONS` |
-| `PERCEPTION_USE_POSE=1` | Remember the object in room coordinates. Only after `tools/check_pose.py` says yes. |
+| `OBJECT_OPTION` | `1` (default) to `3`, or a key from `perception.OBJECT_OPTIONS` |
+| `PERCEPTION_USE_POSE=1` | The same as `OBJECT_OPTION=2`, from before there were object options |
 | `PERCEPTION_DETECT_EVERY=2` | Run the detector on every second frame if the frame rate is short |
 
 On the GX10 it takes about 20 ms per frame. Not yet checked: real lidar depth against a ruler (needs the phone), and the tuning in `PerceptionConfig`.
@@ -288,7 +298,7 @@ GUIDANCE_MODE=tones python main.py --guidance real  # original spatial beeps, no
   it says what it can see, asks "What do you want to grab?", beeps, and takes the answer (Whisper large-v3
   on the GPU, about 0.2 s). The earbuds are switched to headset mode to listen and back to stereo to guide,
   so the wearer cannot be heard during a reach. Besides an object's name it understands "what's on the
-  table", "the second one", "yes", "stop", "again", "help", "option N", "hand option N", "grab option N".
+  table", "the second one", "yes", "stop", "again", "help", "option N", "hand option N", "grab option N", "object option N".
   With a wired microphone it is push-to-talk (Enter, speak, Enter); `VOICE_MODE=type` forces typing.
 - When it sees nothing to pick up it says why (turn towards the table, or something is in front of the
   camera), looks again every few seconds, and reminds the wearer that it is listening.

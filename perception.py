@@ -19,8 +19,9 @@ Settings by environment variable:
     HAND_POINT=index_tip|palm|knuckles|nearest      which point of the hand is guided to the object
                                 (default: whatever the hand option says). Options 2 and up only.
     HAND_FILTER=average|one_euro|kalman             smoothing of that point (default: the option's)
-    PERCEPTION_USE_POSE=1       remember the object in world coordinates. Only switch this on
-                                after tools/check_pose.py says the pose is usable.
+    OBJECT_OPTION=1..3 or a name  which of OBJECT_OPTIONS below keeps track of the object (default 1,
+                                as it always was). It can be changed while running: say "object option 3".
+    PERCEPTION_USE_POSE=1       the same as OBJECT_OPTION=2, from before there were object options
     PERCEPTION_DETECT_EVERY=1   run the detector on every Nth frame
     PERCEPTION_DEVICE=cuda|cpu  torch device for the detector (default: ultralytics picks)
     PERCEPTION_PARALLEL=0       run the hand tracker after the detector instead of alongside it
@@ -72,6 +73,21 @@ HAND_OPTIONS = [
                           "lidar picture, the hand is its far end. Works with gloves; fooled by a knee."),
     ("hybrid_palm", "YOLO hand with depth, palm", "Option 5 guiding the middle of the palm instead of the index "
                                                   "fingertip: steadier, and the hand arrives ready to close."),
+]
+
+# Ways of keeping track of the object once it has been found. (key, name said aloud, what it is)
+# Options 2 and 3 go by the phone's own account of how it has moved (ARKit's pose). On the reaches
+# of 11 Oct that account carried lidar points from one frame to one a second later to within 0.4 cm
+# (tools/check_pose.py), against 2.5 cm with the motion ignored.
+OBJECT_OPTIONS = [
+    ("watch", "watched", "As it always was: the detector finds the object in every frame. Hidden behind the hand it "
+                         "is remembered for two to four seconds, where it was in the picture."),
+    ("room", "remembered in the room", "The detector still looks in every frame, but the place is kept in the room, "
+                                       "by the phone's own tracking of how it moves: hidden, it stays put for 15 "
+                                       "seconds, also when the wearer leans or turns."),
+    ("locked", "found once", "Found from the first clear looks, then not looked for again: from there on only the "
+                             "hand and the camera's own motion are followed, so nothing the hand does in front "
+                             "of the object can move it. If the object itself is moved, ask for it again."),
 ]
 
 
@@ -281,6 +297,13 @@ class PerceptionConfig:
     hold_covered_s: float = 4.0  # ...a little longer when the hand is what is hiding it
     hold_pose_s: float = 15.0    # with pose: the position is anchored to the room, so keep it longer
     use_pose: bool = False       # anchor the object in world coordinates (needs a checked pose)
+    object_mode: str = "watch"   # which of OBJECT_OPTIONS is in use. "room" is use_pose by another name
+    lock_looks: int = 10         # "locked": this many clear looks at the object...
+    lock_span_s: float = 0.4     # ...over at least this long, none older than lock_within_s...
+    lock_within_s: float = 2.0
+    lock_agree_m: float = 0.03   # ...all within this of their middle: that middle is where it is
+    lock_gap_s: float = 2.0      # not asked for this long (the wearer was being listened to): a new reach, look again
+    lock_jump_m: float = 0.25    # the phone's position jumping this far in one frame: its tracking started afresh
     smooth: int = 3              # moving-average length for both positions
     jump_m: float = 0.15         # a move larger than this restarts the average instead of blending
     box_margin: float = 0.10     # hand inside the box grown by this fraction: the box shows the hand
@@ -418,6 +441,7 @@ class Perception:
         self._hand_filter = None
         self._hand_last = None       # (t, u, v) of the hand last taken as the wearer's
         self._next_hands = None      # (tracker, settings) waiting to be swapped in between two frames
+        self._locate_t = -1e9        # when locate() last ran: a long gap means a new reach
         self._hand_pool = None
         self.hand = None             # HandDetails for the last frame, or None
         self._set_hands(hands, {})
@@ -462,8 +486,78 @@ class Perception:
         self._said_t = -1e9
         self._i = 0
         self._goal = None            # where the hand was last being sent, for hand_point="nearest"
+        self._unlock()
         self._obj_avg.clear()
         self._hand_avg.clear()
+
+    # --- "found once": the object's place in the room, fixed ---------------------------------
+
+    def _unlock(self):
+        self._lock = None            # (place in the room, width and height in metres) once it is fixed
+        self._looks = deque(maxlen=60)   # (when, place in the room, width, height) of the clear looks so far
+        self._lock_pose = None       # where the phone was in the last frame, to notice its tracking starting afresh
+
+    def _uses_pose(self) -> bool:
+        return self.cfg.use_pose or self.cfg.object_mode in ("room", "locked")
+
+    def _look(self, frame: Frame, place: np.ndarray, z: float):
+        """One clear look at the object, measured by the detector and lidar with nothing over
+        it. Enough of them in agreement fix its place for the rest of the reach."""
+        cfg, b = self.cfg, self._box
+        self._looks.append((frame.t, np.array(place, float), (b[2] - b[0]) * z / frame.K[0, 0], (b[3] - b[1]) * z / frame.K[1, 1]))
+        looks = [k for k in self._looks if frame.t - k[0] <= cfg.lock_within_s]
+        if len(looks) < cfg.lock_looks or looks[-1][0] - looks[0][0] < cfg.lock_span_s:
+            return
+        places = np.array([k[1] for k in looks])
+        middle = np.median(places, axis=0)
+        spread = float(np.linalg.norm(places - middle, axis=1).max())
+        if spread > cfg.lock_agree_m:
+            return
+        self._lock = (middle, float(np.median([k[2] for k in looks])), float(np.median([k[3] for k in looks])))
+        tracing.event("object.locked", target=self.target, looks=len(looks), spread_mm=int(round(1000 * spread)),
+                      over_s=round(looks[-1][0] - looks[0][0], 2))
+
+    def _locked(self, frame: Frame) -> bool:
+        """Is the object's place fixed, and can this frame be placed against it? Lets go of it
+        when it no longer can: the option was changed, the reach is a new one, the phone sent no
+        pose, or its tracking started afresh (then "the room" is a different one)."""
+        cfg, pose = self.cfg, frame.pose
+        gap = frame.t - self._locate_t
+        self._locate_t = frame.t
+        was, self._lock_pose = self._lock_pose, None if pose is None else pose[:3, 3].copy()
+        if self._lock is None and not self._looks:
+            return False
+        why = None
+        if cfg.object_mode != "locked":
+            why = "option changed"
+        elif gap > cfg.lock_gap_s:
+            why = "a new reach"
+        elif pose is None:
+            why = "no pose"
+        elif was is not None and float(np.linalg.norm(pose[:3, 3] - was)) > cfg.lock_jump_m:
+            why = "the phone's tracking started afresh"
+        if why is not None:
+            if self._lock is not None:
+                tracing.event("object.unlocked", target=self.target, why=why)
+                self._anchor = None              # what was remembered was the lock: look for it again
+                self._obj_avg.clear()
+                self._box = None
+            self._unlock()
+            self._lock_pose = None if pose is None else pose[:3, 3].copy()
+            return False
+        return self._lock is not None
+
+    def _locked_box(self, frame: Frame):
+        """The object's box in this picture, from its fixed place, its size and where the camera
+        is now. None when it is behind the camera: the wearer has turned away."""
+        place, wide, high = self._lock
+        pose, K = frame.pose, frame.K
+        p = pose[:3, :3].T @ (place - pose[:3, 3])
+        if p[2] <= 0.05:
+            return None
+        u, v = K[0, 0] * p[0] / p[2] + K[0, 2], K[1, 1] * p[1] / p[2] + K[1, 2]
+        hw, hh = 0.5 * wide * K[0, 0] / p[2], 0.5 * high * K[1, 1] / p[2]
+        return (float(u - hw), float(v - hh), float(u + hw), float(v + hh))
 
     def _track_hands(self, frame: Frame):
         t = time.perf_counter()
@@ -722,8 +816,13 @@ class Perception:
         if self._hand_pool is not None:
             hand_job = self._hand_pool.submit(self._track_hands, frame)
 
-        # Object box: fresh from the detector, or reused for a few frames.
-        if self.detector is not None:
+        # Object box: fresh from the detector, or reused for a few frames. Not at all once its
+        # place is fixed ("found once"): then the box is worked out from where the camera is.
+        locked = self._locked(frame)
+        if locked:
+            locked_box = self._locked_box(frame)
+            self._box, self._seen, self._other = locked_box, False, False
+        elif self.detector is not None:
             if self._i % cfg.detect_every == 0 or not self._seen:
                 t = time.perf_counter()
                 dets = self.detector.detect(frame.rgb)
@@ -739,7 +838,7 @@ class Perception:
                     self._score = det.score
                 self._seen = det is not None
             self._i += 1
-        seen = self._seen
+        seen = self._seen or locked
 
         # Hand: only one within arm's reach can be the wearer's. Of those, the one nearest the object.
         hands = []
@@ -774,12 +873,12 @@ class Perception:
             self.hands.chosen(hand, int(frame.t * 1000), None if hand_raw is None else float(hand_raw[2]))
 
         # Object position. Measured only when the detector sees it and the hand is not over it.
-        pose = frame.pose if (cfg.use_pose and frame.pose is not None) else None
+        pose = frame.pose if (self._uses_pose() and frame.pose is not None) else None
         if (pose is not None) != self._anchored and self._anchor is not None:
             self._anchor = None      # pose came or went: the remembered point is in the wrong frame
             self._obj_avg.clear()
         self._anchored = pose is not None
-        if self.helper is not None:
+        if self.helper is not None and not locked:
             self._ask_helper(frame, target, seen, pose)
         # The hand tracker blinks, a frame or two at a time, just when the hand is on the object.
         # A hand seen a moment ago is still there for the question "whose depth is in this box".
@@ -794,7 +893,9 @@ class Perception:
         # is not an arm passing: the object itself has come nearer, and is read again.
         believe = self._blocked_t is None or frame.t - self._blocked_t <= cfg.hold_covered_s
         measured, in_front = None, False
-        if seen and not covered:
+        if locked:
+            pass                     # nothing is measured: where it is has been settled
+        elif seen and not covered:
             measured = box_xyz(self._box, frame.depth, frame.K, loose=False)
             if measured is None:
                 # Nothing to read in the middle of the box (a clear bottle). The reading from the
@@ -819,12 +920,16 @@ class Perception:
             # A box somewhere else in the picture with the hand over it, while something within reach is
             # remembered: the camera moved, the object did not change. Keep its depth until it can be read.
             self._other = False
-        if measured is None and seen and covered and (self._anchor is None or self._other) and shadow is not None:
+        if not locked and measured is None and seen and covered and (self._anchor is None or self._other) and shadow is not None:
             # First sight of the object with the hand already on it: nothing is remembered yet,
             # so read the depth from the part of the box the hand does not cover.
             measured = box_xyz(self._box, frame.depth, frame.K, exclude=hand_mask(frame.depth.shape, shadow.points))
         visible = measured is not None
-        if measured is not None:
+        if locked:
+            # Not "visible": that means seen in this frame, and it is not being looked at. Guidance
+            # goes by it after "Grab": an object taken away must not look like one still standing there.
+            self._anchor, self._anchor_t, self._from_helper = self._lock[0], frame.t, False
+        elif measured is not None:
             p = measured if pose is None else pose[:3, :3] @ measured + pose[:3, 3]
             if self._other:
                 self._obj_avg.clear()
@@ -832,6 +937,8 @@ class Perception:
             self._anchor = self._obj_avg.add(p)
             self._anchor_t = frame.t
             self._from_helper = False
+            if cfg.object_mode == "locked" and pose is not None:
+                self._look(frame, p, float(measured[2]))
         elif self._anchor is not None and seen and not self._other:
             # Still detected, but its depth cannot be read: the hand is over it and the depth
             # there is the hand's, or it is a clear bottle and lidar goes through it. Keep the
@@ -851,7 +958,7 @@ class Perception:
                 self._from_helper = False
                 self._obj_avg.clear()
                 self._box = None
-        tracing.put(object_from="detector" if measured is not None else
+        tracing.put(object_from="locked" if locked else "detector" if measured is not None else
                     ("cosmos" if self._from_helper and self._anchor is not None else
                      ("memory" if self._anchor is not None else "nothing")))
         object_xyz = None
@@ -1035,6 +1142,45 @@ def set_hand_point(kind: str) -> str:
     return kind
 
 
+def _object_index(which) -> int | None:
+    """A number from 1 or a key from OBJECT_OPTIONS -> its index, or None."""
+    which = str(which).strip().lower()
+    keys = [k for k, _, _ in OBJECT_OPTIONS]
+    if which.isdigit() and 1 <= int(which) <= len(keys):
+        return int(which) - 1
+    return keys.index(which) if which in keys else None
+
+
+def _object_wanted() -> int:
+    """The index of the object option the environment asks for: OBJECT_OPTION, or the older
+    PERCEPTION_USE_POSE=1 for "room", or the first."""
+    i = _object_index(os.environ.get("OBJECT_OPTION", ""))
+    if i is None:
+        i = 1 if os.environ.get("PERCEPTION_USE_POSE", "") not in ("", "0") else 0
+    return i
+
+
+def set_object_option(which) -> str:
+    """Switch the way the object is kept track of while running. Returns its spoken name. It
+    takes effect on the next frame; what was remembered the old way is dropped and looked for again."""
+    i = _object_index(which)
+    if i is None:
+        raise ValueError(f"no object option {which!r}")
+    key, title, _ = OBJECT_OPTIONS[i]
+    os.environ["OBJECT_OPTION"] = key    # so a Perception built later starts on it
+    if _default is not None:
+        _default.cfg.object_mode = key   # one assignment, read once a frame: safe from any thread
+    tracing.event("object_option", option=key, number=i + 1, title=title)
+    return title
+
+
+def object_option() -> tuple[int, str, str]:
+    """(number, key, name) of the object option in use."""
+    key = getattr(getattr(_default, "cfg", None), "object_mode", None) or OBJECT_OPTIONS[_object_wanted()][0]
+    i = _object_index(key) or 0
+    return i + 1, OBJECT_OPTIONS[i][0], OBJECT_OPTIONS[i][1]
+
+
 def hand_details() -> HandDetails | None:
     """Everything known about the wearer's hand in the last frame (also on the Scene as .hand)."""
     return None if _default is None else _default.hand
@@ -1067,8 +1213,11 @@ def build(detector: str | None = None, hand: str | None = None) -> Perception:
             with _hand_lock:
                 _hand_number = number
             hand = HAND_OPTIONS[number - 1][0]
-    tracing.meta(detector=detector, hand=hand)
-    cfg = PerceptionConfig(use_pose=os.environ.get("PERCEPTION_USE_POSE", "") not in ("", "0"),
+    tracing.meta(detector=detector, hand=hand, object=OBJECT_OPTIONS[_object_wanted()][0])
+    if os.environ.get("OBJECT_OPTION") and _object_index(os.environ["OBJECT_OPTION"]) is None:
+        print(f"[perception] OBJECT_OPTION={os.environ['OBJECT_OPTION']!r} is not one of the object options; "
+              "using option 1", file=sys.stderr)
+    cfg = PerceptionConfig(object_mode=OBJECT_OPTIONS[_object_wanted()][0],
                            detect_every=int(os.environ.get("PERCEPTION_DETECT_EVERY", "1")),
                            parallel=os.environ.get("PERCEPTION_PARALLEL", "1") != "0", **settings)
     helper = None

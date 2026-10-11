@@ -75,7 +75,9 @@ def _trial_stats():
 # not exist yet is simply left out, so this works with whatever the modules offer.
 _FAMILIES = (("guidance", "Guidance sound", "guidance", "OPTIONS", "option", "set_option", "option"),
              ("hand", "Hand tracking", "perception", "HAND_OPTIONS", "hand_option", "set_hand_option", "hand option"),
-             ("grab", "When it says grab", "guidance", "GRAB_OPTIONS", "grab_option", "set_grab_option", "grab option"))
+             ("grab", "When it says grab", "guidance", "GRAB_OPTIONS", "grab_option", "set_grab_option", "grab option"),
+             ("object", "Keeping track of the object", "perception", "OBJECT_OPTIONS", "object_option", "set_object_option",
+              "object option"))
 
 
 def page_version() -> int:

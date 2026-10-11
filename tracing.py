@@ -206,6 +206,12 @@ def describe(e: dict):
         return "GUIDANCE", "", f'switched to option {e.get("number", "?")}: {e.get("title", e.get("option", ""))}'
     if name == "grab_option":
         return "GUIDANCE", "", f'grab rule {e.get("number", "?")}: {e.get("title", e.get("option", ""))}'
+    if name == "object_option":
+        return "OBJECT", "", f'kept track of by option {e.get("number", "?")}: {e.get("title", e.get("option", ""))}'
+    if name == "object.locked":
+        return "OBJECT", "", f'place fixed from {e.get("looks", "?")} looks within {e.get("spread_mm", "?")} mm: no longer looked for'
+    if name == "object.unlocked":
+        return "OBJECT", "", f'place let go ({e.get("why", "")}): looking for it again'
     if name == "hand_option":
         return "HANDS", "", f'hand tracker {e.get("number", "?")}: {e.get("title", e.get("option", ""))}'
     if name.startswith("load."):
