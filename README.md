@@ -373,7 +373,8 @@ dashboard. From another machine, add `?dash=http://<gx10-ip>:8642`. With no dash
 the demo slide plays `deck/media/demo-run.mp4` if it exists.
 
 Online copy: https://drealveernanda.github.io/ucsc-ai-hackathon-2026/ (only `deck/`, on the `gh-pages`
-branch; the repo stays private). After changing the deck, run `bash deck/deploy.sh` to update it.
+branch; the repo stays private), and this README at .../readme/ without the email addresses. After
+changing the deck or this README, run `bash deck/deploy.sh` to update them.
 
 Keys: arrows, space or click to advance; F fullscreen; N speaker notes with a timer.
 `?auto` plays it on a timer (for recording a video); `?still` skips animation (for screenshots).
