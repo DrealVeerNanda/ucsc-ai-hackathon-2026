@@ -305,13 +305,14 @@ def interpret(text: str) -> tuple[str, str]:
         # Not there, too slow, or an answer that makes no sense: the rule reads this request. Only a
         # server that does not answer is left alone for a while; it is tried again after that, so one
         # slow answer does not switch Nemotron off for the rest of the run.
-        if isinstance(getattr(e, "reason", e), ConnectionRefusedError):
+        late = isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError) or "timed out" in str(e)
+        if late:
+            # It is there but was too slow this once (the GPU was busy): ask it again next time.
+            _problem("nemotron", f"too slow this time ({e.__class__.__name__}); the simple rule read this request")
+        elif isinstance(e, OSError):
             _llm_ok, _llm_again_t = False, time.monotonic() + LLM_PAUSE_S
             _problem("nemotron", f"not answering at {url} ({e.__class__.__name__}); using the simple rule and trying again "
                                  f"in {LLM_PAUSE_S:.0f} s. Start it with: bash tools/run_nemotron.sh")
-        elif isinstance(e, OSError):
-            # It is there but was too slow this once (the GPU was busy): ask it again next time.
-            _problem("nemotron", f"too slow this time ({e.__class__.__name__}); the simple rule read this request")
         else:
             _problem("nemotron", f"an answer that could not be read ({e.__class__.__name__}: {e}); the simple rule read this request")
         return by_rule
