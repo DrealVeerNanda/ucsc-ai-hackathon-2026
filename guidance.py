@@ -155,6 +155,7 @@ class GuidanceConfig:
     breath_s: float = 0.3        # ...and this much silence after the last one ended
     reverse_s: float = 1.5       # "left" this soon after "right" is jitter, unless...
     reverse_m: float = 0.08      # ...the hand is this far past the line: then it really overshot
+    progress_m: float = 0.03     # a hand this much nearer than when it was told is following: no reminder
     stall_s: float = 4.0         # told "forward" this long with the hand no deeper: the object is out of reach,
     stall_m: float = 0.12        # ...if it is still this much further away. Say "lean forward" instead
     beam_m: float = 0.12         # "beam": drift up to this far is corrected with ticks, beyond it with words
@@ -236,6 +237,7 @@ class Guidance:
         self._lined_t = None
         self._phrase = None
         self._phrase_t = -1e9
+        self._phrase_lead = None     # where the hand had to go when the phrase was said
         self._heard_t = -1e9         # when speech was last playing
         self._word_times = {}        # direction word -> when it was last spoken
         self._stall = None           # (time, hand depth) since which "forward" has brought no progress
@@ -345,10 +347,19 @@ class Guidance:
         cfg = self.cfg
         if not phrase or self.sink.saying():
             return False
-        same = phrase == self._phrase
+        # "lean forward" is "forward" said another way: it takes the reminder's turn, not a turn of its own.
+        same = self._phrase is not None and phrase.replace("lean ", "") == self._phrase.replace("lean ", "")
         if now - self._phrase_t < ((repeat_s or cfg.word_repeat_s) if same else cfg.phrase_gap_s):
             return False
         words = [w for w in phrase.replace(",", " ").split() if w in OPPOSITE]
+        axes = sorted({("left", "right", "up", "down", "back", "forward").index(w) // 2 for w in words}) or [0, 1]
+        if same and lead is not None and self._phrase_lead is not None and phrase == self._phrase:
+            # A reminder is for a hand that is not getting anywhere. One that is following the
+            # last instruction is left to it.
+            gained = [abs(self._phrase_lead[a]) - abs(lead[a]) for a in axes]
+            if max(gained) >= cfg.progress_m and min(gained) > -cfg.progress_m:
+                self._phrase_t, self._phrase_lead = now, np.array(lead, float)
+                return False
         if not same:
             if now - self._heard_t < cfg.breath_s:
                 return False
@@ -358,6 +369,7 @@ class Guidance:
                 if small and now - self._word_times.get(OPPOSITE[w], -1e9) < cfg.reverse_s:
                     return False
         self._phrase, self._phrase_t = phrase, now
+        self._phrase_lead = None if lead is None else np.array(lead, float)
         self._moved = False
         for w in words:
             self._word_times[w] = now
@@ -402,7 +414,7 @@ class Guidance:
         phrase = self._phrase_for(lead, hand, now, amounts=err)
         self._chime(now)
         self._tone(self._silent)
-        if self._speed is not None and self._speed >= 2 * cfg.still_mps:
+        if self._speed is not None and self._speed >= cfg.still_mps + 0.02:
             self._moved = True
         rested = self._moved and self._vel is None
         if self._phrase is None or rested or now - self._phrase_t >= cfg.word_repeat_s:
