@@ -811,7 +811,9 @@ def listen_for_target() -> str:
         model = os.environ.get("VOICE_MODEL") or None
         _mode = "type"
         why = "none is plugged in or paired"
-        if want == "speech" or (want == "auto" and (os.environ.get("VOICE_DEVICE") or has_microphone())):
+        buds = want == "auto" and not os.environ.get("VOICE_DEVICE") and Headset.find() is not None
+        # Earbuds are handled by WebMic (it listens by itself); the Enter-to-talk Listener is for a wired microphone.
+        if want == "speech" or (want == "auto" and not buds and (os.environ.get("VOICE_DEVICE") or has_microphone())):
             try:
                 _listener = Listener(model, os.environ.get("VOICE_DEVICE") or None)
                 _mode = "speech"
