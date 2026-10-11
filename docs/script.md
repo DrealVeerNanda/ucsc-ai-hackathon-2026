@@ -6,7 +6,7 @@ The pitch is 2:00 across the 11 deck slides, with about 40 seconds live: one pre
 |---|---|---|
 | 0:00 | 1 Proprio | "Hi, we're Veer, Gavin, Jake and Sasha, and this is Proprio." Then straight into the problem, no description yet. |
 | 0:05 | 2 Problem (→ →) | "43 million people are blind." → "Their number one everyday challenge: finding a dropped or misplaced item." → "And 68% of their requests for help need an answer within 10 minutes." |
-| 0:18 | 3 Ask for it | "With Proprio you just say *find my mug*, and your earbuds walk your hand there, one word at a time: right, down, forward, grab. It remembers the room, so a mug under your hand isn't lost." |
+| 0:18 | 3 What it is | "With Proprio you just say *find my mug*, and your earbuds walk your hand there, one word at a time: right, down, forward, grab. It remembers the room, so a mug under your hand isn't lost." |
 | 0:29 | 4 What exists today (→ ×5) | "Today's tools stop short." → "Meta glasses need internet and a volunteer." → "Be My AI only describes." → "Seeing AI gets you near the item, not onto it." → "AIGuide means holding the phone and scanning first." → "Proprio: hands-free, offline, any item." |
 | 0:41 | 5 Why not vibration | "Why not vibration? 74% of overlapping buzzes are misread. A word needs no decoding." |
 | 0:47 | 6 How it works (→ ×3) | "The iPhone streams color and lidar." → "Models find the mug and your fingertip." → "Lidar puts both in 3D." → "The biggest gap becomes one word." |
