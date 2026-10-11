@@ -115,7 +115,7 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 .lab-q { background: var(--text); color: var(--ground); font: 700 min(5vw, 9vh)/1 var(--display); padding: 0.15em 0.4em; }
 .lab-word.is-grab { background: var(--grab); color: var(--on-grab); }
 .lab-mug { background: var(--text); color: var(--ground); }
-.lab-you { background: var(--scrim); color: var(--muted); font-weight: 500; }
+.lab-you { background: var(--text); color: var(--ground); }
 .lab-cloud { background: var(--scrim); color: var(--muted); font-weight: 500; }
 .lab-cloud.is-cut { text-decoration: line-through; }
 .lab-axis { background: var(--scrim); color: var(--text); font-weight: 500; }

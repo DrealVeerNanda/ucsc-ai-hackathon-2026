@@ -36,12 +36,12 @@ const SHOTS = {
   // competitors: the scene sinks far back behind the list
   recede:  { pos: [-0.9, 1.6, -1.5], at: [0.0, 0.0, 0.5], shift: 0.25, lv: { reveal: 1, dim: 0.85 } },
   // how it works, one look per word
-  sweep:   { speed: 2.4, pos: [-0.43, 0.85, -0.55], at: [0.0, 0.1, 0.45], shift: 0.16, lv: { sweep: 1, frustum: 1 } },
+  sweep:   { speed: 2.4, pos: [-0.75, 0.75, -0.65], at: [-0.12, 0.2, 0.35], shift: 0.26, lv: { sweep: 1, frustum: 1 } },
   found:   { speed: 2.4, pos: [-0.36, 0.6, -0.3], at: [0.05, 0.08, 0.45], shift: 0.18, lv: { reveal: 1, box: 1, hand: 1, still: 1, tip: 1 } },
-  vector:  { speed: 2.6, pos: [-0.5, 0.55, 0.05], at: [0.0, 0.08, 0.48], shift: 0.2, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, axes: 1 } },
+  vector:  { speed: 2.6, pos: [-0.1, 0.55, -0.12], at: [0.0, 0.06, 0.5], shift: 0.26, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, axes: 1 } },
   speak:   { speed: 2.4, pos: [-0.38, 0.42, -0.05], at: [-0.04, 0.1, 0.48], shift: 0.3, lv: { reveal: 1, hand: 1, leg: 1, guide: 1, words: 1, big: 1 } },
   // core loop: straight overhead, a coordinate gizmo at the fingertip
-  plan:    { pos: [-0.02, 1.15, 0.35], at: [0.0, 0.0, 0.5], shift: 0.22, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, gizmo: 1 } },
+  plan:    { pos: [-0.1, 0.55, -0.12], at: [0.0, 0.06, 0.5], shift: 0.26, lv: { reveal: 1, box: 1, hand: 1, still: 1, leg: 1, gizmo: 1 } },
   buzz:    { pos: [0.02, 0.5, -0.25], at: [0.2, 0.18, 0.32], shift: 0.24, lv: { reveal: 1, dim: 0.6, hand: 1, still: 1, motors: 1 } },
   overload:{ pos: [-0.2, 0.45, -0.15], at: [0.0, 0.1, 0.6], shift: 0.0, lv: { reveal: 0.2, dim: 0.8 } },
   finale:  { pos: [-0.42, 0.55, -0.3], at: [-0.05, 0.05, 0.55], shift: 0.2, lv: { reveal: 1, hand: 1, leg: 1, still: 1, grabbed: 1 } },
@@ -333,7 +333,8 @@ export function createStage(canvas, labels) {
     sweep.material.opacity = lv.sweep * (sweepT < 1.05 ? 1 : 0);
     sweep.position.set(0, 0, sweepZ);
 
-    frustum.material.opacity = 0.9 * lv.frustum;
+    frustum.material.color.copy(C.text);
+    frustum.material.opacity = lv.frustum;
     body.material.opacity = 0.35 * lv.person;
     box.material.opacity = lv.box * colFade(MUG);
 
@@ -352,7 +353,7 @@ export function createStage(canvas, labels) {
     drop.material.opacity = 0.7 * lv.hand * handFade;
 
     // leg from fingertip to the mug, yellow; green on grab
-    const to = lv.box > 0.5 || grabbed ? GRAB_AT : MUG_TOP.clone().add(new THREE.Vector3(0, -0.04, -0.04));
+    const to = GRAB_AT;  // one target on every slide, so the line never swings between builds
     const d = new THREE.Vector3().subVectors(to, handPos);
     const len = Math.max(0.001, d.length() - 0.03);
     const shown = len * lv.leg;
