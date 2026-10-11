@@ -20,6 +20,7 @@ Settings by environment variable:
     PERCEPTION_DEVICE=cuda|cpu  torch device for the detector (default: ultralytics picks)
     PERCEPTION_PARALLEL=0       run the hand tracker after the detector instead of alongside it
     PERCEPTION_FP16=0           run the detector in full precision (default: half precision on the GPU)
+    PERCEPTION_FAST_CORES=0     let the hand tracker run on any core (default: only the fast ones)
     PERCEPTION_HELPER=auto|off  when the detector cannot find the object, ask Cosmos for its box
                                 in the background (auto: only if tools/run_cosmos.sh is running)
     MODELS_DIR=PATH             where weights are kept (default: models/ in this repo)
@@ -232,6 +233,37 @@ class CocoDetector:
 # ---------------------------------------------------------------------------
 # Hand trackers. Each has detect(rgb, t_ms) -> [Hand].
 
+def fast_cores() -> set[int] | None:
+    """The CPU's fast cores, if it has two kinds. The GX10 has 10 Cortex-X925 at 3.9 GHz and
+    10 Cortex-A725 at 2.8 GHz; MediaPipe takes 2.5x as long on the slow ones (24 ms instead of
+    9.5 ms a frame with no hand, 41 instead of 15 with two), and Linux moves it between them."""
+    if os.environ.get("PERCEPTION_FAST_CORES", "1") == "0" or not hasattr(os, "sched_setaffinity"):
+        return None
+    freq = {}
+    for c in os.sched_getaffinity(0):
+        try:
+            freq[c] = int(Path(f"/sys/devices/system/cpu/cpu{c}/cpufreq/cpuinfo_max_freq").read_text())
+        except (OSError, ValueError):
+            return None
+    top = max(freq.values(), default=0)
+    fast = {c for c, f in freq.items() if f == top}
+    return fast if 0 < len(fast) < len(freq) else None
+
+
+@contextmanager
+def _on_cores(cores: set[int] | None):
+    """Run the block on these cores; threads it starts keep them. Linux sets this per thread."""
+    if not cores:
+        yield
+        return
+    old = os.sched_getaffinity(0)
+    os.sched_setaffinity(0, cores)
+    try:
+        yield
+    finally:
+        os.sched_setaffinity(0, old)
+
+
 @dataclass
 class Hand:
     tip: tuple                 # (u, v) of the point to guide: the index fingertip
@@ -260,7 +292,8 @@ class MediaPipeHand:
             running_mode=vision.RunningMode.VIDEO, num_hands=num_hands,
             min_hand_detection_confidence=min_conf, min_hand_presence_confidence=min_conf,
             min_tracking_confidence=min_conf)
-        self.landmarker = vision.HandLandmarker.create_from_options(opts)
+        with _on_cores(fast_cores()):   # MediaPipe's own threads start here and keep these cores
+            self.landmarker = vision.HandLandmarker.create_from_options(opts)
         self._last_ts = -1
 
     def detect(self, rgb: np.ndarray, t_ms: int) -> list[Hand]:
@@ -389,7 +422,10 @@ class Perception:
         self._hand_avg = _Average(self.cfg.smooth, self.cfg.jump_m)
         self._hand_scale = deque(maxlen=90)   # lidar depth / size-based depth, to fit the size estimate to this hand
         # One worker, so the hand tracker still sees frames one at a time and in order.
-        self._hand_pool = ThreadPoolExecutor(1, thread_name_prefix="hand") if self.cfg.parallel and hands else None
+        cores = fast_cores()
+        self._hand_pool = (ThreadPoolExecutor(1, thread_name_prefix="hand",
+                                              initializer=lambda: cores and os.sched_setaffinity(0, cores))
+                           if self.cfg.parallel and hands else None)
         self._forget()
 
     def _forget(self):
