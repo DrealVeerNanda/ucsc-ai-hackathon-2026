@@ -78,6 +78,7 @@ class GuidanceConfig:
                                  # sound reaches the ears late, and a moving hand has overshot by then
     line_in_m: float = 0.025     # sideways or vertical error below this: lined up...
     line_out_m: float = 0.05     # ...and stays lined up until it grows past this, so it cannot flip-flop
+    rechime_s: float = 2.0       # back on the line after less than this off it: no second chime
     reach_m: float = 0.03        # lined up, and the object is this much further away: "forward"
     back_m: float = 0.07         # only say "back" when the hand is clearly past the object
     phrase_gap_s: float = 0.7    # minimum pause before a different phrase
@@ -141,6 +142,7 @@ class Guidance:
         self._vel = None
         self._lined = [False, False]
         self._was_lined = False
+        self._lined_t = None
         self._phrase = None
         self._phrase_t = -1e9
 
@@ -152,7 +154,7 @@ class Guidance:
         self.cfg.hybrid, self.cfg.words = key == "steps", key == "words"
         self.tone.volume = 0.25 if key == "tones" else 0.16      # beeps under speech are kept quiet
         self._step_axis = self._step_word = self._phrase = None
-        self._lined, self._was_lined = [False, False], False
+        self._lined, self._was_lined, self._lined_t = [False, False], False, None
         self._tone(self._silent)
 
     def _phrase_for(self, lead) -> str | None:
@@ -187,8 +189,13 @@ class Guidance:
         phrase = self._phrase_for(lead)
         lined = all(self._lined)
         if lined and not self._was_lined:
-            self.sink.say("aligned", now=True)           # lined up: from here it is only forward
+            # A real hand trembles on and off the line several times a second. The chime is for
+            # lining up after a clear spell away, not for each of those returns.
+            if self._lined_t is None or now - self._lined_t >= cfg.rechime_s:
+                self.sink.say("aligned", now=True)       # lined up: from here it is only forward
             self._phrase, self._phrase_t = None, now
+        if lined:
+            self._lined_t = now
         self._was_lined = lined
         gap = cfg.word_repeat_s if phrase == self._phrase else cfg.phrase_gap_s
         if phrase and now - self._phrase_t >= gap and not self.sink.saying():

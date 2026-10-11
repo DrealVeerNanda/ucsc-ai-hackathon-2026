@@ -548,6 +548,63 @@ def test_forward_comes_only_after_the_hand_is_lined_up_with_a_chime():
     assert said(g)[-1] == "forward"
 
 
+@pytest.mark.parametrize("option", guidance.DYNAMIC)
+def test_a_hand_trembling_on_and_off_the_line_chimes_once(option):
+    g = dyn(option, lead_s=0.0)
+    for i in range(40):                                     # 4 s: on the line, 6 cm off it, on it, ...
+        g.update(near(dx=0.01 if i % 2 == 0 else 0.06, dy=0.0, dz=0.25), now=1.0 + 0.1 * i)
+    assert said(g).count("aligned") == 1
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_tracking_jitter_beside_the_line_chimes_once(seed):
+    # The live run: a hand held still 3.5 cm off the line, seen with 6 mm of jitter at 30 frames a
+    # second. The lead multiplies frame-to-frame jitter, so it crosses the whole band many times.
+    rng = np.random.default_rng(seed)
+    g = dyn()
+    recent = []
+    for i in range(300):                                    # 10 s
+        recent = (recent + [rng.normal(0.0, 0.006, 2)])[-3:]    # perception averages three frames
+        jx, jy = np.mean(recent, axis=0)
+        g.update(near(dx=0.035 + jx, dy=jy, dz=0.25), now=1.0 + i / 30)
+    assert said(g).count("aligned") == 1
+
+
+def test_the_chime_comes_back_after_a_real_spell_off_the_line():
+    g = dyn(lead_s=0.0)
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.0)       # lined up: the chime
+    g.update(near(dx=0.10, dy=0.0, dz=0.25), now=1.5)
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=2.0)       # off it for a moment: no second chime
+    assert said(g).count("aligned") == 1
+    g.update(near(dx=0.10, dy=0.0, dz=0.25), now=2.5)
+    g.update(near(dx=0.10, dy=0.0, dz=0.25), now=4.4)       # away for two seconds and more
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=4.6)
+    assert said(g).count("aligned") == 2 and said(g)[-1] == "aligned"
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=5.4)
+    assert said(g)[-1] == "forward"
+
+
+def test_a_quiet_return_to_the_line_still_says_forward_and_reaches_grab():
+    g = dyn(lead_s=0.0)
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.0)
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.8)
+    g.update(near(dx=0.08, dy=0.0, dz=0.25), now=2.6)       # drifted off
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=3.0)       # and straight back
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=3.8)
+    assert said(g) == ["aligned", "forward", "right", "forward"]
+    for i in range(5):
+        state = g.update(near(dz=0.02), now=4.0 + 0.1 * i)
+    assert state == "grab" and said(g)[-1] == "grab"
+
+
+def test_a_fresh_search_chimes_again():
+    g = dyn(lead_s=0.0)
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.0)
+    g.update(scene(obj=None), now=1.2)                      # object lost: everything starts over
+    g.update(near(dx=0.01, dy=0.0, dz=0.25), now=1.4)
+    assert said(g) == ["aligned", "i_lost_it", "aligned"]
+
+
 def test_a_direction_is_not_repeated_until_it_changes_or_time_passes():
     g = dyn()
     for i in range(20):                                     # 2 s of the same error
