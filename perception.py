@@ -18,6 +18,9 @@ Settings by environment variable:
                                 after tools/check_pose.py says the pose is usable.
     PERCEPTION_DETECT_EVERY=1   run the detector on every Nth frame
     PERCEPTION_DEVICE=cuda|cpu  torch device for the detector (default: ultralytics picks)
+    PERCEPTION_PARALLEL=0       run the hand tracker after the detector instead of alongside it
+    PERCEPTION_FP16=0           run the detector in full precision (default: half precision on the GPU)
+    PERCEPTION_FAST_CORES=0     let the hand tracker run on any core (default: only the fast ones)
     PERCEPTION_HELPER=auto|off  when the detector cannot find the object, ask Cosmos for its box
                                 in the background (auto: only if tools/run_cosmos.sh is running)
     MODELS_DIR=PATH             where weights are kept (default: models/ in this repo)
@@ -32,6 +35,7 @@ import threading
 import time
 import urllib.request
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -139,6 +143,14 @@ def _in_models_dir():
         os.chdir(old)
 
 
+def _fp16(device) -> bool:
+    """Half precision on the GPU: about 25% faster on the GX10, boxes within a pixel."""
+    if os.environ.get("PERCEPTION_FP16", "1") == "0" or (device and not str(device).startswith("cuda")):
+        return False
+    import torch
+    return torch.cuda.is_available()
+
+
 def _detections(res, names) -> list[Detection]:
     if res.boxes is None:
         return []
@@ -164,6 +176,7 @@ class OpenVocabDetector:
         with _in_models_dir():
             self.model = (YOLOE if self.is_yoloe else YOLOWorld)(weights)
         self.device, self.conf, self.imgsz = device, conf, imgsz
+        self.quantize = 16 if _fp16(device) else None
         self.names: list[str] = []
 
     def set_target(self, target: str):
@@ -180,7 +193,8 @@ class OpenVocabDetector:
 
     def detect(self, rgb: np.ndarray) -> list[Detection]:
         bgr = np.ascontiguousarray(rgb[:, :, ::-1])  # ultralytics expects BGR numpy arrays
-        res = self.model.predict(bgr, conf=self.conf, imgsz=self.imgsz, device=self.device, verbose=False)[0]
+        res = self.model.predict(bgr, conf=self.conf, imgsz=self.imgsz, device=self.device,
+                                 quantize=self.quantize, verbose=False)[0]
         return _detections(res, self.names)
 
 
@@ -196,6 +210,7 @@ class CocoDetector:
         with _in_models_dir():
             self.model = YOLO(weights)
         self.device, self.conf, self.imgsz = device, conf, imgsz
+        self.quantize = 16 if _fp16(device) else None
         self.classes: list[int] = []
 
     def set_target(self, target: str):
@@ -211,12 +226,43 @@ class CocoDetector:
             return []
         bgr = np.ascontiguousarray(rgb[:, :, ::-1])
         res = self.model.predict(bgr, conf=self.conf, imgsz=self.imgsz, device=self.device,
-                                 classes=self.classes, verbose=False)[0]
+                                 classes=self.classes, quantize=self.quantize, verbose=False)[0]
         return _detections(res, self.model.names)
 
 
 # ---------------------------------------------------------------------------
 # Hand trackers. Each has detect(rgb, t_ms) -> [Hand].
+
+def fast_cores() -> set[int] | None:
+    """The CPU's fast cores, if it has two kinds. The GX10 has 10 Cortex-X925 at 3.9 GHz and
+    10 Cortex-A725 at 2.8 GHz; MediaPipe takes 2.5x as long on the slow ones (24 ms instead of
+    9.5 ms a frame with no hand, 41 instead of 15 with two), and Linux moves it between them."""
+    if os.environ.get("PERCEPTION_FAST_CORES", "1") == "0" or not hasattr(os, "sched_setaffinity"):
+        return None
+    freq = {}
+    for c in os.sched_getaffinity(0):
+        try:
+            freq[c] = int(Path(f"/sys/devices/system/cpu/cpu{c}/cpufreq/cpuinfo_max_freq").read_text())
+        except (OSError, ValueError):
+            return None
+    top = max(freq.values(), default=0)
+    fast = {c for c, f in freq.items() if f == top}
+    return fast if 0 < len(fast) < len(freq) else None
+
+
+@contextmanager
+def _on_cores(cores: set[int] | None):
+    """Run the block on these cores; threads it starts keep them. Linux sets this per thread."""
+    if not cores:
+        yield
+        return
+    old = os.sched_getaffinity(0)
+    os.sched_setaffinity(0, cores)
+    try:
+        yield
+    finally:
+        os.sched_setaffinity(0, old)
+
 
 @dataclass
 class Hand:
@@ -246,7 +292,8 @@ class MediaPipeHand:
             running_mode=vision.RunningMode.VIDEO, num_hands=num_hands,
             min_hand_detection_confidence=min_conf, min_hand_presence_confidence=min_conf,
             min_tracking_confidence=min_conf)
-        self.landmarker = vision.HandLandmarker.create_from_options(opts)
+        with _on_cores(fast_cores()):   # MediaPipe's own threads start here and keep these cores
+            self.landmarker = vision.HandLandmarker.create_from_options(opts)
         self._last_ts = -1
 
     def detect(self, rgb: np.ndarray, t_ms: int) -> list[Hand]:
@@ -304,6 +351,7 @@ class PerceptionConfig:
                                  # Each call loads the GPU for 0.6-2.6 s and slows the loop while it runs
     helper_hold_s: float = 5.0   # trust a position from the helper this long without a newer one
     size_depth: bool = True      # no lidar on the hand (closer than about 20 cm): estimate its depth from its size
+    parallel: bool = True        # hand tracker (CPU) runs while the detector (GPU) does, not after it
 
 
 class _Average:
@@ -373,6 +421,11 @@ class Perception:
         self._obj_avg = _Average(self.cfg.smooth, self.cfg.jump_m)
         self._hand_avg = _Average(self.cfg.smooth, self.cfg.jump_m)
         self._hand_scale = deque(maxlen=90)   # lidar depth / size-based depth, to fit the size estimate to this hand
+        # One worker, so the hand tracker still sees frames one at a time and in order.
+        cores = fast_cores()
+        self._hand_pool = (ThreadPoolExecutor(1, thread_name_prefix="hand",
+                                              initializer=lambda: cores and os.sched_setaffinity(0, cores))
+                           if self.cfg.parallel and hands else None)
         self._forget()
 
     def _forget(self):
@@ -388,6 +441,11 @@ class Perception:
         self._i = 0
         self._obj_avg.clear()
         self._hand_avg.clear()
+
+    def _track_hands(self, frame: Frame):
+        t = time.perf_counter()
+        hands = self.hands.detect(frame.rgb, int(frame.t * 1000))
+        return hands, (time.perf_counter() - t) * 1000
 
     def _pick(self, dets: list[Detection]):
         if not dets:
@@ -486,12 +544,19 @@ class Perception:
                 t_models += time.perf_counter() - t
                 tracing.event("detector.set_target", (time.perf_counter() - t) * 1000, target=target)
 
+        # Hand tracker starts first and runs alongside the detector: they share nothing.
+        t_par = time.perf_counter()
+        hand_job = None
+        if self._hand_pool is not None:
+            hand_job = self._hand_pool.submit(self._track_hands, frame)
+
         # Object box: fresh from the detector, or reused for a few frames.
         if self.detector is not None:
             if self._i % cfg.detect_every == 0 or not self._seen:
                 t = time.perf_counter()
                 dets = self.detector.detect(frame.rgb)
-                t_models += time.perf_counter() - t
+                if hand_job is None:
+                    t_models += time.perf_counter() - t
                 tracing.add("perception.detector", (time.perf_counter() - t) * 1000)
                 det = self._pick(dets)
                 if det is not None:
@@ -502,11 +567,15 @@ class Perception:
 
         # Hand: only one within arm's reach can be the wearer's. Of those, the one nearest the object.
         hands = []
-        if self.hands is not None:
+        if hand_job is not None:
+            hands, ms = hand_job.result()
+            t_models += time.perf_counter() - t_par     # both models, overlapped
+            tracing.add("perception.hand", ms)
+        elif self.hands is not None:
             t = time.perf_counter()
-            hands = self.hands.detect(frame.rgb, int(frame.t * 1000))
+            hands, ms = self._track_hands(frame)
             t_models += time.perf_counter() - t
-            tracing.add("perception.hand", (time.perf_counter() - t) * 1000)
+            tracing.add("perception.hand", ms)
         hand, hand_raw = None, None
         reach = [(k, p, src) for k, (p, src, ok) in ((k, self._hand_xyz(k, frame)) for k in hands) if ok]
         if reach:
@@ -604,7 +673,8 @@ def build(detector: str | None = None, hand: str | None = None) -> Perception:
         else:
             hands = MediaPipeHand()
     cfg = PerceptionConfig(use_pose=os.environ.get("PERCEPTION_USE_POSE", "") not in ("", "0"),
-                           detect_every=int(os.environ.get("PERCEPTION_DETECT_EVERY", "1")))
+                           detect_every=int(os.environ.get("PERCEPTION_DETECT_EVERY", "1")),
+                           parallel=os.environ.get("PERCEPTION_PARALLEL", "1") != "0")
     helper = None
     if os.environ.get("PERCEPTION_HELPER", "auto") != "off":
         import cosmos
