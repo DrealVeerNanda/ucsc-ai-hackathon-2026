@@ -300,7 +300,8 @@ class PerceptionConfig:
     hand_patch: int = 6          # half-size in px of the depth patch at the fingertip
     max_hand_m: float = 0.90     # a hand farther from the camera than this is somebody else's
     helper_after_s: float = 1.0  # detector has found nothing for this long: ask the helper (Cosmos)
-    helper_every_s: float = 1.5  # ...and not more often than this; doubles after each "not there"
+    helper_every_s: float = 3.0  # ...and not more often than this; doubles after each "not there".
+                                 # Each call loads the GPU for 0.6-2.6 s and slows the loop while it runs
     helper_hold_s: float = 5.0   # trust a position from the helper this long without a newer one
     size_depth: bool = True      # no lidar on the hand (closer than about 20 cm): estimate its depth from its size
 
