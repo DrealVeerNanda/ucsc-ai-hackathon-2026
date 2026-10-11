@@ -252,6 +252,16 @@ h1, h2, p, ol, ul, figure { margin: 0; }
   color: var(--muted);
 }
 .live.is-loaded + .live-note { display: none; }
+.slide-live.is-offline { padding: var(--gy) var(--gx); align-items: center; gap: 2.4vh; }
+.slide-live.is-offline .live-note { position: static; translate: none; color: var(--text); }
+.live-video { margin: 0; width: min(100%, 64vw, 100vh); display: flex; flex-direction: column; align-items: center; gap: 1.6vh; }
+.live-video[hidden] { display: none; }
+.live-video figcaption { font: 600 var(--t-body)/1.2 var(--font); color: var(--muted); }
+.live-frame { width: 100%; aspect-ratio: 16 / 9; background: var(--plate); border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
+.live-frame iframe { display: block; width: 100%; height: 100%; border: 0; }
+.live-video a { font: 400 var(--t-small)/1.2 var(--font); color: var(--muted); text-underline-offset: 3px; }
+.live-video a:hover { color: var(--text); }
+.live-video a:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
 .counter {
   position: fixed;

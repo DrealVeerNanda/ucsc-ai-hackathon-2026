@@ -129,7 +129,14 @@ async function loadLive() {
   } else {
     note.textContent = location.hostname.endsWith("github.io")
       ? "The live demo runs on the GX10, shown in person."
-      : "Live demo runs here. Start main.py, or add media/demo-run.mp4 for the recorded run.";
+      : "Live demo runs here when main.py is running.";
+    // No dashboard and no local recording: offer the demo video instead.
+    const video = $("live-video");
+    const yt = video.querySelector("iframe");
+    yt.src = yt.dataset.src;
+    f.hidden = true;
+    video.hidden = false;
+    f.closest(".slide").classList.add("is-offline");
   }
 }
 
@@ -267,6 +274,7 @@ function effects(slide) {
 document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
+  if ((k === "Enter" || k === " ") && e.target.closest?.("a")) return;   // a focused link opens, not advances
   if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(k)) { e.preventDefault(); next(); }
   else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(k)) { e.preventDefault(); prev(); }
   else if (k === "Home") show(0, 0);
@@ -277,7 +285,7 @@ document.addEventListener("keydown", (e) => {
   } else if (k === "n" || k === "N") window.open("notes.html", "deck-notes", "width=760,height=560");
   else if (k === "h" || k === "H") cycleHand();
 });
-document.addEventListener("click", (e) => { if (e.button === 0) next(); });
+document.addEventListener("click", (e) => { if (e.button === 0 && !e.target.closest("a")) next(); });
 document.addEventListener("contextmenu", (e) => { e.preventDefault(); prev(); });
 window.addEventListener("hashchange", () => show(...parseHash()));
 
