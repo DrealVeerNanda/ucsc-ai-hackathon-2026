@@ -248,6 +248,7 @@ class Guidance:
 # The interface main.py uses.
 
 _default: Guidance | None = None
+_logged_state: str | None = None
 
 
 def _get() -> Guidance:
@@ -266,9 +267,13 @@ def _get() -> Guidance:
 
 
 def update(scene: Scene) -> str:
+    global _logged_state
     tracing.begin_frame(scene.t)
     with tracing.span("guidance"):
         state = _get().update(scene)
+    if state != _logged_state:
+        _logged_state = state
+        tracing.event("state", state=state, target=_get().target)
     age_ms = (time.monotonic() - scene.t) * 1000      # only meaningful when scene.t is an arrival time
     tracing.put(state=state, **({"e2e_ms": round(age_ms, 3)} if 0 <= age_ms < 10000 else {}))
     return state

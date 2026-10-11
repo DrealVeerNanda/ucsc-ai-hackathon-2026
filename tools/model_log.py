@@ -15,34 +15,22 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+import tracing  # noqa: E402
+
 BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
-COLOUR = {"WHISPER": "\033[36m", "NEMOTRON": "\033[32m", "COSMOS": "\033[35m", "DETECTOR": "\033[33m", "LOAD": "\033[2m"}
+COLOUR = {"WHISPER": "\033[36m", "NEMOTRON": "\033[32m", "COSMOS": "\033[35m", "DETECTOR": "\033[33m", "LOAD": "\033[2m",
+          "SPOKEN": "\033[97m", "STATE": "\033[34m"}
 
 
 def line(e: dict) -> str | None:
-    """One trace event -> one readable line, or None for events that are not model calls."""
-    name, ms = e.get("name", ""), e.get("ms")
-    took = "" if ms is None else (f"{ms / 1000:5.2f} s" if ms >= 100 else f"{ms:4.0f} ms")
-    if name == "whisper":
-        who, what = "WHISPER", f'heard "{e.get("text", "")}"  ({e.get("audio_s", "?")} s of speech)'
-    elif name == "nemotron":
-        intent, target = e.get("intent", "pick"), e.get("target", "")
-        answer = {"pick": f"wants: {target}" if target else "wants: (nothing named)", "list": "asks what is there",
-                  "none": "not a request"}.get(intent, intent)
-        who, what = "NEMOTRON", f'"{e.get("text", "")}"  ->  {answer}'
-    elif name == "cosmos.list":
-        objs = e.get("objects") or []
-        who, what = "COSMOS", "looked at the camera  ->  " + (", ".join(objs) if objs else "nothing to pick up")
-    elif name == "cosmos.find":
-        who, what = "COSMOS", f'where is the {e.get("target", "?")}?  ->  ' + ("found, box returned" if e.get("found") else "not visible")
-    elif name == "detector.set_target":
-        who, what = "DETECTOR", f'now searching for "{e.get("target", "")}"'
-    elif name.startswith("load."):
-        who, what = "LOAD", f'{name[5:]} ({e.get("kind") or e.get("model") or ""}) ready'
-    else:
+    """One trace event -> one readable line, or None for events that are not worth showing."""
+    d = tracing.describe(e)
+    if d is None:
         return None
+    who, took, what = d
     stamp = time.strftime("%H:%M:%S", time.localtime(e.get("t", time.time())))
-    return f"{DIM}{stamp}{RESET}  {COLOUR[who]}{BOLD}{who:<9}{RESET} {took:>8}  {what}"
+    return f"{DIM}{stamp}{RESET}  {COLOUR.get(who, '')}{BOLD}{who:<9}{RESET} {took:>8}  {what}"
 
 
 def newest(directory: Path):

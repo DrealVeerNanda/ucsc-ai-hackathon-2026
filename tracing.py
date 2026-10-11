@@ -29,6 +29,7 @@ import json
 import os
 import threading
 import time
+from collections import deque
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -46,6 +47,8 @@ class Tracer:
         self._returned = None        # perf_counter when the loop came back asking for the next one
         self._n = 0
         self._meta = {}
+        self._recent = deque(maxlen=400)     # (number, event) for live views such as the dashboard's log
+        self._seq = 0
 
     # --- file ------------------------------------------------------------------
     def _write(self, record: dict):
@@ -124,7 +127,15 @@ class Tracer:
         rec = {"type": "event", "t": round(time.time(), 4), "name": name, **fields}
         if ms is not None:
             rec["ms"] = round(ms, 3)
+        with self._lock:
+            self._seq += 1
+            self._recent.append((self._seq, rec))
         self._write(rec)
+
+    def events_since(self, after: int = 0) -> tuple[list, int]:
+        """(events newer than number `after`, the number to pass next time)."""
+        with self._lock:
+            return [e for n, e in self._recent if n > after], self._seq
 
     @contextmanager
     def timed(self, name: str, **fields):
@@ -142,6 +153,35 @@ class Tracer:
             if self._f is not None:
                 self._f.close()
                 self._f = None
+
+
+def describe(e: dict):
+    """A trace event as (who, how long, what happened) in plain words, or None if it is not
+    something a person watching would care about. Used by the dashboard's log and by
+    tools/model_log.py, so both say the same thing."""
+    name, ms = e.get("name", ""), e.get("ms")
+    took = "" if ms is None else (f"{ms / 1000:.2f} s" if ms >= 100 else f"{ms:.0f} ms")
+    if name == "whisper":
+        return "WHISPER", took, f'heard "{e.get("text", "")}"  ({e.get("audio_s", "?")} s of speech)'
+    if name == "nemotron":
+        intent, target = e.get("intent", "pick"), e.get("target", "")
+        answer = {"pick": f"wants: {target}" if target else "wants: (nothing named)", "list": "asks what is there",
+                  "none": "not a request"}.get(intent, intent)
+        return "NEMOTRON", took, f'"{e.get("text", "")}"  ->  {answer}'
+    if name == "cosmos.list":
+        objs = e.get("objects") or []
+        return "COSMOS", took, "looked at the camera  ->  " + (", ".join(objs) if objs else "nothing to pick up")
+    if name == "cosmos.find":
+        return "COSMOS", took, f'where is the {e.get("target", "?")}?  ->  ' + ("found, box returned" if e.get("found") else "not visible")
+    if name == "detector.set_target":
+        return "DETECTOR", took, f'now searching for "{e.get("target", "")}"'
+    if name == "say":
+        return "SPOKEN", "", f'"{e.get("text", "")}"'
+    if name == "state":
+        return "STATE", "", str(e.get("state", "")).replace("_", " ") + (f'  ({e["target"]})' if e.get("target") else "")
+    if name.startswith("load."):
+        return "LOAD", took, f'{name[5:]} ({e.get("kind") or e.get("model") or ""}) ready'
+    return None
 
 
 _default = Tracer()
@@ -179,6 +219,10 @@ def timed(name: str, **fields):
 
 def meta(**fields):
     _default.meta(**fields)
+
+
+def events_since(after: int = 0) -> tuple[list, int]:
+    return _default.events_since(after)
 
 
 def close():

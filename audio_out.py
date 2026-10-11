@@ -242,6 +242,7 @@ class Mixer:
             if clip is None:
                 print(f"[audio] no clip audio/{name}.wav", file=sys.stderr)
         self.log.append(text)
+        tracing.event("say", text=text)
         if clip is None:
             self._clip = None
         else:
@@ -354,12 +355,14 @@ class PrintSink:
     def say(self, name: str, now: bool = False):
         self.spoken.append(name)
         self.log.append(CLIP_TEXT.get(name, name.replace("_", " ")))
+        tracing.event("say", text=self.log[-1])
         if not self.quiet:
             print(f"[audio] says: {name.replace('_', ' ')}")
 
     def speak(self, text: str, now: bool = False):
         self.spoken.append(text)
         self.log.append(text)
+        tracing.event("say", text=text)
         if not self.quiet:
             print(f"[audio] says: {text}")
 

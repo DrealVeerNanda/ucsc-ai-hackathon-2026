@@ -259,3 +259,30 @@ def test_dark_screen_is_reported_not_measured():
     cam = _DelayedCamera(bright=45.0)                                  # the phone is not looking at the screen
     delays, contrast, _ = mcl.run(cam, cam.show, flips_wanted=3, settle_s=0.2)
     assert delays == [] and contrast < 25
+
+
+# --- the live log -------------------------------------------------------------
+
+def test_recent_events_can_be_read_back_in_order(tmp_path):
+    tr = Tracer(tmp_path, enabled=True)
+    tr.event("say", text="Looking")
+    tr.event("nemotron", 310, text="I am thirsty", intent="pick", target="water bottle")
+    events, nxt = tr.events_since(0)
+    assert [e["name"] for e in events] == ["say", "nemotron"] and nxt == 2
+    tr.event("state", state="waiting_hand", target="water bottle")
+    events, nxt = tr.events_since(nxt)
+    assert [e["name"] for e in events] == ["state"] and nxt == 3 and tr.events_since(3) == ([], 3)
+    tr.close()
+
+
+def test_log_lines_read_like_sentences():
+    d = tracing.describe
+    assert d({"name": "say", "text": "left"}) == ("SPOKEN", "", '"left"')
+    assert d({"name": "state", "state": "waiting_hand", "target": "mug"}) == ("STATE", "", "waiting hand  (mug)")
+    assert d({"name": "nemotron", "ms": 310, "text": "I am thirsty", "intent": "pick", "target": "water bottle"}) == \
+        ("NEMOTRON", "0.31 s", '"I am thirsty"  ->  wants: water bottle')
+    assert d({"name": "nemotron", "ms": 250, "text": "what is here", "intent": "list", "target": ""})[2].endswith("asks what is there")
+    assert d({"name": "cosmos.list", "ms": 1890, "objects": ["mug", "phone"]}) == ("COSMOS", "1.89 s", "looked at the camera  ->  mug, phone")
+    assert d({"name": "cosmos.find", "ms": 1700, "target": "can", "found": False})[2].endswith("not visible")
+    assert d({"name": "whisper", "ms": 42, "text": "find my mug", "audio_s": 1.2})[1] == "42 ms"
+    assert d({"name": "audio", "underruns": 0}) is None          # housekeeping is not shown
