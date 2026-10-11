@@ -302,22 +302,23 @@ def typed() -> str:
         return ""
 
 
-def load_whisper(model: str = "small.en"):
+def load_whisper(model: str | None = None):
     """Whisper as a function: audio (mono float32 at 16 kHz) -> text. On the GPU through PyTorch
     when there is one (about 0.05 s a request on the GX10). Otherwise faster-whisper on the CPU
     (about 1.2 s): its build for the GX10's processor has no GPU support. VOICE_STT=cpu or gpu
     forces one. Either way the stretches without speech are cut out first, because Whisper
-    writes sentences of its own when handed silence."""
+    writes sentences of its own when handed silence. With no model named it is large-v3 on the
+    GPU (12 of 12 test clips right, 0.18 s) and small.en on the CPU."""
     want = os.environ.get("VOICE_STT", "auto")
     if want != "cpu":
         try:
-            return _gpu_whisper(model)
+            return _gpu_whisper(model or "large-v3")
         except Exception as e:
             if want == "gpu":
                 raise
             print(f"[voice] Whisper on the CPU ({e.__class__.__name__}: {e})", file=sys.stderr)
     from faster_whisper import WhisperModel
-    whisper = WhisperModel(model, device="cpu", compute_type="int8")
+    whisper = WhisperModel(model or "small.en", device="cpu", compute_type="int8")
 
     def hear(audio: np.ndarray) -> str:
         segments, _ = whisper.transcribe(audio, language="en", beam_size=1, vad_filter=True, hotwords=expected_words())
@@ -367,7 +368,7 @@ def _gpu_whisper(model: str):
 class Listener:
     """Records between two presses of Enter and transcribes with Whisper."""
 
-    def __init__(self, model: str = "small.en", device=None):
+    def __init__(self, model: str | None = None, device=None):
         import sounddevice as sd
 
         self.sd = sd
@@ -591,7 +592,7 @@ class WebMic:
     where Whisper transcribes it. Browsers only allow the microphone over HTTPS, so the page is
     served with a certificate made on the spot; the browser asks once whether to trust it."""
 
-    def __init__(self, port: int = 8644, transcribe=None, model: str = "small.en", cert_dir: str | Path = "out/voice_cert",
+    def __init__(self, port: int = 8644, transcribe=None, model: str | None = None, cert_dir: str | Path = "out/voice_cert",
                  typed: bool = True, headset=None, hear=None):
         self.port = port
         self.status = {"heard": "", "target": ""}
@@ -807,7 +808,7 @@ def listen_for_target() -> str:
     global _listener, _mode
     if _mode is None:
         want = os.environ.get("VOICE_MODE", "auto")
-        model = os.environ.get("VOICE_MODEL", "small.en")
+        model = os.environ.get("VOICE_MODEL") or None
         _mode = "type"
         why = "none is plugged in or paired"
         if want == "speech" or (want == "auto" and (os.environ.get("VOICE_DEVICE") or has_microphone())):

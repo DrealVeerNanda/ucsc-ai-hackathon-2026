@@ -124,11 +124,11 @@ def main():
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--seconds", type=float, default=4.0, help="how long to record after the beep")
     ap.add_argument("--silent", action="store_true", help="no prompts and no beep")
-    ap.add_argument("--model", default="small.en")
+    ap.add_argument("--model", default=None, help="Whisper size; the live run's choice if not given")
     a = ap.parse_args()
 
     whisper = voice.load_whisper(a.model)                 # the same one the live run uses
-    print(f"whisper {a.model} on the {whisper.on.upper()}", flush=True)
+    print(f"whisper on the {whisper.on.upper()}", flush=True)
     out = ROOT / "out"
     out.mkdir(exist_ok=True)
     report = {"microphones_before": sources(), "rounds": []}
