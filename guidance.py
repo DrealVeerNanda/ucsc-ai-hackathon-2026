@@ -133,6 +133,8 @@ class GuidanceConfig:
     lost_s: float = 1.0          # hand missing for longer than this: back to waiting_hand
     remind_s: float = 6.0        # repeat "show me your hand" this often while waiting
     cant_see_s: float = 8.0      # searching for this long: say "I can't see that"
+    far_hold_s: float = 1.0      # the object has been out of arm's reach this long: say so...
+    far_repeat_s: float = 8.0    # ...and again this often while it stays there
     words: bool = False          # fallback: spoken single words instead of tones
     hybrid: bool = False         # say one direction, beep along that axis, chime, next axis
     step_m: float = 0.025        # axis is aligned within 2.5 cm
@@ -208,6 +210,7 @@ class Guidance:
         self._had_object = False
         self._search_t = now
         self._said_cant_see = False
+        self._far_t, self._far_said_t = None, -1e9
         self._object_gone_t = None
         self._last_hand_t = None
         self._unseen_t = None        # since when the hand has been out of sight
@@ -707,6 +710,20 @@ class Guidance:
         self._tone(self._silent)
         self.sink.say("looking", now=True)
 
+    def _too_far(self, scene: Scene, now: float):
+        """No direction brings a hand to something farther away than the arm is long: in one
+        live reach the bottle stood 80 cm off and "forward" was said seven times. Say what the
+        wearer can do about it, once it has been so for a second, and again now and then."""
+        cfg = self.cfg
+        if not getattr(scene, "object_out_of_reach", False):
+            self._far_t = None
+            return
+        if self._far_t is None:
+            self._far_t = now
+        if now - self._far_t >= cfg.far_hold_s and now - self._far_said_t >= cfg.far_repeat_s and not self.sink.saying():
+            self._far_said_t = now
+            self.sink.speak("It is too far to reach. Move closer.")
+
     def update(self, scene: Scene, now: float | None = None) -> str:
         now = time.monotonic() if now is None else now
         cfg = self.cfg
@@ -740,6 +757,7 @@ class Guidance:
         if not self._had_object:
             self._had_object = True
             self.sink.say("found_it", now=True)
+        self._too_far(scene, now)
 
         patient = cfg.grab_option in PATIENT
         if scene.hand_xyz is None:
