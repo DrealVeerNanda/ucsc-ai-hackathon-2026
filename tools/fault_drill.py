@@ -216,7 +216,15 @@ class Rig:
             if lists and now - lists[-1]["t"] < 3.0 and (not said or said[-1]["t"] < lists[-1]["t"]):
                 time.sleep(0.2)                       # Cosmos has answered: the sentence is about to start
                 continue
-            if not said or now >= said[-1]["t"] + 0.8 + len(said[-1].get("text", "")) / 12.0:
+            if not said:
+                return
+            text = said[-1].get("text", "")
+            done = said[-1]["t"] + 0.8 + len(text) / 12.0
+            # After it has answered "what's on the table" it looks and lists once more, unasked
+            # (see the report): give that second look time to show up in the trace.
+            if text.startswith(("I can see", "I don't see")) and not text.endswith(("What do you want to grab?", "What do you want?")):
+                done += 4.5
+            if now >= done:
                 return
             time.sleep(0.2)
 
@@ -283,7 +291,9 @@ class Rig:
         """Back to a known state: everything normal, a target set, frames flowing."""
         if not self.alive():
             return False
-        self.camera(**soak.DEFAULT_CONTROL)
+        # From the start of the first recording (live_2025: four minutes with no reach in it), so
+        # that a grab does not send the pipeline off to wait for a request in the middle of a drill.
+        self.camera(**dict(soak.DEFAULT_CONTROL, restart=time.time()))
         for _ in range(3):                            # a request that lands while it is speaking is asked for again
             try:
                 self.ask(target)
@@ -599,7 +609,8 @@ def _say(rig: Rig, wav: bytes) -> float:
 
 def _measure(rig: Rig, wav: bytes | None) -> dict:
     """Frame rate, loop time and detector time over 8 s of undisturbed loop, then how long
-    Whisper, Cosmos and Nemotron take for one request each."""
+    Whisper, Nemotron and Cosmos take for one request each."""
+    rig.settle("water bottle")
     t0 = t = time.time()
     time.sleep(8.0)
     frames = rig.window(t, t + 8.0)
@@ -607,13 +618,15 @@ def _measure(rig: Rig, wav: bytes | None) -> dict:
     if wav:
         rig.quiet()
         _say(rig, wav)                                # Whisper, then Nemotron ("find my water bottle" is four words)
-        time.sleep(4.0)
-    rig.ask("what's on the table")                    # Cosmos
-    rig.wait(soak.event("cosmos.list"), 20.0, t)
-    time.sleep(1.0)
-    rig.ask("where is my water bottle")               # Nemotron
-    rig.wait(soak.event("nemotron", text="where is my water bottle"), 8.0, t)
-    time.sleep(1.0)
+        rig.wait(soak.event("whisper"), 15.0, t)
+        time.sleep(2.5)
+    t1 = rig.ask("where is my water bottle")          # Nemotron
+    rig.wait(soak.event("nemotron", text="where is my water bottle"), 8.0, t1)
+    t2 = rig.ask("what's on the table")               # Cosmos
+    listed = rig.wait(soak.event("cosmos.list"), 30.0, t2)
+    if listed is not None:
+        rig.wait(soak.event("say"), 3.0, listed["t"])
+    rig.settle("water bottle")
     events = rig.events(t)
     st = soak.frame_stats(frames)
     det = [f["spans"].get("perception.detector") for f in frames if f.get("spans", {}).get("perception.detector") is not None]
@@ -625,8 +638,11 @@ def _measure(rig: Rig, wav: bytes | None) -> dict:
     return {"fps": st.get("fps", 0.0), "loop_p50": st.get("loop_p50"), "loop_p95": st.get("loop_p95"), "loop_max": st.get("loop_max"),
             "detector_p50": float(np.median(det)) if det else None, "hand_p50": float(np.median(hand)) if hand else None,
             "whisper_ms": ms("whisper"), "nemotron_ms": ms("nemotron"), "cosmos_list_ms": ms("cosmos.list"),
-            "nemotron_calls": len([e for e in events if e["name"] == "nemotron"]),
             "sound_gaps": sum(e.get("underruns", 0) for e in rig.events(t0, "audio"))}
+
+
+def _gave_up_on_nemotron(rig: Rig) -> int:
+    return rig.log().count("Nemotron is not answering")
 
 
 def _fmt(m: dict) -> str:
@@ -647,29 +663,26 @@ GPU_HOG = ("import torch,time,sys\n"
 
 @shared
 def gpu_pressure(rig: Rig) -> Result:
-    """Another program keeps the GPU busy for 25 s (a teammate's job did this: 26 fps fell to 10)."""
+    """Another program keeps the GPU busy for a minute (a teammate's job did this: 26 fps fell to 10)."""
     wav = _speech_wav()
-    rig.ask("water bottle")
-    time.sleep(3.0)
     before = _measure(rig, wav)
-    rig.ask("water bottle")
-    hogs = [subprocess.Popen([sys.executable, "-c", GPU_HOG, "60"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    gave_up = _gave_up_on_nemotron(rig)
+    hogs = [subprocess.Popen([sys.executable, "-c", GPU_HOG, "120"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             for _ in range(2)]
     try:
-        time.sleep(6.0)                               # torch needs a moment to start
+        time.sleep(8.0)                               # torch needs a moment to start
         during = _measure(rig, wav)
     finally:
         for h in hogs:
             h.kill()
             h.wait()
-    rig.ask("water bottle")
     back = rig.wait_fps(0.8 * before["fps"], 30.0)
-    fell_back = during["nemotron_calls"] < before["nemotron_calls"]
+    fell_back = _gave_up_on_nemotron(rig) > gave_up
     t2 = rig.ask("I am thirsty")
     still = rig.wait(soak.event("nemotron"), 10.0, t2) is not None
     ok = rig.alive() and back is not None and still
     return Result("gpu_pressure", ok, back, ok, f"before: {_fmt(before)}. With two programs hammering the GPU: {_fmt(during)}. "
-                  + ("A Nemotron request timed out and the simple rule answered instead. " if fell_back else "Nothing timed out. ")
+                  + ("A Nemotron request timed out (limit 4 s) and the simple rule answered instead. " if fell_back else "Nothing timed out. ")
                   + ("Afterwards requests still go through Nemotron" if still else "Afterwards requests NO LONGER go through Nemotron")
                   + (f"; full frame rate {back:.1f} s after the load ended" if back is not None else "; the frame rate did not come back"),
                   dirty=not still)
@@ -677,15 +690,13 @@ def gpu_pressure(rig: Rig) -> Result:
 
 @shared
 def models_both_busy(rig: Rig) -> Result:
-    """Nemotron and Cosmos are both kept busy with other people's questions for 20 s."""
+    """Nemotron and Cosmos are both kept busy with other people's questions for a minute."""
     wav = _speech_wav()
-    rig.ask("water bottle")
-    time.sleep(3.0)
     before = _measure(rig, wav)
-    rig.ask("water bottle")
+    gave_up = _gave_up_on_nemotron(rig)
     halt = threading.Event()
     text = {"model": "x", "max_tokens": 200, "messages": [{"role": "user", "content": "Write a long story about a table."}]}
-    threads = _load_server(NEMOTRON, text, 45.0, 3, halt) + _load_server(COSMOS, text, 45.0, 3, halt)
+    threads = _load_server(NEMOTRON, text, 120.0, 3, halt) + _load_server(COSMOS, text, 120.0, 3, halt)
     try:
         time.sleep(1.0)
         during = _measure(rig, wav)
@@ -693,9 +704,9 @@ def models_both_busy(rig: Rig) -> Result:
         halt.set()
         for th in threads:
             th.join(70)
+    fell_back = _gave_up_on_nemotron(rig) > gave_up
     t2 = rig.ask("I am thirsty")
     still = rig.wait(soak.event("nemotron"), 15.0, t2) is not None
-    fell_back = during["nemotron_calls"] < before["nemotron_calls"]
     ok = rig.alive() and still and not fell_back
     return Result("models_both_busy", ok, None, still, f"before: {_fmt(before)}. Both servers busy: {_fmt(during)}. "
                   + ("A Nemotron request timed out (limit 4 s) and the simple rule answered instead. " if fell_back else "Nothing timed out. ")

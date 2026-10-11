@@ -252,6 +252,7 @@ def run_camera(folders: list, port: int, control: str | None, host: str = "127.0
         if conn is None:
             try:
                 conn = socket.create_connection((host, port), timeout=3)
+                conn.settimeout(30)                   # a pipeline frozen for a few seconds is not a lost connection
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 print(f"[camera] connected to {host}:{port}", flush=True)
             except OSError:
