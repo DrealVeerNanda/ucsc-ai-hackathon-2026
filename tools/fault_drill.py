@@ -921,13 +921,17 @@ def voice_malformed(rig: Rig) -> Result:
         pass
     if not notes and soak.voice_status(rig.ports["voice"], 4.0) is None:
         notes.append("AFTER plain HTTP on the HTTPS port THE VOICE PAGE STOPPED ANSWERING")
-    t1 = time.time()
-    during = len(rig.window(t, t1)) / max(1e-6, t1 - t)
+    time.sleep(1.5)
+    taken = [e.get("text") for e in rig.events(t, "nemotron")] + [s for s in rig.said(t) if s == "Looking"]
+    stopped = len(rig.window(time.time() - 1.5, time.time(), 1.0)) == 0
     tracebacks = rig.log().count("Traceback") - errors0
-    ok = rig.alive() and during >= 0.8 * base and not notes
-    return Result("voice_malformed", ok, 0.0 if ok else None, ok,
-                  f"{len(BAD_VOICE) + 1} broken requests: loop {during:.1f} fps (before: {base:.0f}), {tracebacks} tracebacks printed. "
-                  + "; ".join(notes))
+    back = rig.settle()
+    ok = rig.alive() and not notes and not taken and not stopped and back
+    return Result("voice_malformed", ok, 0.0 if ok else None, back,
+                  f"{len(BAD_VOICE) + 1} broken requests (frame rate before: {base:.0f}): {tracebacks} tracebacks printed"
+                  + (f"; one of them was taken for a spoken request ({taken[:2]})" if taken else "")
+                  + ("; THE REACH IN PROGRESS WAS STOPPED and it waits for a new request" if stopped else "")
+                  + ("" if back else "; it took no request afterwards") + ("; " + "; ".join(notes) if notes else ""))
 
 
 @shared
