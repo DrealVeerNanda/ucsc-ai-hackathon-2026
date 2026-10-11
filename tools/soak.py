@@ -102,6 +102,9 @@ def silent_sink(mode: str = "auto", device=None, cfg=None):
 def run_pipeline(argv: list[str]):
     """main.py, in this process, with the sound going nowhere."""
     os.chdir(ROOT)
+    # When the soak itself was started with nohup or &, Ctrl-C is ignored all the way down, and
+    # the run could only be killed. (What main.py does by itself in that case is its own drill.)
+    signal.signal(signal.SIGINT, signal.default_int_handler)
     if os.environ.get("SOAK_FILE_LIMIT_KB"):          # a full disk, without filling one: no file may grow past this
         import resource
         limit = int(os.environ["SOAK_FILE_LIMIT_KB"]) * 1024
@@ -296,6 +299,7 @@ def pipeline_env(out: Path, dash_port: int, voice_port: int, source: str, extra:
     env.update({"STREAM_SOURCE": source, "GUIDANCE_AUDIO": "off",      # off: if the silent card is ever not
                 "VOICE_MODE": "web", "VOICE_PORT": str(voice_port),     # put in, it prints rather than plays
                 "DASHBOARD_PORT": str(dash_port), "TRACE_DIR": str(out / "logs"), "PYTHONUNBUFFERED": "1"})
+    env.setdefault("GUIDANCE_MODE", "3")              # the option the live runs use; without it main.py starts in "words"
     env.update(extra or {})
     return {k: v for k, v in env.items() if v is not None}
 

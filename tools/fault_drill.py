@@ -204,8 +204,26 @@ class Rig:
         self.records += new
         return new
 
-    def ask(self, text) -> float:
-        """Type a request. Returns the time it was sent (epoch seconds)."""
+    def quiet(self, timeout_s: float = 30.0):
+        """Wait until it has finished what it is saying. A request typed while it speaks a
+        sentence of its own is taken and then asked for again (see request_in_every_state), and
+        a drill about something else must not trip over that."""
+        end = time.time() + timeout_s
+        while time.time() < end:
+            said, lists = self.events(0, "say"), self.events(0, "cosmos.list")
+            now = time.time()
+            if lists and now - lists[-1]["t"] < 3.0 and (not said or said[-1]["t"] < lists[-1]["t"]):
+                time.sleep(0.2)                       # Cosmos has answered: the sentence is about to start
+                continue
+            if not said or now >= said[-1]["t"] + 0.8 + len(said[-1].get("text", "")) / 12.0:
+                return
+            time.sleep(0.2)
+
+    def ask(self, text, interrupt: bool = False) -> float:
+        """Type a request, once it has stopped speaking unless interrupt=True. Returns the time
+        it was sent (epoch seconds)."""
+        if not interrupt:
+            self.quiet()
         t = time.time()
         soak.post_text(self.ports["voice"], text)
         return t
@@ -582,6 +600,7 @@ def _measure(rig: Rig, wav: bytes | None) -> dict:
     frames = rig.window(t, t + 8.0)
     t = time.time()
     if wav:
+        rig.quiet()
         _say(rig, wav)                                # Whisper, then Nemotron ("find my water bottle" is four words)
         time.sleep(4.0)
     rig.ask("what's on the table")                    # Cosmos
@@ -1008,7 +1027,7 @@ def _switch_in_state(rig: Rig, want_state: str, setup, new_target: str, timeout_
         got = rig.wait(soak.event("state", state=want_state), timeout_s, t0)
         if got is None:
             return f"{want_state}: never reached that state in {timeout_s:.0f} s", None
-    t = rig.ask(new_target)
+    t = rig.ask(new_target, interrupt=True)
     looking = rig.wait(soak.event("detector.set_target", target=new_target), 25.0, t)
     if looking is None:
         return f"{want_state}: the new request was NOT taken up within 25 s", False
@@ -1503,6 +1522,84 @@ print("RESULT", "grab" in states, left)
                                                      f"it left 'grab' after {left:.1f} s and would ask for the next object"))
 
 
+@own
+def earbuds_switch_hangs(ctx) -> Result:
+    """Switching the earbuds to headset mode takes longer than its 3 s limit, once."""
+    code = r"""
+import os, sys, subprocess, time
+os.environ["GUIDANCE_AUDIO"] = "off"; os.environ["TRACE"] = "0"; os.environ["VOICE_AUTO_LIST"] = "0"
+sys.path.insert(0, sys.argv[1])
+import numpy as np, audio_out
+audio_out.open_sink = lambda *a, **k: audio_out.PrintSink(quiet=True)
+import voice
+real, calls = subprocess.run, [0]
+
+def run(cmd, *a, **k):
+    if list(cmd[:2]) == ["wpctl", "set-profile"]:
+        calls[0] += 1
+        if calls[0] == 1:
+            raise subprocess.TimeoutExpired(cmd, 3)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    return real(cmd, *a, **k)
+
+voice.subprocess.run = run
+voice.time.sleep = lambda s: None
+buds = voice.Headset(1, 2, 3, "fake earbuds")
+buds.record = lambda should_stop=None: np.ones(16000, np.float32) * 0.1
+mic = voice.WebMic(int(sys.argv[2]), transcribe=lambda data: "", headset=buds, hear=lambda audio: "water bottle",
+                   cert_dir=sys.argv[3], typed=False)
+try:
+    print("RESULT heard", repr(mic.listen()), flush=True)
+except BaseException as e:
+    print("RESULT raised", e.__class__.__name__, flush=True)
+os._exit(0)
+"""
+    out = subprocess.run([sys.executable, "-c", code, str(ROOT), str(ctx["ports2"]["voice"]), str(ctx["out"] / "mic_cert")],
+                         capture_output=True, text=True, timeout=60, cwd=ROOT)
+    line = next((ln for ln in out.stdout.splitlines() if ln.startswith("RESULT")), "RESULT ? " + _tail(out.stderr, 1))
+    ok = "heard 'water bottle'" in line
+    return Result("earbuds_switch_hangs", ok, None, ok,
+                  ("it carried on and heard the wearer" if ok else
+                   f"listen_for_target() {line[7:]}: main.py has nothing to catch it, so THE WHOLE RUN ENDS with a traceback"))
+
+
+@own
+def stop_when_started_in_background(ctx) -> Result:
+    """main.py is started by a script with `&` (as a launcher might), then sent Ctrl-C the way
+    tools/stop_live.sh does."""
+    out = ctx["out"] / "stop_when_started_in_background"
+    out.mkdir(parents=True, exist_ok=True)
+    script = (f'cd "{ROOT}" && "{sys.executable}" main.py --ui none --log-dir "{out}" > "{out}/main.log" 2>&1 & '
+              f'echo $! > "{out}/pid"; wait')
+    env = dict(os.environ, TRACE="0", GUIDANCE_AUDIO="off")
+    shell = subprocess.Popen(["bash", "-c", script], env=env, stdin=subprocess.DEVNULL, start_new_session=True)
+    try:
+        time.sleep(6.0)
+        pid = int((out / "pid").read_text())
+        os.kill(pid, signal.SIGINT)
+        t = time.monotonic()
+        stopped = None
+        while time.monotonic() - t < 10 and stopped is None:
+            try:
+                os.kill(pid, 0)
+                time.sleep(0.2)
+            except OSError:
+                stopped = time.monotonic() - t
+        if stopped is None:
+            os.kill(pid, signal.SIGKILL)
+    finally:
+        try:
+            shell.wait(10)
+        except subprocess.TimeoutExpired:
+            shell.kill()
+    summary = any(out.glob("*_summary.txt"))
+    ok = stopped is not None and summary
+    return Result("stop_when_started_in_background", ok, None, None,
+                  (f"Ctrl-C stopped it in {stopped:.1f} s" + ("" if summary else ", but without its closing summary") if stopped is not None else
+                   "Ctrl-C DID NOTHING for 10 s: a shell that starts a program with & and no job control makes it ignore "
+                   "that signal, and Python then never sees it. tools/stop_live.sh would wait its two minutes and give up"))
+
+
 # ---------------------------------------------------------------------------
 
 def run_drills(names: list[str], out: Path, base: int, recordings: list, slow: bool) -> list[Result]:
@@ -1580,11 +1677,11 @@ def verdict(r: Result) -> str:
 
 
 def table(results: list[Result]) -> str:
-    lines = [f"{'drill':<28}{'':<6}{'recovery':>9}  {'by itself':<10} what happened"]
+    lines = [f"{'drill':<33}{'':<6}{'recovery':>9}  {'by itself':<10} what happened"]
     for r in results:
         rec = "-" if r.recovery_s is None else f"{r.recovery_s:.1f} s"
         own_ = "-" if r.by_itself is None else "yes" if r.by_itself else "NO"
-        lines.append(f"{r.name:<28}{verdict(r):<6}{rec:>9}  {own_:<10} {r.detail}")
+        lines.append(f"{r.name:<33}{verdict(r):<6}{rec:>9}  {own_:<10} {r.detail}")
     n = sum(r.ok is False for r in results)
     lines.append(f"\n{len(results)} drills: {sum(r.ok is True for r in results)} passed, {n} failed, "
                  f"{sum(r.ok is None for r in results)} for information")
@@ -1610,6 +1707,10 @@ if __name__ == "__main__":
         sys.exit(f"[drill] no such drill: {', '.join(unknown)} (see --list)")
     chosen = a.drills or list(everything)
     out_dir = Path(a.out or ROOT / "out" / "drills" / time.strftime("%Y%m%d_%H%M%S"))
+    # Started with nohup or & this would ignore Ctrl-C, and a plain kill would leave the pipeline
+    # it started running. Both now stop it and clean up.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
     done = run_drills(chosen, out_dir, a.base, a.recordings, a.slow or bool(a.drills))
     print("\n" + table(done))
     sys.exit(1 if any(r.ok is False for r in done) else 0)

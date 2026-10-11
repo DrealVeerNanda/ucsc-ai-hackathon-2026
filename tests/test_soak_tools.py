@@ -352,6 +352,7 @@ def test_voice_fallback_is_what_the_nemotron_drills_expect(upstream, monkeypatch
     import voice
     proxy = fault_drill.ModelProxy(free_port(), upstream)
     monkeypatch.setattr(voice, "_llm_ok", None)
+    monkeypatch.setattr(voice, "_llm_retry_at", 0.0, raising=False)     # whichever way voice.py remembers a failure
     monkeypatch.setattr(voice, "last_objects", [])
     monkeypatch.setenv("VOICE_LLM_URL", f"http://127.0.0.1:{proxy.port}/v1")
     try:
