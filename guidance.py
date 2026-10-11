@@ -156,6 +156,7 @@ class GuidanceConfig:
     reverse_s: float = 1.5       # "left" this soon after "right" is jitter, unless...
     reverse_m: float = 0.08      # ...the hand is this far past the line: then it really overshot
     progress_m: float = 0.03     # a hand this much nearer than when it was told is following: no reminder
+    rest_s: float = 0.3          # "numbers": the hand has finished its move when it has been still this long
     stall_s: float = 4.0         # told "forward" this long with the hand no deeper: the object is out of reach,
     stall_m: float = 0.12        # ...if it is still this much further away. Say "lean forward" instead
     beam_m: float = 0.12         # "beam": drift up to this far is corrected with ticks, beyond it with words
@@ -242,6 +243,7 @@ class Guidance:
         self._word_times = {}        # direction word -> when it was last spoken
         self._stall = None           # (time, hand depth) since which "forward" has brought no progress
         self._moved = False          # has the hand moved since the last measured instruction?
+        self._still_t = None         # ...and since when has it been holding still
         self._on_beam = False
         self._fine = False
         self._smooth = None          # (time, value): the distance behind the note, without its jitter
@@ -416,8 +418,10 @@ class Guidance:
         self._tone(self._silent)
         if self._speed is not None and self._speed >= cfg.still_mps + 0.02:
             self._moved = True
-        rested = self._moved and self._vel is None
-        if self._phrase is None or rested or now - self._phrase_t >= cfg.word_repeat_s:
+        self._still_t = (self._still_t if self._still_t is not None else now) if self._vel is None else None
+        rested = self._moved and self._still_t is not None and now - self._still_t >= cfg.rest_s
+        # The reminder counts from the end of the phrase: a measured pair takes a second and a half to say.
+        if self._phrase is None or rested or now - max(self._phrase_t, self._heard_t) >= cfg.word_repeat_s:
             if phrase == self._phrase:
                 self._phrase = None                      # the same words after a move are news: it fell short
             self._speak(phrase, now, lead)
@@ -772,7 +776,7 @@ class Guidance:
         zone = self._zone(scene, err)
         trusted = self._trust(scene, hand, err, now)
         arrived = self._arrived(zone, trusted, now)
-        vel = self._vel
+        vel, measured = self._vel, err
         if now - self._doubt_t < cfg.doubt_s and self._depth is not None and now - self._depth[0] < 1.0:
             # A depth that has just jumped is not steered by either: "back" for a hand that
             # never moved is worse than saying nothing new for half a second.
@@ -781,7 +785,7 @@ class Guidance:
         else:
             self._depth = (now, float(err[2]))
         lead = err if vel is None else err - vel * cfg.lead_s
-        self.trace = {"err": [int(round(1000 * v)) for v in err], "lead": [int(round(1000 * v)) for v in lead],
+        self.trace = {"err": [int(round(1000 * v)) for v in measured], "lead": [int(round(1000 * v)) for v in lead],
                       "zone": round(zone, 2), "trusted": int(trusted),
                       "near_s": None if self._near_t is None else round(now - self._near_t, 2),
                       "speed": None if self._speed is None else round(self._speed, 2)}
@@ -907,7 +911,8 @@ def update(scene: Scene) -> str:
         tracing.event("state", state=state, target=g.target, option=g.cfg.option, grab_option=g.cfg.grab_option)
     age_ms = (time.monotonic() - scene.t) * 1000      # only meaningful when scene.t is an arrival time
     # What a run needs afterwards to see why "Grab" came when it did: where the hand had to go
-    # (err, and lead: the same judged from where the moving hand will be), in millimetres, how far
+    # (err as measured, and lead: what was steered by, judged from where the moving hand will be
+    # and without a depth that has just jumped), in millimetres, how far
     # it was from grabbing distance (zone: under 1 is inside), whether that frame was believed
     # (trusted), for how long it has been inside (near_s), its speed across the view, which axes
     # were lined up (1 sideways, 2 height, 3 both), and the options.

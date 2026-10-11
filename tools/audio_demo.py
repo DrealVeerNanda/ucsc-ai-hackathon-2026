@@ -192,6 +192,7 @@ class Wearer:
         self.went = np.zeros(3)                # the way it was last sent on each axis
         self.probe = None                      # for the notes that only say warmer or colder
         self.done = False
+        self.ticking = False                   # moving because of ticks rather than words
 
     def hear(self, t: float, text: str, ends: float):
         """A word is understood when it ends, a chime as soon as it starts."""
@@ -232,6 +233,8 @@ class Wearer:
         pan, freq, rate, mode = tone[:4]
         base = ToneConfig().base_hz
         if mode == "silent":
+            if self.ticking:                                         # the ticks stopped: back on the beam
+                self.v[:2], self.ticking = 0.0, False
             return
         if mode == "beep" and option in ("steps", "combined_beeps", "clock"):
             moving = float(np.linalg.norm(self.v))                   # faster beeps: nearly there, slow down
@@ -246,7 +249,8 @@ class Wearer:
             if abs(pan) < 0.08 and abs(up) < 0.04:
                 self.v[2] = self.PUSH
         elif option == "beam" and mode == "beep":
-            self.v = np.array([0.5 * self.SPEED * np.sign(pan), -0.5 * self.SPEED * np.sign(np.log2(freq / base)), 0.0])
+            self.v[:2] = 0.5 * self.SPEED * np.sign(pan), -0.5 * self.SPEED * np.sign(np.log2(freq / base))
+            self.ticking = True
         elif option == "detector" and mode == "beep":
             self.v = np.array([0.0, 0.0, self.PUSH])
         elif mode == "steady":
