@@ -507,6 +507,7 @@ class WebMic:
         self._requests: queue.Queue = queue.Queue()
         self._waiting = False
         self.headset, self._hear = headset, hear          # earbuds as the microphone; audio -> text
+        self._find_headset = transcribe is None           # keep looking: earbuds may connect after the start
         if transcribe is None:
             from faster_whisper import WhisperModel
             with tracing.timed("load.whisper", model=model):
@@ -525,9 +526,7 @@ class WebMic:
             def transcribe(data: bytes) -> str:
                 return hear(decode_recording(data))
             self._hear = hear
-            self.headset = Headset.find()
-            if self.headset is not None:
-                print(f"[voice] Using {self.headset.name} as the microphone: just answer when it asks.")
+            self._look_for_headset()
         self._transcribe = transcribe
         self._server = self._serve(Path(cert_dir))
         self.url = f"https://{_my_address()}:{self.port}/"
@@ -552,8 +551,15 @@ class WebMic:
         if not self._waiting:
             _poke_main()
 
+    def _look_for_headset(self):
+        if self.headset is None and self._find_headset:
+            self.headset = Headset.find()
+            if self.headset is not None:
+                print(f"[voice] Using {self.headset.name} as the microphone: answer after the beep.")
+        return self.headset
+
     def listen(self) -> str:
-        buds = self.headset
+        buds = self._look_for_headset()
         try:
             if buds is not None:
                 buds.open()               # before the question: an answer given at once must not fall in the switch
@@ -562,9 +568,9 @@ class WebMic:
             text = self._next_request()
         finally:
             self._waiting = False
-            if buds is not None:
+            for b in {buds, self.headset} - {None}:       # the one opened here, or one that connected during the wait
                 try:
-                    buds.close()
+                    b.close()
                 except Exception:
                     pass
         target = respond(text)
@@ -580,8 +586,12 @@ class WebMic:
     def _next_request(self) -> str:
         """Whatever comes first: something typed or sent from the page, or, with earbuds as the
         microphone, something said aloud."""
-        if self.headset is None:
-            return self._requests.get()
+        while self.headset is None:
+            try:
+                return self._requests.get(timeout=3.0)
+            except queue.Empty:
+                if self._look_for_headset() is not None:
+                    self.headset.open()
         buds = self.headset
         try:
             _beep()                                       # "your turn": the microphone is open from here
