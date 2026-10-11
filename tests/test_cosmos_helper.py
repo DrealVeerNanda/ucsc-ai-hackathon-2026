@@ -271,7 +271,10 @@ def test_a_single_object_can_be_accepted_with_yes(quiet_voice):
 
 
 def test_listing_explains_itself_when_it_cannot_look(quiet_voice):
-    quiet_voice.setattr(stream, "_default", None)                   # fake stream: no camera
+    def no_phone(*a, **k):
+        raise stream.SourceError("No phone app is streaming.")
+    quiet_voice.setattr(stream, "_default", None)
+    quiet_voice.setattr(stream, "start", no_phone)                  # the camera cannot be opened
     voice.respond("what's on the table?")
     assert guidance.pop_phrases()[-1] == "I need the camera for that."
     quiet_voice.setattr(stream, "_default", _Camera())
@@ -328,3 +331,19 @@ def test_guidance_reports_what_was_said_once(monkeypatch):
     guidance.say_text("I can see a mug.")
     assert guidance.pop_phrases() == ["Looking", "I can see a mug."] and guidance.pop_phrases() == []
     assert isinstance(guidance._get().sink, PrintSink)
+
+
+def test_the_first_question_opens_the_camera_itself(quiet_voice):
+    # main.py asks for the first target before it has read a single frame
+    opened = []
+
+    def start(*a, **k):
+        opened.append(1)
+        stream._default = _Camera()
+    quiet_voice.setattr(stream, "_default", None)
+    quiet_voice.setattr(stream, "start", start)
+    quiet_voice.setattr(cosmos, "available", lambda *a, **k: True)
+    quiet_voice.setattr(cosmos, "list_objects", lambda rgb, **k: ["mug", "phone"])
+    voice.respond("what's on the table?")
+    assert opened == [1] and guidance.pop_phrases()[-1] == "I can see mug and phone. Which one?"
+    quiet_voice.setattr(stream, "_default", None)

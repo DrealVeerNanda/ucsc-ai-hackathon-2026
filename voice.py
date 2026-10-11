@@ -146,10 +146,18 @@ def _say(text: str):
 
 def _camera_frame(wait_s: float = 2.0):
     """A fresh frame from the stream main.py is using, or None if it is not the real stream."""
-    import stream
-    s = stream._default
-    if s is None:
-        return None
+    module = sys.modules.get("stream")
+    if module is None:
+        return None                      # main.py is running on the fake stream
+    if module._default is None:
+        # The first question comes before main.py has asked for a single frame, so the stream
+        # has not been opened yet. Open it now; main.py will carry on with the same one.
+        try:
+            module.start()
+        except Exception as e:
+            print(f"[voice] no camera: {e}", file=sys.stderr)
+            return None
+    s = module._default
     end = time.monotonic() + wait_s
     frame = None
     while time.monotonic() < end:
