@@ -12,16 +12,21 @@ Our team's project for the UCSC AI Hackathon, October 10–11, 2026, at UC Santa
 ## Project: Proprio (ASUS Local AI track)
 
 A person wears an iPhone on their chest, says "find my mug," and picks it up blindfolded.
-Audio tones steer their hand to the object. Every model runs on the ASUS Ascent GX10.
+Spoken directions and tones in their earbuds steer the hand to the object. Every model runs on the
+ASUS Ascent GX10; nothing goes to the cloud.
 
 | File | Lane | What |
 |---|---|---|
 | `interfaces.py` | all | `Frame` and `Scene`, the two agreed interfaces. Import them, don't redefine them. |
 | `stream.py` | 1 | `get_frame() -> Frame \| None` |
-| `perception.py` | 2 | `locate(frame, target) -> Scene` |
-| `guidance.py` | 3 | `update(scene) -> str` (state), optional `reset(target)` |
+| `perception.py`, `hands.py` | 2 | `locate(frame, target) -> Scene`; the hand trackers to choose from |
+| `cosmos.py` | 2 | the slow helper: lists what is on the table, gives a box when the detector fails |
+| `guidance.py`, `audio_out.py` | 3 | `update(scene) -> str` (state), optional `reset(target)`; the sound |
 | `voice.py` | 3 | `listen_for_target() -> str` |
 | `main.py` | 4 | the loop; every module can be fake or real |
+| `launcher.py`, `launcher/` | 4 | the one-button start: checklist page, and a keeper that restarts what dies |
+| `tools/phone_bridge.py` | 1 | holds the phone's connection so restarting the pipeline never drops it |
+| `tracing.py` | all | per-frame timings and events into `logs/trace_*.jsonl` |
 | `fakes.py` | 4 | fake versions of all of the above |
 | `dashboard.py`, `dashboard/` | 4 | the judge dashboard in the browser, served by `main.py` (offline, no CDN) |
 | `debug_view.py` | 4 | OpenCV debug window (`--ui cv`) |
@@ -41,10 +46,19 @@ the pipeline; `python launcher.py quit` ends everything. Settings are in `launch
 `.env.launcher` (KEY=VALUE lines, not in git) overrides them, e.g. `HOST=0.0.0.0` to watch the
 dashboard from a laptop: by default it answers on the GX10 only.
 
-While it runs, the dashboard's **Options** button (or the voice: "option 3", "hand option 5",
-"grab option 2") switches between the ways of guiding (`guidance.OPTIONS`), of tracking the hand
-(`perception.HAND_OPTIONS`) and of deciding "Grab" (`guidance.GRAB_OPTIONS`). Hear every option
-without the rig: `python tools/audio_demo.py --all`, then open `out/options/index.html`.
+The **Options to try** card at the top of that page switches, with one click, between the ways of
+guiding (`guidance.OPTIONS`, 12 of them), of tracking the hand (`perception.HAND_OPTIONS`, 7) and of
+deciding "Grab" (`guidance.GRAB_OPTIONS`, 5). Before Start a click sets what the run starts with;
+while it runs it switches at once and the wearer hears the name. The choice is remembered (also
+across a restart of the pipeline); **Back to the usual ones** undoes it. The same switches work by
+voice ("option 3", "hand option 5", "grab option 2") and from the live dashboard's **Options**
+button. Hear every option without the rig: `python tools/audio_demo.py --all`, then open
+`out/options/index.html`.
+
+If the new parts and the real hardware do not get on, `.env.launcher` has a way back for each:
+`PROPRIO_BRIDGE=0` (the pipeline reads the phone itself), `VOICE_HEADSET_MODE=stay` (the earbuds
+never switch mode: mono sound), `VOICE_WEARER_LEVEL=0` and `VOICE_REQUEST_S=12` (hear everything).
+The code of the first live run that worked is the tag `worked-live-2026-10-10`.
 
 ### Run it by hand
 
@@ -59,6 +73,11 @@ python main.py --all-real                        # the demo
 `main.py` serves the judge dashboard at http://localhost:8642 and opens it. From another
 machine on the same network use `http://<gx10-ip>:8642`. `--ui cv` shows the OpenCV window
 instead, `--ui both` shows both, `--no-open` skips opening the browser.
+
+`bash tools/live.sh` is the real pipeline with the settings of the run that worked (guidance
+option 3, the dashboard in the browser, earbuds as the microphone). It and the launcher bind the
+dashboard to the GX10 only; `HOST=0.0.0.0 bash tools/live.sh` opens it to the network.
+`bash tools/stop_live.sh` stops a run and waits until its recording is saved.
 
 What modules can report to the dashboard (all optional, picked up if present):
 
@@ -78,7 +97,10 @@ latency per stage on exit.
 - `guidance.update(scene)` returns its state as a string (`idle`, `searching`,
   `waiting_hand`, `guiding`, `grab`). The debug view shows it, and when it goes back to
   `idle` main calls `listen_for_target()` again. If `guidance.reset(target)` exists, main
-  calls it after every new target.
+  calls it after every new target. It goes `idle` after "Grab", and also when it gives up:
+  20 s without ever seeing the object, 30 s with no hand shown, or 2 minutes without a "Grab".
+- `Scene` has two optional extras from lane 2: `hand` (keypoints, palm, confidence, which
+  tracker) and `object_out_of_reach` (farther than 0.75 m: guidance says "too far, move closer").
 - `Frame.t_recv` is `time.monotonic()` on the GX10 when the frame arrived. Without it the
   latency number only covers processing, not the trip from the phone.
 
@@ -121,7 +143,8 @@ Set `STREAM_SOURCE`, or call `stream.start(SOURCE)` once before the loop.
 
 | `STREAM_SOURCE` | Frames come from |
 |---|---|
-| `auto` (default) | Whichever phone app is streaming over USB: PathOn first, then Record3D |
+| `auto` (default) | A running phone bridge if there is one; otherwise whichever phone app is streaming: PathOn over USB, PathOn over Wi-Fi if `STREAM_PHONE_IP` is set, then Record3D |
+| `bridge` | `tools/phone_bridge.py`, which holds the phone and hands frames on through shared memory. The launcher uses this. |
 | `pathon` | Free "Record3DStream - PathOn" app over USB. This is what we use. See `requirements.txt`. |
 | `record3d` | Paid Record3D app over USB |
 | `relay` | A Mac running `tools/relay_send.py` |
@@ -142,7 +165,16 @@ pip install -r requirements.txt
 CXXFLAGS="-include string -include cstdint" pip install record3d
 ```
 
-In Record3D: turn on USB Streaming mode in Settings, select the rear lidar camera, press the red button. Plug the phone into a data port, unlock it, tap Trust. Then:
+In PathOn (the app we use): set its WiFi | USB switch to **USB**, then tap Start Streaming. Unlock the
+phone before plugging it into a data port, and tap Trust. On the phone: Auto-Lock Never, Low Power Mode
+off. (In Record3D instead: turn on USB Streaming mode in Settings, select the rear lidar camera, press
+the red button.)
+
+PathOn stops streaming when the program reading it goes away, and someone then has to tap Start again.
+`python tools/phone_bridge.py start` holds the connection in a process of its own so the pipeline can be
+restarted freely (`status`, `stop`, `record on|off`; `probe` measures, with the real phone, how long a gap
+the app forgives). `python tools/fake_phone.py recordings/NAME --port 9888` stands in for the app when
+there is no phone. Then:
 
 ```bash
 python tools/probe_stream.py            # frame rate, sizes, K, depth range, pose yes or no
@@ -162,11 +194,21 @@ python tools/relay_send.py GX10_IP              # on the Mac
 
 Tests: `python -m pytest -q`
 
+Without the phone or the earbuds the whole pipeline can still be exercised on the GX10:
+
+```bash
+python tools/fault_drill.py --quick     # 10 min: break one thing at a time (camera, model servers, earbuds) and see it recover
+python tools/fault_drill.py             # all 46 drills, about 37 min
+python tools/soak.py run --minutes 100  # run it like a demo from recordings and report what grows, drifts or stops
+```
+
 ## Perception (lane 2)
 
 `perception.py` is a working first version, ported from an earlier project so lane 2 does not start from zero. Change anything.
 
-It finds the object's box (YOLO-World, any name you type) and the index fingertip (MediaPipe Hands), reads lidar depth at both, and returns their positions in meters. When the hand covers the object it keeps the object's remembered depth.
+It finds the object's box (YOLO-World, any name you type) and the index fingertip (MediaPipe Hands by default), reads lidar depth at both, and returns their positions in meters. When the hand covers the object it keeps the object's remembered depth; a clear bottle, which the lidar sees through, takes its depth from the nearest surface in its box; of two matching objects the one within reach wins.
+
+Seven hand trackers can be switched while it runs (`HAND_OPTION=1..7`, `perception.HAND_OPTIONS`): 1 is MediaPipe as the demo was built on; 3 and 4 are a YOLO hand-keypoint model on the GPU; 5 adds a depth-and-skin follower that carries on when the model loses the hand (found on 94% of frames of a recorded reach against 81% for option 1); 7 guides the palm, not the fingertip. Compare them on a recording with `python tools/eval_hands.py`.
 
 ```bash
 python tools/check_perception.py recordings/NAME mug    # no window: prints fps, hit rates, distance. Saves out/perception.jpg
@@ -177,14 +219,27 @@ python main.py --stream real --perception real          # with the debug view
 |---|---|
 | `PERCEPTION_DETECTOR` | `yoloworld` (default), `yoloe`, `coco` (fixed classes: cup, bottle, banana...), `none` |
 | `PERCEPTION_HAND` | `mediapipe` (default), `sticker` (a green sticker on the hand), `none` |
+| `HAND_OPTION` | `1` (default) to `7`, or a key from `perception.HAND_OPTIONS` |
 | `PERCEPTION_USE_POSE=1` | Remember the object in room coordinates. Only after `tools/check_pose.py` says yes. |
 | `PERCEPTION_DETECT_EVERY=2` | Run the detector on every second frame if the frame rate is short |
 
-On the GX10 it runs at about 35 ms per frame. Not yet checked: real lidar depth against a ruler (needs the phone), and the tuning in `PerceptionConfig`.
+On the GX10 it takes about 20 ms per frame. Not yet checked: real lidar depth against a ruler (needs the phone), and the tuning in `PerceptionConfig`.
 
 ## Guidance and voice (lane 3)
 
 `guidance.py`, `audio_out.py` and `voice.py` are also a working first version. Change anything.
+
+There are twelve ways of guiding (`GUIDANCE_MODE=1..12`, `guidance.OPTIONS`), switchable while it runs.
+The demo uses option 3, "combined words": the whole direction at once ("up and left"), a chime when
+lined up, "forward", then "Grab". Options 6 to 12 are newer ideas (amounts in centimetres, two notes to
+match, a rising note, fast repeated words, quiet-unless-drifting, words then a note, a hum that turns
+to beeps) that nobody has followed with a real hand yet.
+
+"Grab" is said by one of five rules (`GUIDANCE_GRAB=1..5`, `guidance.GRAB_OPTIONS`). The default,
+"over the object", fires when the fingertip is over the object in the picture and within grabbing
+distance in depth; rule 1 is the first one, the fingertip within 5 cm.
+
+Option 1, tones only:
 
 | You hear | It means |
 |---|---|
@@ -229,7 +284,14 @@ GUIDANCE_MODE=tones python main.py --guidance real  # original spatial beeps, no
   The next request waits for the spoken audio to finish.
 - The clips in `audio/` remain the original macOS voice fallback.
 - If the loop stalls for half a second the tone goes quiet, so an old position never keeps steering.
-- `voice.py` asks for a typed target unless a microphone is present. Then it is push-to-talk: Enter, speak, Enter. `VOICE_MODE=type` forces typing.
+- With Bluetooth earbuds paired to the GX10, `voice.py` uses them as the microphone and listens by itself:
+  it says what it can see, asks "What do you want to grab?", beeps, and takes the answer (Whisper large-v3
+  on the GPU, about 0.2 s). The earbuds are switched to headset mode to listen and back to stereo to guide,
+  so the wearer cannot be heard during a reach. Besides an object's name it understands "what's on the
+  table", "the second one", "yes", "stop", "again", "help", "option N", "hand option N", "grab option N".
+  With a wired microphone it is push-to-talk (Enter, speak, Enter); `VOICE_MODE=type` forces typing.
+- When it sees nothing to pick up it says why (turn towards the table, or something is in front of the
+  camera), looks again every few seconds, and reminds the wearer that it is listening.
 - The GX10 has no speakers or microphone of its own, only HDMI. Pair the earbuds, then set `GUIDANCE_DEVICE` and `VOICE_DEVICE` if they are not the default.
 
 ## The language models (helpers, not in the loop)
@@ -244,15 +306,18 @@ bash tools/fetch_models.sh piper   # once: the voice that speaks sentences
 
 | The wearer says | What happens |
 |---|---|
-| "I want to grab a can", "I'm thirsty" | Nemotron names the object (`can`, `water bottle`), about 0.3 s |
+| "I want to grab a can", "I'm thirsty" | Nemotron names the object (`can`, `water bottle`), about 0.4 s. A name it has just listed is taken as said, without asking Nemotron. |
 | "What's on the table?" | Cosmos looks through the camera and lists what could be picked up; it is spoken, and the wearer answers "the mug" or "the second one" |
 | A name the detector cannot find | After one second of searching, Cosmos is asked for the object's box in the background (0.6 to 2 s) and its answer positions the object until the detector takes over |
 
 ### Talking to it
 
-The GX10 has no microphone, so any phone or laptop can be one. Start the run without a target (`bash tools/live.sh`); it prints an address like `https://GX10_IP:8644`. Open it on a device on the same network, accept the certificate warning once, then hold the button (or the space bar) and speak. Whisper transcribes on the GX10. A new request at any time replaces the target, even in the middle of a reach. You can also type in the box on that page or in the terminal.
-
-With a real microphone on the GX10 (earbuds with a mic, a USB headset) it uses that instead: Enter, speak, Enter.
+The earbuds are the microphone (see above). The backup is a page any phone or laptop can open: a run
+without a target (`bash tools/live.sh`, or the launcher) serves `https://GX10_IP:8644`. Open it on a
+device on the same network, accept the certificate warning once, then hold the button (or the space
+bar) and speak, or type in the box; it also has Stop, Again and option buttons. On the GX10 itself the
+launcher's running page links to it as **Type a request**. A new request at any time replaces the
+target, even in the middle of a reach.
 
 If a server is not running, the pipeline carries on without it: a simple rule reads plain requests, and the detector works alone. `python tools/ask_cosmos.py photo.jpg --list` tries the listing on any picture.
 
