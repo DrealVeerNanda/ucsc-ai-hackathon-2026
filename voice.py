@@ -292,6 +292,22 @@ def _my_address() -> str:
         return socket.gethostname()
 
 
+def decode_recording(data: bytes) -> np.ndarray:
+    """A recording as the browser sent it (webm/opus, mp4/aac or wav) -> mono float32 at 16 kHz.
+    Done with PyAV directly: faster-whisper's own decoder does not work with the PyAV installed
+    on the GX10."""
+    import av
+    chunks = []
+    with av.open(io.BytesIO(data), mode="r") as container:
+        resampler = av.AudioResampler(format="s16", layout="mono", rate=SR)
+        for frame in container.decode(audio=0):
+            chunks += [f.to_ndarray().reshape(-1) for f in resampler.resample(frame)]
+        chunks += [f.to_ndarray().reshape(-1) for f in resampler.resample(None)]      # flush
+    if not chunks:
+        return np.zeros(0, np.float32)
+    return np.concatenate(chunks).astype(np.float32) / 32768.0
+
+
 class WebMic:
     """Lets any phone or laptop be the microphone and the push-to-talk button. It opens a page
     served from here, records while the button is held, and sends the recording to this machine,
@@ -306,12 +322,11 @@ class WebMic:
         self._waiting = False
         if transcribe is None:
             from faster_whisper import WhisperModel
-            from faster_whisper.audio import decode_audio
             with tracing.timed("load.whisper", model=model):
                 whisper = WhisperModel(model, device="cpu", compute_type="int8")
 
             def transcribe(data: bytes) -> str:
-                audio = decode_audio(io.BytesIO(data), sampling_rate=SR)     # webm, mp4 or wav: whatever the browser sent
+                audio = decode_recording(data)
                 if audio.size < SR // 4:
                     return ""
                 t = time.perf_counter()
