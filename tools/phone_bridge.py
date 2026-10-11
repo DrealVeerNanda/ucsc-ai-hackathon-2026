@@ -127,7 +127,7 @@ class Packets:
             if version >= 2:
                 w, h, n_conf, n_imu = _HEAD_V2.unpack_from(buf, _HEAD.size)
             if (n_depth != dw * dh * 4 or max(dw, dh) > _MAX_DEPTH_SIDE or not 0 < n_jpeg <= _MAX_JPEG
-                    or n_conf not in (0, dw * dh) or n_imu > _MAX_IMU):
+                    or n_conf > _MAX_DEPTH_SIDE ** 2 or n_imu > _MAX_IMU):
                 self._skip(1)                                           # a header that cannot be true
                 continue
             total = size + _K_BYTES + _POSE_BYTES + n_depth + n_jpeg + n_conf + n_imu
@@ -159,7 +159,7 @@ def decode(head: dict, packet: bytes, half: bool = False):
     at += dh * dw * 4
     jpeg = np.frombuffer(packet, np.uint8, head["n_jpeg"], at)
     at += head["n_jpeg"]
-    conf = np.frombuffer(packet, np.uint8, dh * dw, at).reshape(dh, dw) if head["n_conf"] else None
+    conf = np.frombuffer(packet, np.uint8, dh * dw, at).reshape(dh, dw) if head["n_conf"] == dh * dw else None
     small = 16 if half else 0                    # OpenCV's "reduced by 2": the JPEG is never unpacked at full size
     if _AS_RGB is not None:
         rgb = cv2.imdecode(jpeg, _AS_RGB | small)
@@ -304,14 +304,10 @@ def _command(env: str, default: str) -> list[str]:
     return shlex.split(os.environ.get(env) or default)
 
 
-def _die_with_parent():
-    """In the child, on Linux: be sent SIGTERM when the bridge dies, however it dies, so that
-    no iproxy is ever left behind holding a connection to the phone."""
-    try:
-        import ctypes
-        ctypes.CDLL(None).prctl(1, signal.SIGTERM)       # PR_SET_PDEATHSIG
-    except Exception:
-        pass
+def _dying_with_us(cmd: list[str]) -> list[str]:
+    """The same command, set up (on Linux, by setpriv) to be sent SIGTERM when the bridge dies,
+    however it dies: no iproxy is ever left behind holding a connection to the phone."""
+    return ["setpriv", "--pdeathsig", "TERM", *cmd] if sys.platform == "linux" and shutil.which("setpriv") else cmd
 
 
 def _use_fast_cores():
@@ -610,8 +606,8 @@ class Bridge:
             s.bind(("127.0.0.1", 0))
             self._iproxy_port = s.getsockname()[1]
         cmd = _command("PHONE_BRIDGE_IPROXY", "iproxy") + [str(self._iproxy_port), str(self.port)]
-        self._iproxy = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                        preexec_fn=_die_with_parent if sys.platform == "linux" else None)
+        self._iproxy = subprocess.Popen(_dying_with_us(cmd), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT)
         threading.Thread(target=self._drain, args=(self._iproxy,), daemon=True, name="iproxy-log").start()
         log.info("iproxy started on port %d (pid %d)", self._iproxy_port, self._iproxy.pid)
 

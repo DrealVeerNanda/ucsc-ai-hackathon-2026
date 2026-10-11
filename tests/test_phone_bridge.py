@@ -156,6 +156,31 @@ def test_garbage_and_impossible_headers_are_skipped_and_counted():
     assert decode(head, packet) is None
 
 
+def test_the_older_32_byte_header_is_read_too():
+    import struct
+    f = FRAMES[1]
+    depth = f["depth"]
+    v1 = (struct.pack("<5sBIdHHII2x", b"REC3D", 1, 9, 2.5, depth.shape[1], depth.shape[0], depth.nbytes, len(f["jpeg"]))
+          + f["K"].tobytes() + np.asarray(f["pose"], np.float32).tobytes() + depth.tobytes() + f["jpeg"])
+    (head, packet), = Packets().feed(v1 + b"REC")
+    rgb, got, K, pose = decode(head, packet)
+    assert head["frame_id"] == 9 and rgb.shape == (240, 320, 3) and np.array_equal(got, depth) and np.allclose(K, f["K"])
+
+
+def test_the_bridge_decodes_exactly_what_the_direct_reader_decodes(phone):
+    """Same frame, both ways in: the SDK inside stream.py, and the bridge's own reader."""
+    pytest.importorskip("sdk")
+    gen = stream._pathon_frames("127.0.0.1", port=phone.port)
+    try:
+        direct = next(gen)
+    finally:
+        gen.close()
+    i = [np.array_equal(direct.depth, f["depth"]) and np.allclose(direct.pose, f["pose"]) for f in FRAMES].index(True)
+    rgb, depth, K, pose = decode(*Packets().feed(_packet(i))[0])
+    assert np.array_equal(rgb, direct.rgb) and np.array_equal(depth, direct.depth)
+    assert np.array_equal(K, direct.K) and np.array_equal(pose, direct.pose)
+
+
 def test_the_real_sdk_reads_the_pretend_phone():
     sdk = pytest.importorskip("sdk")
     f = FRAMES[4]
