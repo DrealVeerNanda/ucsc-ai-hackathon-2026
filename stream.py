@@ -298,6 +298,12 @@ def _pathon_frames(host: str | None = None, port: int = 8888, timeout_s: float =
             fr = client.wait_for_frame(timeout=1.0)
             if fr is None:
                 # A TCP connection is not proof of a stream: require real frames.
+                if not getattr(client, "is_connected", True):
+                    # The SDK's reader has stopped: iproxy accepts the connection and drops it at
+                    # once when the app is not streaming. From then on wait_for_frame() returns
+                    # immediately, so waiting out the timeout here would be a busy loop that keeps
+                    # the GIL and starves Whisper and the sound callback for five seconds.
+                    raise SourceError("PathOn: the phone closed the connection. Is the app streaming?")
                 if time.perf_counter() - last > timeout_s:
                     raise SourceError(f"PathOn: no frame for {timeout_s:.0f} s. Is the app streaming?")
                 continue

@@ -442,3 +442,29 @@ def test_replaying_a_recording_is_never_recorded_again(tmp_path, monkeypatch):
     s.get_frame(wait=0.5)
     s.close()
     assert not (tmp_path / "copy" / "frames.npz").exists()
+
+
+def test_pathon_gives_up_at_once_when_the_connection_has_closed(monkeypatch):
+    """iproxy accepts the connection and drops it when the app is not streaming. The SDK's
+    wait_for_frame() then returns None without waiting: the reader must not spin on it."""
+    class Closed:
+        is_connected = False
+        calls = 0
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def start(self):
+            return True
+
+        def wait_for_frame(self, timeout=1.0):
+            Closed.calls += 1
+            return None
+
+        def stop(self):
+            pass
+    monkeypatch.setitem(sys.modules, "sdk", SimpleNamespace(IPhoneSensorClient=Closed))
+    t = time.perf_counter()
+    with pytest.raises(SourceError, match="closed the connection"):
+        next(stream._pathon_frames("192.0.2.1"))
+    assert time.perf_counter() - t < 0.5 and Closed.calls == 1

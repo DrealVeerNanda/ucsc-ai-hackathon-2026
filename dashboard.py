@@ -376,7 +376,10 @@ class Dashboard:
                 try:
                     while True:
                         with dash._cond:
-                            dash._cond.wait_for(lambda: dash._seq != seen, timeout=2.0)
+                            # "and dash._msg": before the first frame there is nothing to send. Without
+                            # it this never waits until then (seq 0 != seen -1) and every open page
+                            # spins here writing keepalives, fighting Whisper for the GIL.
+                            dash._cond.wait_for(lambda: dash._seq != seen and dash._msg, timeout=2.0)
                             seq, msg = dash._seq, dash._msg
                             cloud_seq, cloud_msg = dash._cloud_seq, dash._cloud_msg
                         if seq == seen or not msg:
