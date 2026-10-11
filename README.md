@@ -27,7 +27,26 @@ Audio tones steer their hand to the object. Every model runs on the ASUS Ascent 
 | `debug_view.py` | 4 | OpenCV debug window (`--ui cv`) |
 | `trials.py` | 4 | timed baseline / guided trials into `trials.csv` |
 
-### Run it
+### Start the demo (on the GX10)
+
+Double-click **Proprio** on the GX10's desktop (`bash tools/install_launcher.sh` puts it there). A page
+opens at http://localhost:8640 with one line per thing that has to be true (phone on the cable and
+streaming, AirPods connected, model servers up, models on disk), green or red, each saying what to do.
+When it is green press **Start**; **Start anyway** is there for when you decide to go regardless.
+
+From then on a keeper keeps it running: it restarts the pipeline if it crashes or hangs (a reach in
+progress carries on), holds the phone connection in its own process so PathOn does not need another tap,
+reconnects the AirPods, and records every session into `recordings/demo_*/`. **Stop** on the page ends
+the pipeline; `python launcher.py quit` ends everything. Settings are in `launcher.DEFAULTS`, and
+`.env.launcher` (KEY=VALUE lines, not in git) overrides them, e.g. `HOST=0.0.0.0` to watch the
+dashboard from a laptop: by default it answers on the GX10 only.
+
+While it runs, the dashboard's **Options** button (or the voice: "option 3", "hand option 5",
+"grab option 2") switches between the ways of guiding (`guidance.OPTIONS`), of tracking the hand
+(`perception.HAND_OPTIONS`) and of deciding "Grab" (`guidance.GRAB_OPTIONS`). Hear every option
+without the rig: `python tools/audio_demo.py --all`, then open `out/options/index.html`.
+
+### Run it by hand
 
 ```bash
 pip install -r requirements.txt
