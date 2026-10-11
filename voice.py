@@ -2,25 +2,30 @@
 
     target = voice.listen_for_target()     # blocks, returns e.g. "mug"
 
-Push-to-talk with Whisper running on the GX10 (faster-whisper), or a typed target as the backup
-for a noisy hall. Nothing leaves the machine.
+Push-to-talk with Whisper running on the GX10 (faster-whisper), or a typed request as the backup
+for a noisy hall. Either way the words then become an object name: Nemotron does it when it is
+running (bash tools/run_nemotron.sh), so "I'm thirsty" becomes "water bottle"; a simple rule does
+it otherwise, so "find my mug" still becomes "mug". Nothing leaves the machine.
 
     VOICE_MODE=auto      speech if a microphone and faster-whisper are there, else typed (default)
     VOICE_MODE=type      always typed
     VOICE_MODE=speech    always speech
     VOICE_MODEL=base.en  Whisper model size (tiny.en is faster, small.en is more accurate)
     VOICE_DEVICE=NAME    sounddevice input device (the earbuds' microphone)
+    VOICE_LLM_URL=URL    Nemotron's address (default http://127.0.0.1:8000/v1); "off" uses the rule only
 
 Speech: press Enter, say "find my mug", press Enter again. A Bluetooth clicker that sends
 Enter works as the button.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
 import threading
 import time
+import urllib.request
 
 import numpy as np
 
@@ -51,9 +56,57 @@ def extract_target(text: str) -> str:
     return "" if t in _FILLER else t
 
 
+LLM_PROMPT = ('You turn what a blind person says into the one object they want to pick up. Reply with JSON only: '
+              '{"target": "<the object as 1 to 3 plain words an object detector can find, such as mug, water bottle, phone>"}. '
+              'Name the physical thing, not the wish: thirsty means water bottle. If no object is named or implied, '
+              'use an empty string.')
+LLM_SCHEMA = {"type": "object", "properties": {"target": {"type": "string", "maxLength": 30}},
+              "required": ["target"], "additionalProperties": False}
+last_transcript: str | None = None      # what was last said or typed, for the dashboard
+_llm_ok: bool | None = None             # None until the first request shows whether Nemotron is there
+
+
+def ask_llm(text: str, url: str, timeout_s: float = 4.0) -> str:
+    """Nemotron's reading of the request. Raises if the server is not there."""
+    body = {"model": "nemotron", "temperature": 0.0, "max_tokens": 40,
+            "chat_template_kwargs": {"enable_thinking": False},      # the answer is one word: no need to reason aloud
+            "messages": [{"role": "system", "content": LLM_PROMPT}, {"role": "user", "content": text}],
+            "response_format": {"type": "json_schema", "json_schema": {"name": "target", "schema": LLM_SCHEMA, "strict": True}}}
+    req = urllib.request.Request(url.rstrip("/") + "/chat/completions", json.dumps(body).encode(),
+                                 {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout_s) as r:
+        reply = json.load(r)
+    return extract_target(str(json.loads(reply["choices"][0]["message"]["content"]).get("target", "")))
+
+
+def understand(text: str) -> str:
+    """Words -> object name. Short requests ("mug", "find my mug") go by the rule; longer or
+    indirect ones ("I'm thirsty") go to Nemotron if it is running. If Nemotron says no object
+    was asked for, the answer is "" and main.py asks again; the rule only steps in when Nemotron
+    is not there."""
+    global _llm_ok, last_transcript
+    last_transcript = text
+    rule = extract_target(text)
+    url = os.environ.get("VOICE_LLM_URL", "http://127.0.0.1:8000/v1")
+    if url == "off" or _llm_ok is False or len(text.split()) < 3:
+        return rule
+    t = time.perf_counter()
+    try:
+        target = ask_llm(text, url)
+    except Exception as e:
+        if _llm_ok is None:
+            print(f"[voice] Nemotron is not answering at {url} ({e.__class__.__name__}); using the simple rule. "
+                  "Start it with: bash tools/run_nemotron.sh", file=sys.stderr)
+        _llm_ok = False
+        return rule
+    _llm_ok = True
+    tracing.event("nemotron", (time.perf_counter() - t) * 1000, text=text, target=target)
+    return target
+
+
 def typed() -> str:
     try:
-        return extract_target(input("target> "))
+        return understand(input("what do you want to pick up?> "))
     except EOFError:
         return ""
 
@@ -93,7 +146,7 @@ class Listener:
         t = time.perf_counter()
         text = self.transcribe(audio)
         tracing.event("whisper", (time.perf_counter() - t) * 1000, audio_s=round(audio.size / SR, 2), text=text)
-        target = extract_target(text)
+        target = understand(text)
         print(f"[voice] heard {text!r} -> target {target!r}")
         return target
 

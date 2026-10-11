@@ -1,5 +1,8 @@
 """Lane 3: the sound mapping, the guidance states and their timeouts, the audio mixer, and
 pulling the object name out of a spoken request."""
+import io
+import json
+
 import numpy as np
 import pytest
 
@@ -284,5 +287,50 @@ def test_extract_target(said, target):
 def test_typed_target_goes_through_the_same_cleanup(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda prompt="": "find my Mug")
     monkeypatch.setenv("VOICE_MODE", "type")
+    monkeypatch.setenv("VOICE_LLM_URL", "off")
     monkeypatch.setattr(voice, "_mode", None)
-    assert voice.listen_for_target() == "mug"
+    assert voice.listen_for_target() == "mug" and voice.last_transcript == "find my Mug"
+
+
+class _Reply:
+    def __init__(self, target):
+        self.body = json.dumps({"choices": [{"message": {"content": json.dumps({"target": target})}}]}).encode()
+
+    def __enter__(self):
+        return io.BytesIO(self.body)
+
+    def __exit__(self, *a):
+        return False
+
+
+def _nemotron(monkeypatch, answers, calls):
+    def urlopen(req, timeout=None):
+        said = json.loads(req.data)["messages"][-1]["content"]
+        calls.append(said)
+        return _Reply(answers[said])
+    monkeypatch.setattr(voice.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(voice, "_llm_ok", None)
+    monkeypatch.delenv("VOICE_LLM_URL", raising=False)
+
+
+def test_nemotron_reads_indirect_requests(monkeypatch):
+    calls = []
+    _nemotron(monkeypatch, {"I am really thirsty": "Water bottle.", "what time is it": ""}, calls)
+    assert voice.understand("I am really thirsty") == "water bottle"
+    assert voice.understand("mug") == "mug" and voice.understand("the can") == "can"      # short: no model call
+    assert calls == ["I am really thirsty"]
+    assert voice.understand("what time is it") == ""       # no object asked for: main.py asks again
+
+
+def test_without_nemotron_the_rule_is_used_and_it_is_not_asked_again(monkeypatch, capsys):
+    calls = []
+
+    def urlopen(req, timeout=None):
+        calls.append(1)
+        raise OSError("connection refused")
+    monkeypatch.setattr(voice.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(voice, "_llm_ok", None)
+    monkeypatch.delenv("VOICE_LLM_URL", raising=False)
+    assert voice.understand("can you grab me a banana") == "banana"
+    assert voice.understand("pick up the tennis ball") == "tennis ball"
+    assert len(calls) == 1 and "run_nemotron.sh" in capsys.readouterr().err
