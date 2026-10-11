@@ -372,6 +372,10 @@ class Perception:
             if z_lidar is not None and 0.25 <= z_lidar <= 0.8 and 0.6 < z_lidar / raw < 1.6:
                 self._hand_scale.append(z_lidar / raw)
             z_size = raw * (float(np.median(self._hand_scale)) if len(self._hand_scale) >= 10 else 1.0)
+            if z_lidar is not None:
+                # Both readings side by side in the trace: this is how far off a camera-only
+                # estimate of the hand would be, measured against lidar.
+                tracing.put(hand_z_lidar=round(z_lidar, 3), hand_z_size=round(z_size, 3), hand_z_size_raw=round(raw, 3))
             if z_lidar is not None and z_size < 0.35 and z_lidar > 1.8 * z_size:
                 z_lidar = None       # the hand is plainly close, yet lidar reports far: it is reading past it
         if z_lidar is not None:
