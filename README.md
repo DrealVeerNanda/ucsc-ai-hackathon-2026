@@ -105,12 +105,94 @@ latency per stage on exit.
 - `Frame.t_recv` is `time.monotonic()` on the GX10 when the frame arrived. Without it the
   latency number only covers processing, not the trip from the phone.
 
-## Getting started
+## Recreate it with your own iPhone
+
+Everything below was run end to end on one setup only: an iPhone 15 Pro Max and the ASUS Ascent GX10
+(Ubuntu 24.04, ARM, NVIDIA GPU). Other machines should work with the same steps but have not been tried
+with the phone, except that a Mac can read the phone and replay recordings.
+
+**What you need**
+
+- An iPhone or iPad with lidar: a Pro model, iPhone 12 Pro or later. Without lidar there is no depth.
+- The free app **Record3DStream - PathOn** from the App Store, and a USB data cable.
+- A computer with Python 3.12. An NVIDIA GPU keeps it at about 20 ms a frame; the two language models
+  (optional) need much more GPU memory: Nemotron alone takes about 23 GB.
+- Headphones. Bluetooth ones double as the microphone on Linux with PipeWire; anything else plays the
+  guidance and you ask from a web page or the keyboard.
+- Something to wear the phone on your chest, camera facing forward and slightly down at the table.
+
+**1. Install**
 
 ```bash
 git clone https://github.com/DrealVeerNanda/ucsc-ai-hackathon-2026.git
 cd ucsc-ai-hackathon-2026
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install torch torchvision        # the build for your GPU; on the GX10: --index-url https://download.pytorch.org/whl/cu130
+pip install -r requirements.txt
+pip install 'git+https://github.com/YoshiRi/Record3DStream#subdirectory=sdk'   # reads PathOn; personal use only, see requirements.txt
+sudo apt install libimobiledevice-utils libusbmuxd-tools libportaudio2         # macOS: brew install libimobiledevice
+bash tools/fetch_models.sh piper     # the voice that speaks sentences, 63 MB
+python main.py                       # everything fake: checks the install, opens the dashboard
 ```
+
+**2. Phone**
+
+Unlock it, plug it into a data port and tap **Trust**. Set Auto-Lock to Never and Low Power Mode off.
+Open PathOn, set its WiFi | USB switch to **USB** and tap **Start Streaming**. Then:
+
+```bash
+python tools/probe_stream.py pathon --show    # colour and depth side by side. q quits
+```
+
+Two things stop PathOn's stream: the program reading it going away, and a touch on its screen. Once the
+phone is on your chest, iOS Guided Access with Touch off keeps stray touches out.
+
+**3. First reach, no voice**
+
+Put a mug on a table, wear the phone and the headphones, and run:
+
+```bash
+STREAM_SOURCE=pathon GUIDANCE_MODE=3 python main.py --stream real --perception real --guidance real --target mug
+```
+
+The first run downloads the detector and hand-tracker weights. The dashboard opens at
+http://localhost:8642 with the camera, the object's box and the fingertip. Show your hand to the camera
+and follow the words; "Grab" means close your hand. Any object name works in place of `mug`.
+
+**4. Ask by voice**
+
+```bash
+STREAM_SOURCE=pathon GUIDANCE_MODE=3 VOICE_MODE=web python main.py --all-real
+```
+
+With Bluetooth headphones on Linux it listens through them after a beep. Otherwise open the page it
+prints (`https://YOUR_IP:8644`) on any phone or laptop on the same network and hold the button to
+speak, or type. `VOICE_MODE=type` asks in the terminal. Whisper runs on the GPU if there is one.
+
+**5. The language models (optional)**
+
+Without them a simple rule reads plain requests ("find my mug") and the detector works alone. With them
+it understands "I'm thirsty", answers "what's on the table?", and finds things the detector misses.
+Both are served by [llama.cpp](https://github.com/ggml-org/llama.cpp) built for your GPU; the scripts
+expect `~/llama.cpp/llama-server` (or set `LLAMA_SERVER`).
+
+```bash
+bash tools/fetch_models.sh 8b    # Cosmos Reason 2, into ~/models
+bash tools/run_cosmos.sh         # port 8001, leave it running
+NEMOTRON_MODEL=/path/to/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-UD-Q4_K_XL.gguf bash tools/run_nemotron.sh   # port 8000
+```
+
+There is no fetch script for Nemotron: download that GGUF yourself and point `NEMOTRON_MODEL` at it.
+
+**6. One button (Linux desktop)**
+
+`bash tools/install_launcher.sh` puts the Proprio icon on the desktop: the checklist page, Start, and
+the keeper described under [Start the demo](#start-the-demo-on-the-gx10). It was written for the GX10's
+GNOME desktop with PipeWire and is not expected to work elsewhere without changes.
+
+No phone at hand? `STREAM_SOURCE=recordings/NAME python main.py --stream real --perception real` replays
+a recording made with `python tools/record.py NAME --source pathon`. Recordings are not in the repository (they show
+bystanders' faces), so make your own.
 
 ## Stream (lane 1)
 
