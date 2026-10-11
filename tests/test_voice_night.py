@@ -33,7 +33,7 @@ def quiet(monkeypatch, tmp_path):
     monkeypatch.setenv("VOICE_STATUS", str(tmp_path / "status" / "voice.json"))
     for name in ("GUIDANCE_MODE", "VOICE_WEARER_LEVEL", "VOICE_REQUEST_S", "VOICE_HEADSET_MODE", "VOICE_HEADSET_VOLUME",
                  "VOICE_DOWNLOAD", "VOICE_STT", "VOICE_REMIND", "VOICE_MODE", "VOICE_DEVICE", "VOICE_HEADSET", "PROPRIO_KEEPER",
-                 "VOICE_REACH_LISTEN"):
+                 "VOICE_REACH_LISTEN", "DASHBOARD_PORT", "GUIDANCE_GRAB"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(guidance, "_default", None)
     for name, value in (("_ask_next", True), ("last_objects", []), ("_llm_ok", None), ("_llm_again_t", 0.0), ("_stopped", False),
@@ -427,10 +427,20 @@ def families(quiet):
 
     quiet.setitem(sys.modules, "perception", SimpleNamespace(
         HAND_OPTIONS=hands, set_hand_option=set_hand_option, hand_option=lambda: (state["hand"], hands[state["hand"] - 1][0], hands[state["hand"] - 1][1])))
-    quiet.setattr(guidance, "GRAB_OPTIONS", grabs, raising=False)
-    quiet.setattr(guidance, "set_grab_option", set_grab_option, raising=False)
-    quiet.setattr(guidance, "grab_option", lambda: (state["grab"], grabs[state["grab"] - 1][0], grabs[state["grab"] - 1][1]), raising=False)
+    real = voice._family
+    quiet.setattr(voice, "_family", lambda kind: ("grab option", grabs, set_grab_option, lambda: (
+        state["grab"], grabs[state["grab"] - 1][0], grabs[state["grab"] - 1][1])) if kind == "grab" else real(kind))
     return state
+
+
+def test_the_real_grab_options_are_used_when_guidance_has_them(quiet):
+    name, options, choose, current = voice._family("grab")
+    assert name == "grab option" and options is getattr(guidance, "GRAB_OPTIONS", None)
+    if not options:
+        pytest.skip("guidance.py has no GRAB_OPTIONS in this checkout")
+    assert voice.respond(f"grab option {len(options)}") == ""
+    assert guidance.pop_phrases() == [f"Grab option {len(options)}: {options[-1][1]}."] and current()[0] == len(options)
+    assert voice.respond(f"grab option {len(options) + 1}") == "" and guidance.pop_phrases() == [f"There are {len(options)} grab options."]
 
 
 @pytest.mark.parametrize("words, number", [("hand option two", 2), ("Hand option 12.", 12), ("hand option twelve", 12),
@@ -448,11 +458,12 @@ def test_grab_options_and_asking_which_is_on(families):
         assert voice.respond(words) == "" and guidance.pop_phrases() == [answer]
     assert voice.respond("next hand option") == "" and voice.respond("previous hand option") == ""
     assert voice.respond("previous hand option") == "" and families["hand"] == 12           # wraps round
-    assert voice.respond("previous option") == "" and guidance.option()[0] == 5
+    assert voice.respond("previous option") == "" and guidance.option()[0] == len(guidance.OPTIONS)
 
 
 def test_a_number_that_does_not_exist_is_answered_plainly(families):
-    assert voice.respond("option nine") == "" and guidance.pop_phrases() == ["There are 5 options."]
+    n = len(guidance.OPTIONS)
+    assert voice.respond(f"option {n + 1}") == "" and guidance.pop_phrases() == [f"There are {n} options."]
     assert voice.respond("grab option 3") == "" and guidance.pop_phrases() == ["There are 2 grab options."]
     assert voice.respond("hand option 13") == "" and guidance.pop_phrases() == ["There are 12 hand options."]
     assert voice.respond("option 0") == "" and guidance.option()[0] == 1 and families["calls"] == []
@@ -460,9 +471,11 @@ def test_a_number_that_does_not_exist_is_answered_plainly(families):
 
 def test_options_that_do_not_exist_yet_or_break_do_not_break_voice(quiet):
     quiet.delitem(sys.modules, "perception", raising=False)
-    quiet.delattr(guidance, "GRAB_OPTIONS", raising=False)
     assert voice.respond("hand option 2") == "" and guidance.pop_phrases() == ["Hand options are not available here."]
+    real = voice._family
+    quiet.setattr(voice, "_family", lambda kind: ("grab option", None, None, None) if kind == "grab" else real(kind))
     assert voice.respond("grab option 2") == "" and guidance.pop_phrases() == ["Grab options are not available here."]
+    quiet.setattr(voice, "_family", real)
 
     def broken(n):
         raise RuntimeError("camera busy")
@@ -1218,7 +1231,7 @@ def test_no_earbuds_on_a_machine_that_would_use_them_shows_in_the_status(quiet, 
 def test_a_way_of_guiding_from_before_the_options_is_named_as_such(quiet):
     quiet.setenv("GUIDANCE_MODE", "words")
     assert voice.respond("which option") == ""
-    assert guidance.pop_phrases() == ["This is words, which is not one of the 5 options."]
+    assert guidance.pop_phrases() == [f"This is words, which is not one of the {len(guidance.OPTIONS)} options."]
     assert voice.option_families()["option"] == "words"
     assert voice.respond("next option") == "" and guidance.option()[0] == 1
 
