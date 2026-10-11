@@ -3,7 +3,7 @@
     python tools/writeup_page.py OUT_DIR      # deck/deploy.sh runs it
 
 Handles the Markdown that file uses: ## headings, - lists, **bold**, _italic_ and $$ display math,
-which KaTeX (deck/vendor/katex) draws in the browser."""
+which KaTeX (deck/vendor/katex) draws in the browser. A # line is the elevator pitch."""
 import html
 import re
 import sys
@@ -25,7 +25,9 @@ def body(md: str) -> str:
     for block in md.strip().split("\n\n"):
         items = []
         for line in block.strip().split("\n"):
-            if line.startswith("## "):
+            if line.startswith("# "):
+                out.append(f'<p class="pitch">{inline(line[2:])}</p>')
+            elif line.startswith("## "):
                 out.append(f"<h2>{inline(line[3:])}</h2>")
             elif line.startswith("- "):
                 items.append(f"<li>{inline(line[2:])}</li>")

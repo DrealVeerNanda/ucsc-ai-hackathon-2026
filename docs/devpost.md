@@ -1,9 +1,9 @@
-For blind people, finding a dropped or misplaced item is the most common everyday challenge. Proprio guides their hand onto anything they ask for, one spoken word at a time.
+# Proprio guides blind people's hands onto anything they ask for, one spoken word at a time.
 
 ## Inspiration
 At a coffee shop, one of us watched a blind customer drop something and sweep the floor with their hands, trying to find it. Being able to see shouldn't decide whether you can find your own things.
 
-Most requests for help from blind people need an answer within minutes, yet today's tools only describe what a camera sees or call a volunteer over the internet. None of them walk your hand onto the item, hands-free, without the internet.
+For blind people, finding a dropped or misplaced item is described as the most common everyday challenge, and most requests for help need an answer within minutes. Today's tools describe what a camera sees or call a volunteer over the internet. None of them walk your hand onto the item, hands-free, without the internet.
 
 ## What it does
 You wear an iPhone on your chest and say "find my mug." Proprio finds the mug and your fingertip in 3D and speaks one word at a time into your earbuds: _right_, _down_, _forward_, then _grab_. It works for any item you can name, with no setup or pre-scanning. It remembers where items are in the room, so it can still guide you to one your hand is covering or the camera can't see. Every model runs on one ASUS Ascent GX10, so no video leaves the room and it keeps working with the internet unplugged.

@@ -44,3 +44,4 @@ body { margin: 0; background: var(--ground); color: var(--text); font: 400 18px/
 .doc th { color: var(--muted); font-weight: 600; }
 .doc .lede { font-size: 1.2rem; color: var(--muted); }
 .doc .math { margin: 16px 0; overflow-x: auto; overflow-y: hidden; }
+.doc .pitch { font: 700 clamp(1.5rem, 4vw, 2rem)/1.2 var(--display); text-wrap: balance; margin: 0 0 8px; }
