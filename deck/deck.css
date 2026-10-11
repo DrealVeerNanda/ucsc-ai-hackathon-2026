@@ -20,6 +20,7 @@
   --leg: oklch(0.88 0.165 96);
   --on-leg: oklch(0.21 0.04 96);
   --grab: oklch(0.82 0.16 152);
+  --on-grab: oklch(0.2 0.04 152);
   --scrim: oklch(0.12 0.02 255 / 0.82);
 
   --font: "Barlow", "Barlow Fallback", sans-serif;
@@ -69,8 +70,8 @@ h1, h2, p, ol, ul, figure { margin: 0; }
   transition: opacity 250ms var(--ease);
   will-change: transform;
 }
-.lab-word { background: var(--leg); color: var(--on-leg); font: 700 var(--t-lede)/1.1 var(--display); padding: 2px 10px; }
-.lab-word.is-grab { background: var(--grab); }
+.lab-word { background: var(--text); color: var(--ground); font: 700 var(--t-lede)/1.1 var(--display); padding: 2px 10px; }
+.lab-word.is-grab { background: var(--grab); color: var(--on-grab); }
 .lab-mug { background: var(--text); color: var(--ground); }
 .lab-you { background: var(--scrim); color: var(--muted); font-weight: 500; }
 .lab-cloud { background: var(--scrim); color: var(--muted); font-weight: 500; }
@@ -146,13 +147,12 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 .compare .yes { color: var(--text); font-weight: 600; }
 .compare .no { color: var(--faint); }
 .compare .mid { color: var(--muted); }
-.compare tr.us th, .compare tr.us td { color: var(--ground); background: var(--grab); font-weight: 700; border-bottom: 0; }
+.compare tr.us th, .compare tr.us td { color: var(--on-grab); background: var(--grab); font-weight: 700; border-bottom: 0; }
 
 /* results */
 .results { display: grid; gap: 3.6vh; }
 .res { display: grid; gap: 0.6vh; }
 .res-n { font: 700 var(--t-stat)/0.95 var(--display); }
-.res-n.is-leg { color: var(--leg); }
 .res-l { font-size: var(--t-body); color: var(--muted); }
 
 .team { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 1.2vh 2.4vw; font: 600 var(--t-body)/1.2 var(--font); }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-10T18:00:00-07:00",
+  "generatedAt": "2026-10-10T19:30:00-07:00",
   "title": "Design System: Blindfold pickup, live",
   "extensions": {
     "colorMeta": {
@@ -8,6 +8,36 @@
         "role": "neutral",
         "displayName": "Blue-Black Ground",
         "canonical": "oklch(0.165 0.022 255)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "deep": {
+        "role": "neutral",
+        "displayName": "Deep Navy",
+        "canonical": "oklch(0.13 0.02 255)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "video-well": {
+        "role": "neutral",
+        "displayName": "Video Well",
+        "canonical": "oklch(0.1 0.015 255)",
         "tonalRamp": [
           "#080b11",
           "#1d252f",
@@ -38,6 +68,21 @@
         "role": "neutral",
         "displayName": "Rule",
         "canonical": "oklch(0.33 0.03 255)",
+        "tonalRamp": [
+          "#080b11",
+          "#1d252f",
+          "#38404b",
+          "#555e6a",
+          "#78818e",
+          "#99a2af",
+          "#bec8d6",
+          "#e9eff7"
+        ]
+      },
+      "scrim": {
+        "role": "neutral",
+        "displayName": "Scrim",
+        "canonical": "oklch(0.12 0.02 255 / 0.82)",
         "tonalRamp": [
           "#080b11",
           "#1d252f",
@@ -83,36 +128,6 @@
         "role": "neutral",
         "displayName": "Faint",
         "canonical": "oklch(0.6 0.022 255)",
-        "tonalRamp": [
-          "#080b11",
-          "#1d252f",
-          "#38404b",
-          "#555e6a",
-          "#78818e",
-          "#99a2af",
-          "#bec8d6",
-          "#e9eff7"
-        ]
-      },
-      "scrim": {
-        "role": "neutral",
-        "displayName": "Scrim",
-        "canonical": "oklch(0.12 0.02 255 / 0.82)",
-        "tonalRamp": [
-          "#080b11",
-          "#1d252f",
-          "#38404b",
-          "#555e6a",
-          "#78818e",
-          "#99a2af",
-          "#bec8d6",
-          "#e9eff7"
-        ]
-      },
-      "video-well": {
-        "role": "neutral",
-        "displayName": "Video Well",
-        "canonical": "oklch(0.1 0.015 255)",
         "tonalRamp": [
           "#080b11",
           "#1d252f",
@@ -214,69 +229,112 @@
           "#ffd1c5"
         ]
       },
-      "depth-far": {
+      "point-near": {
         "role": "data",
-        "displayName": "Depth Far",
-        "canonical": "#0c1628",
+        "displayName": "Point Near",
+        "canonical": "#c4e4ff",
         "tonalRamp": [
-          "#0c1628",
-          "#26354a",
-          "#41556c",
-          "#5d758e",
-          "#7895b0",
-          "#93b5d1",
-          "#adcfeb",
+          "#162e54",
+          "#2b4468",
+          "#435b7e",
+          "#5d7495",
+          "#7a90ae",
+          "#98adc8",
+          "#b3cbe5",
           "#c4e4ff"
         ]
       },
-      "depth-near": {
+      "point-far": {
         "role": "data",
-        "displayName": "Depth Near",
-        "canonical": "#c4e4ff",
+        "displayName": "Point Far",
+        "canonical": "#162e54",
         "tonalRamp": [
-          "#0c1628",
-          "#26354a",
-          "#41556c",
-          "#5d758e",
-          "#7895b0",
-          "#93b5d1",
-          "#adcfeb",
+          "#162e54",
+          "#2b4468",
+          "#435b7e",
+          "#5d7495",
+          "#7a90ae",
+          "#98adc8",
+          "#b3cbe5",
           "#c4e4ff"
+        ]
+      },
+      "point-standing": {
+        "role": "data",
+        "displayName": "Point Standing",
+        "canonical": "#ecf6ff",
+        "tonalRamp": [
+          "#0a0b0c",
+          "#222426",
+          "#3e4042",
+          "#5c5e60",
+          "#7e8083",
+          "#9fa2a5",
+          "#c5c7ca",
+          "#edeef0"
         ]
       }
     },
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "Guidance state word, read from 2 m. Barlow Semi Condensed 700."
+        "purpose": "Dashboard: the spoken word over the perception hero, with its arrow."
       },
       "display-number": {
         "displayName": "Display Number",
-        "purpose": "Fingertip-to-object distance in telestrator yellow. Barlow Semi Condensed 700."
-      },
-      "spoken": {
-        "displayName": "Spoken Word",
-        "purpose": "The instruction spoken in the last 2.5 s, with its direction arrow. Barlow Semi Condensed 700."
+        "purpose": "Dashboard: fingertip-to-object distance in telestrator yellow, sized to the hero container."
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "Clock bug time; the same cut sets the end-to-end figure (1.728rem), leg tag and offline plate (1.44rem)."
+        "purpose": "Dashboard: the state word at the left of the status bar."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Current caption phrase and move-hand values. Barlow 600."
+        "purpose": "Dashboard: status-bar values, the leg distance tag, the Offline plate."
       },
-      "section": {
-        "displayName": "Section",
-        "purpose": "Column and rail headings. Barlow 600."
+      "reason": {
+        "displayName": "Reason",
+        "purpose": "Dashboard: the one Muted line saying why the word was spoken."
+      },
+      "sub": {
+        "displayName": "Sub",
+        "purpose": "Dashboard: 'to the mug' and the stale banner."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Labels, rail text, the why line, earlier-instruction chips, object tags. Barlow 400 to 600."
+        "purpose": "Object tags, earlier-instruction chips."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Sub-lines, step statuses, fps, 3D note, simulated note, caption tag."
+        "purpose": "Status-bar keys, camera key, simulated-input chip, scene note."
+      },
+      "deck-poster": {
+        "displayName": "Deck Poster",
+        "purpose": "Deck title slide; the closing 'Grab.' one step down in green."
+      },
+      "deck-head": {
+        "displayName": "Deck Head",
+        "purpose": "Deck slide headings."
+      },
+      "deck-stat": {
+        "displayName": "Deck Stat",
+        "purpose": "Deck problem figures and results."
+      },
+      "deck-lede": {
+        "displayName": "Deck Lede",
+        "purpose": "The one sentence under a deck heading; big point lists use the display cut at this size."
+      },
+      "deck-body": {
+        "displayName": "Deck Body",
+        "purpose": "Deck points, stat labels, flow steps."
+      },
+      "deck-small": {
+        "displayName": "Deck Small",
+        "purpose": "Tracking 3D labels, competitor table, placeholder text."
+      },
+      "deck-fine": {
+        "displayName": "Deck Fine",
+        "purpose": "Sources and the slide counter, Faint."
       }
     },
     "shadows": [],
@@ -284,27 +342,43 @@
       {
         "name": "ease",
         "value": "cubic-bezier(0.22, 1, 0.36, 1)",
-        "purpose": "The only easing; caption entry and caption fade."
+        "purpose": "The only easing curve on both surfaces."
       },
       {
-        "name": "caption-in",
-        "value": "220ms",
-        "purpose": "New caption phrase fades in; adds a 12px slide only under prefers-reduced-motion: no-preference."
+        "name": "grab-frame",
+        "value": "200ms opacity",
+        "purpose": "Dashboard hero's green frame fading in at grab. All other dashboard values snap."
       },
       {
-        "name": "caption-fade",
-        "value": "180ms",
-        "purpose": "Caption text opacity change."
+        "name": "slide-out",
+        "value": "320ms opacity",
+        "purpose": "Deck slide leaving."
+      },
+      {
+        "name": "slide-in",
+        "value": "420ms opacity, 120ms delay",
+        "purpose": "Deck slide arriving."
+      },
+      {
+        "name": "build",
+        "value": "420ms opacity + 1.2vh rise",
+        "purpose": "Deck builds (data-step); rise dropped under prefers-reduced-motion."
+      },
+      {
+        "name": "label-fade",
+        "value": "250ms opacity",
+        "purpose": "Deck labels tracking 3D points."
+      },
+      {
+        "name": "camera-glide",
+        "value": "exponential approach, rate 1.6/s",
+        "purpose": "Deck stage camera, look-at and prop levels easing to each shot; ?still snaps them."
       }
     ],
     "breakpoints": [
       {
-        "name": "stack",
+        "name": "dashboard-stack",
         "value": "max-width: 899px"
-      },
-      {
-        "name": "rail-below",
-        "value": "max-width: 1279px"
       },
       {
         "name": "root-18",
@@ -323,7 +397,7 @@
           500,
           600
         ],
-        "source": "dashboard/fonts/barlow-{400,500,600}.woff2 (latin subset, self-hosted)",
+        "source": "dashboard/fonts/barlow-{400,500,600}.woff2 (latin subset, self-hosted); the deck loads the same files from /fonts/",
         "license": "OFL 1.1, Jeremy Tribby, https://github.com/jpt/barlow",
         "fallback": "Barlow Fallback: local Arial/Helvetica/Liberation Sans, size-adjust 93%"
       },
@@ -335,6 +409,19 @@
         "source": "dashboard/fonts/barlow-semi-condensed-700.woff2 (latin subset, self-hosted, preloaded)",
         "license": "OFL 1.1, Jeremy Tribby, https://github.com/jpt/barlow",
         "fallback": "Barlow Display Fallback: local Arial Narrow/Arial/Liberation Sans Narrow, size-adjust 88%"
+      }
+    ],
+    "surfaces": [
+      {
+        "name": "Judge dashboard",
+        "path": "dashboard/index.html",
+        "mode": "Operate"
+      },
+      {
+        "name": "Pitch deck",
+        "path": "deck/index.html",
+        "mode": "Persuade",
+        "vendor": "deck/vendor/three.module.min.js (three.js r169, MIT, deck/vendor/THREE-LICENSE.txt)"
       }
     ]
   },
@@ -364,22 +451,6 @@
       "css": ".ds-tag-hand{font-family:Barlow, \"Barlow Fallback\", sans-serif;font-variant-numeric:tabular-nums;display:inline-block;padding:2px 8px;border-radius:3px;background:var(--warn, oklch(0.8 0.13 65));color:var(--on-leg, oklch(0.21 0.04 96));font-size:1rem;font-weight:500;line-height:1.3}"
     },
     {
-      "name": "Clock Bug",
-      "kind": "custom",
-      "refersTo": "clock-bug",
-      "description": "Elapsed-time bug over the top left of the video with a budget bar.",
-      "html": "<div class=\"ds-bug\"><p class=\"ds-bug-time\">0:07.4</p><p class=\"ds-bug-sub\">Finding the mug</p><div class=\"ds-budget\"><span style=\"--p:.4\"></span></div></div>",
-      "css": ".ds-bug{font-family:Barlow, \"Barlow Fallback\", sans-serif;font-variant-numeric:tabular-nums;display:inline-block;min-width:11.5rem;padding:8px 16px 12px;border-radius:3px;background:var(--scrim, oklch(0.12 0.02 255 / 0.82));color:var(--text, oklch(0.965 0.005 255))} .ds-bug p{margin:0} .ds-bug-time{font-family:\"Barlow Semi Condensed\", \"Barlow Display Fallback\", sans-serif;font-size:2.074rem;font-weight:700;line-height:1.1} .ds-bug-sub{font-size:.833rem;color:var(--muted, oklch(0.76 0.02 255))} .ds-budget{position:relative;height:4px;margin-top:8px;background:var(--rule, oklch(0.33 0.03 255));border-radius:3px;overflow:hidden} .ds-budget span{position:absolute;inset:0;transform-origin:left;transform:scaleX(var(--p,0));background:var(--text, oklch(0.965 0.005 255))}"
-    },
-    {
-      "name": "Lower-Third Caption",
-      "kind": "custom",
-      "refersTo": "caption-now",
-      "description": "What the wearer hears, as a scrim strip at the bottom of the video.",
-      "html": "<div class=\"ds-caps\"><p class=\"ds-cap ds-cap-prev\">Found it</p><p class=\"ds-cap ds-cap-now\"><span class=\"ds-cap-tag\">Wearer hears</span><span>“Show me your hand”</span></p></div>",
-      "css": ".ds-caps{font-family:Barlow, \"Barlow Fallback\", sans-serif;font-variant-numeric:tabular-nums;display:grid;color:var(--text, oklch(0.965 0.005 255))} .ds-cap{margin:0;padding:4px 16px;background:var(--scrim, oklch(0.12 0.02 255 / 0.82))} .ds-cap-prev{color:var(--muted, oklch(0.76 0.02 255));font-size:1rem} .ds-cap-now{display:flex;align-items:center;gap:12px;padding-block:12px;font-size:1.728rem;font-weight:600;line-height:1.25} .ds-cap-tag{flex:none;padding:2px 8px;border-radius:3px;background:var(--text, oklch(0.965 0.005 255));color:var(--ground, oklch(0.165 0.022 255));font-size:.833rem;font-weight:600} .ds-cap-now span:last-child{animation:ds-cap-in 220ms cubic-bezier(0.22,1,0.36,1)} @keyframes ds-cap-in{from{opacity:0}}"
-    },
-    {
       "name": "Stale Banner",
       "kind": "custom",
       "refersTo": "stale-banner",
@@ -396,66 +467,83 @@
       "css": ".ds-notice{font-family:Barlow, \"Barlow Fallback\", sans-serif;font-variant-numeric:tabular-nums;display:inline-block;margin:0;padding:8px 16px;border-radius:3px;background:var(--plate, oklch(0.215 0.026 255));color:var(--muted, oklch(0.76 0.02 255));font-weight:500}"
     },
     {
-      "name": "Move Row",
-      "kind": "custom",
-      "refersTo": "",
-      "description": "Fixed-cell move-hand direction row; green when on target.",
-      "html": "<dl class=\"ds-moves\"><div class=\"ds-move\"><dt>Side</dt><dd><svg viewBox=\"0 0 24 24\" width=\"1em\" height=\"1em\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg>6 cm right</dd></div><div class=\"ds-move ds-is-ok\"><dt>Height</dt><dd>On target</dd></div></dl>",
-      "css": ".ds-moves{font-family:Barlow, \"Barlow Fallback\", sans-serif;font-variant-numeric:tabular-nums;margin:0;border-top:1px solid var(--rule, oklch(0.33 0.03 255));color:var(--text, oklch(0.965 0.005 255))} .ds-move{display:grid;grid-template-columns:5.5rem 1fr;align-items:center;padding:12px 0;border-bottom:1px solid var(--rule, oklch(0.33 0.03 255))} .ds-move dt{color:var(--muted, oklch(0.76 0.02 255))} .ds-move dd{margin:0;display:flex;align-items:center;gap:12px;font-size:1.728rem;font-weight:600;line-height:1.2} .ds-move.ds-is-ok dd{color:var(--grab, oklch(0.82 0.16 152))}"
+      "name": "Status Bar",
+      "kind": "nav",
+      "refersTo": "sim-chip",
+      "description": "Thin top strip: state word, then Muted keys over display-cut values, simulated-input chip at the right.",
+      "html": "<header class=\"ds-bar\"><p class=\"ds-bar-state\">Guiding</p><p class=\"ds-bar-item\"><span class=\"ds-bar-k\">Finding</span><b class=\"ds-bar-v\">mug</b></p><p class=\"ds-bar-item\"><span class=\"ds-bar-k\">Time</span><b class=\"ds-bar-v\">0:07.4</b></p><p class=\"ds-bar-item\"><span class=\"ds-bar-k\">Camera to earbuds</span><b class=\"ds-bar-v\">–</b></p><p class=\"ds-bar-sim\" tabindex=\"0\">Simulated input</p></header>",
+      "css": ".ds-bar{font-family:Barlow, \"Barlow Fallback\", sans-serif;font-variant-numeric:tabular-nums;display:flex;align-items:center;flex-wrap:wrap;gap:12px 48px;padding:12px 24px;border-bottom:1px solid var(--rule, oklch(0.33 0.03 255));background:var(--ground, oklch(0.165 0.022 255));color:var(--text, oklch(0.965 0.005 255))} .ds-bar p{margin:0} .ds-bar-state{min-width:9ch;font-family:\"Barlow Semi Condensed\", \"Barlow Display Fallback\", sans-serif;font-size:1.728rem;font-weight:700;line-height:1} .ds-bar-item{display:grid;gap:2px} .ds-bar-k{font-size:.833rem;color:var(--muted, oklch(0.76 0.02 255))} .ds-bar-v{font-family:\"Barlow Semi Condensed\", \"Barlow Display Fallback\", sans-serif;font-size:1.44rem;font-weight:700;line-height:1} .ds-bar-sim{margin-left:auto;padding:4px 12px;border:1px solid var(--rule, oklch(0.33 0.03 255));border-radius:3px;font-size:.833rem;color:var(--muted, oklch(0.76 0.02 255))} .ds-bar-sim:focus-visible{outline:2px solid var(--text, oklch(0.965 0.005 255));outline-offset:2px}"
     },
     {
-      "name": "Spoken Instruction",
+      "name": "Perception HUD",
       "kind": "custom",
-      "refersTo": "said-chip",
-      "description": "What the earbuds said in the last 2.5 s, why, and up to five earlier instructions as chips with repeats collapsed.",
-      "html": "<div class=\"ds-say\"><p class=\"ds-say-now\"><svg class=\"ds-arrow\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg><span>Right</span></p><p class=\"ds-say-why\">Hand is 20 cm left of the mug</p><ol class=\"ds-said\" aria-label=\"Said before, newest first\"><li>Right ×5</li><li>Up</li><li>Found it</li></ol><p class=\"ds-say-now ds-is-grab\"><span>Grab</span></p><p class=\"ds-say-now ds-is-quiet\"><span>Quiet</span></p></div>",
-      "css": ".ds-say{font-family:Barlow, \"Barlow Fallback\", sans-serif;font-variant-numeric:tabular-nums;color:var(--text, oklch(0.965 0.005 255))} .ds-say p{margin:0} .ds-say-now{display:flex;align-items:center;gap:12px;font-family:\"Barlow Semi Condensed\", \"Barlow Display Fallback\", sans-serif;font-size:2.986rem;font-weight:700;line-height:1.1} .ds-arrow{width:.9em;height:.9em;flex:none;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round} .ds-say-now.ds-is-grab{color:var(--grab, oklch(0.82 0.16 152))} .ds-say-now.ds-is-quiet{color:var(--faint, oklch(0.6 0.022 255))} .ds-say-why{margin-top:4px;color:var(--muted, oklch(0.76 0.02 255))} .ds-said{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0;padding:0;list-style:none} .ds-said li{padding:2px 8px;border-radius:3px;background:var(--plate, oklch(0.215 0.026 255));color:var(--muted, oklch(0.76 0.02 255))} .ds-said li:first-child{color:var(--text, oklch(0.965 0.005 255))}"
+      "refersTo": "hero-canvas",
+      "description": "Hero over Deep Navy: spoken word, reason, yellow distance, earlier-instruction scrim chips; green frame at grab.",
+      "html": "<section class=\"ds-hero\"><div class=\"ds-hud\"><p class=\"ds-say\"><svg class=\"ds-arrow\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg><span>Right</span></p><p class=\"ds-why\">Hand is 20 cm left of the mug</p><p class=\"ds-dist\"><span class=\"ds-dist-n\">18 cm</span><span class=\"ds-dist-l\">to the mug</span></p></div><ol class=\"ds-said\"><li>Right ×5</li><li>Up</li><li>Found it</li></ol></section>",
+      "css": ".ds-hero{font-family:Barlow, \"Barlow Fallback\", sans-serif;font-variant-numeric:tabular-nums;position:relative;container-type:inline-size;min-height:22rem;border-radius:3px;overflow:hidden;background:var(--deep, oklch(0.13 0.02 255));color:var(--text, oklch(0.965 0.005 255))} .ds-hero::after{content:\"\";position:absolute;inset:0;border:6px solid var(--grab, oklch(0.82 0.16 152));border-radius:inherit;opacity:0;transition:opacity 200ms cubic-bezier(0.22,1,0.36,1)} .ds-hero:hover::after{opacity:1} .ds-hud{position:absolute;left:32px;top:24px} .ds-hud p,.ds-said{margin:0} .ds-say{display:flex;align-items:center;gap:.18em;font-family:\"Barlow Semi Condensed\", \"Barlow Display Fallback\", sans-serif;font-size:min(7.5rem,13cqi);font-weight:700;line-height:.95} .ds-arrow{width:.8em;height:.8em;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round} .ds-why{margin-top:8px;font-size:1.44rem;color:var(--muted, oklch(0.76 0.02 255))} .ds-dist{display:flex;align-items:baseline;gap:12px;margin-top:24px} .ds-dist-n{font-family:\"Barlow Semi Condensed\", \"Barlow Display Fallback\", sans-serif;font-size:min(4.3rem,8cqi);font-weight:700;line-height:1;color:var(--leg, oklch(0.88 0.165 96))} .ds-dist-l{font-size:1.2rem;color:var(--muted, oklch(0.76 0.02 255))} .ds-said{position:absolute;left:32px;bottom:24px;display:flex;flex-wrap:wrap;gap:8px;padding:0;list-style:none} .ds-said li{padding:2px 8px;border-radius:3px;background:var(--scrim, oklch(0.12 0.02 255 / 0.82));color:var(--muted, oklch(0.76 0.02 255))} .ds-said li:first-child{color:var(--text, oklch(0.965 0.005 255))}"
+    },
+    {
+      "name": "Deck Competitor Table",
+      "kind": "card",
+      "refersTo": "deck-compare-own-row",
+      "description": "Scrim table with 1px rule rows; white Yes, faint No; the product's own row in Grab Green.",
+      "html": "<table class=\"ds-compare\"><thead><tr><th>Today</th><th>Guides your hand</th><th>Works offline</th></tr></thead><tbody><tr><th>Be My AI</th><td class=\"ds-no\">No</td><td class=\"ds-no\">No, cloud</td></tr><tr class=\"ds-us\"><th>[Project name]</th><td>Yes</td><td>Yes</td></tr></tbody></table>",
+      "css": ".ds-compare{font-family:Barlow, \"Barlow Fallback\", sans-serif;font-variant-numeric:tabular-nums;border-collapse:collapse;width:100%;font-size:1rem;background:var(--scrim, oklch(0.12 0.02 255 / 0.82));color:var(--text, oklch(0.965 0.005 255))} .ds-compare th,.ds-compare td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--rule, oklch(0.33 0.03 255))} .ds-compare thead th{color:var(--muted, oklch(0.76 0.02 255));font-weight:500} .ds-compare tbody th{font-weight:600} .ds-no{color:var(--faint, oklch(0.6 0.022 255))} .ds-us th,.ds-us td{background:var(--grab, oklch(0.82 0.16 152));color:var(--ground, oklch(0.165 0.022 255));font-weight:700;border-bottom:0}"
+    },
+    {
+      "name": "Deck Placeholder",
+      "kind": "card",
+      "refersTo": "deck-placeholder",
+      "description": "Dashed frame naming a missing asset; never a stock image.",
+      "html": "<figure class=\"ds-ph\"><span>Photo: wearer at a table with the chest mount</span></figure>",
+      "css": ".ds-ph{font-family:Barlow, \"Barlow Fallback\", sans-serif;font-variant-numeric:tabular-nums;display:grid;place-items:center;width:min(30vw,52vh);aspect-ratio:4/3;margin:0;padding:16px;border:2px dashed var(--rule, oklch(0.33 0.03 255));border-radius:3px;color:var(--faint, oklch(0.6 0.022 255));font-size:1rem;font-weight:600;text-align:center;background:oklch(0.165 0.022 255 / 0.6)}"
     }
   ],
   "narrative": {
     "northStar": "The Telestrator Booth",
-    "overview": "**Creative North Star: \"The Telestrator Booth\"**\n\nThe screen is a live sports broadcast of one event: a blindfolded hand reaching an object. Judges stand 1 to 2 m away and cannot hear the earbuds, so every graphic is a broadcast element laid over or beside live video: a clock bug, a lower-third caption, a telestrator line drawn from fingertip to object, a picture-in-picture depth inset. It is an Operate surface (a live monitor), also used by the team while tuning, so density stays honest: real frames, real millimetres, real milliseconds, and empty states where nothing has been measured yet.\n\nGraphics are flat plates on a blue-black ground. The video is always the brightest thing on screen; the surround is dark by decision so it never competes. One colour, telestrator yellow, is reserved for the active leg; green means success and nothing else. Type is Barlow, a signage grotesk drawn from California plates and highway signs, in white with tabular figures: a semi-condensed bold cut for the broadcast figures and words, regular width for everything else, set big enough that the state word, the distance and the spoken instruction read from across the table. Motion is almost absent: values snap like a broadcast data feed, and only new caption phrases wipe in.\n\nReference studied for the overlay grammar (annotations drawn over a camera image, depth beside colour): https://docs.foxglove.dev/docs/visualization/panels/image. The world is Live Broadcast Graphics (seed 5260f28d, code-led); it rejects the docked-panel telemetry grid.",
+    "overview": "**Creative North Star: \"The Telestrator Booth\"**\n\nThe product is shown as a live broadcast of one event: a blindfolded hand reaching an object. Judges stand 1 to 2 m away and cannot hear the earbuds, so every graphic is a broadcast element laid over a picture: a status strip, a telestrator line from fingertip to object, tags pinned to what the system sees. Since the 2026-10-10 redesign the main picture is a perception view: the table drawn as luminous points on deep navy, objects as labelled outlines, the way a self-driving car renders its world (reference fetched for it: Waymo Driver perception view, https://waymo.com/waymo-driver/). The chest camera remains beside it as evidence. The original overlay grammar came from https://docs.foxglove.dev/docs/visualization/panels/image.\n\nTwo surfaces share this world. The **dashboard** (`dashboard/`) is an Operate surface, a live monitor: real frames, real millimetres, real milliseconds, empty states where nothing is measured, and nothing about how the system works. The **pitch deck** (`deck/`) is a Persuade surface: a left text column over a persistent 3D stage that re-stages the same world (points, mug, fingertip, leg) with a camera shot per build.\n\nGraphics are flat plates on a blue-black ground. Pictures (video, point cloud) are the brightest things on screen. One colour, telestrator yellow, belongs to the fingertip-to-object leg; green means grab and nothing else. Type is Barlow, a signage grotesk drawn from California plates and highway signs, with a semi-condensed bold cut for the words and figures read from 2 m. Values snap like a data feed; only the deck glides.",
     "keyCharacteristics": [
-      "Dark only; the live video is the brightest element on screen.",
-      "One reserved accent (telestrator yellow) for the active leg; green only for success.",
+      "Dark only; the picture (video or point cloud) is the brightest element on screen.",
+      "A perception world: blue near-to-far points on deep navy, things standing on the table in near-white, objects as outlines with name tags.",
+      "One reserved accent (telestrator yellow) for the active leg; green only for the grab.",
       "Flat broadcast plates with 3px corners, no shadows.",
-      "Self-hosted Barlow (Semi Condensed 700 for figures, 400 to 600 for text) with tabular numerals everywhere; poster-size state, distance and spoken word read from 2 m.",
-      "Values snap; motion only for new caption phrases."
+      "Self-hosted Barlow (Semi Condensed 700 for poster words and figures, 400 to 600 for text) with tabular numerals.",
+      "Dashboard values snap; the deck's camera and builds ease."
     ],
     "rules": [
       {
         "name": "The Telestrator Rule",
-        "body": "Yellow is the active leg. If an element is not the fingertip-to-object line, its distance, or that leg in the 3D scene, it is not yellow.",
+        "body": "Yellow is the active leg. If an element is not the fingertip-to-object line, its distance, or that leg in 3D, it is not yellow. This holds on both surfaces.",
         "section": "colors"
       },
       {
         "name": "The Green Means Grab Rule",
-        "body": "Green appears only when something succeeded. Never as decoration, a status-OK dot, or a brand colour.",
+        "body": "Green appears only for the grab and things within reach of it. Never as decoration, a status-OK dot, or a link colour. The one bounded exception is the deck's competitor table, where the product's own row is green.",
         "section": "colors"
       },
       {
         "name": "The Brightest Thing Rule",
-        "body": "Nothing on screen may outshine the video. Plates over video use the scrim; the surround stays at ground level. This is why the surface is dark only (doctrine rule 29 exception, recorded here).",
+        "body": "Nothing may outshine the picture. Plates over video or points use the scrim; the surround stays at ground level; the hero sits on Deep Navy so the cloud is the light source. This is why both surfaces are dark only (doctrine rule 29 exception, recorded here).",
         "section": "colors"
       },
       {
-        "name": "The Depth Keeps Its Own Hue Rule",
-        "body": "Data visualisations (the depth inset) ramp within the ground's blue family; they never borrow a signal colour.",
+        "name": "The Points Keep Their Own Hue Rule",
+        "body": "Point clouds ramp within the ground's blue family and near-white; they never borrow a signal colour.",
         "section": "colors"
       },
       {
         "name": "The Tabular Everything Rule",
-        "body": "`font-variant-numeric: tabular-nums` is set on the body; every number on screen holds its width while it changes.",
+        "body": "`font-variant-numeric: tabular-nums` is set on the body of both surfaces; every number holds its width while it changes.",
         "section": "typography"
       },
       {
         "name": "The Two Metre Rule",
-        "body": "The state word, the distance and the spoken instruction are deliberately larger than doctrine rule 15's Operate cap of 2x body (4.3x, 5.16x and 2.986x). They are read by judges from 1 to 2 m, the broadcast \"poster\" raise in the direction contract. No other text exceeds 2.074rem.",
+        "body": "On the dashboard only the spoken word and the distance exceed the Operate cap of 2x body; they are read by judges from 1 to 2 m. No other dashboard text exceeds 1.728rem.",
         "section": "typography"
       },
       {
         "name": "The Display Cut Rule",
-        "body": "Barlow Semi Condensed 700 (the display token) is for broadcast figures and the words judges read from 2 m; it never sets running text or labels. It takes no negative tracking. Regular-width Barlow tops out at 600.",
+        "body": "Barlow Semi Condensed 700 sets poster words, figures and single-line claims; never paragraphs, keys or labels. No negative tracking. Regular-width Barlow tops out at 600.",
         "section": "typography"
       },
       {
@@ -465,22 +553,25 @@
       }
     ],
     "dos": [
-      "**Do** reserve Telestrator Yellow for the active leg: the line, its tag, the distance number, the 3D leg.",
-      "**Do** use Grab Green only for success: grab state, within reach, On target, the spoken Grab, finished clock, the green video frame.",
-      "**Do** place plates over video on the scrim, and keep every plate to the 3px corner.",
-      "**Do** keep tabular numerals on every number and size live values against their cell, not their content.",
-      "**Do** show an honest empty state (\"–\", \"None yet\", \"Waiting for the first frame\") instead of a placeholder number.",
+      "**Do** reserve Telestrator Yellow for the active leg: the line, its tag, the distance figure, the 3D leg.",
+      "**Do** use Grab Green only for the grab and within-reach states, plus the green frame on both panels at grab.",
+      "**Do** put the perception canvas on Deep Navy and keep point clouds in the blue ramp and near-white.",
+      "**Do** place plates over pictures on the scrim, and keep every plate to the 3px corner.",
+      "**Do** keep tabular numerals on every number and size live values against their container, not their content.",
+      "**Do** show an honest empty state (\"–\", \"nothing yet\", \"Waiting for the first frame\") instead of a placeholder number.",
       "**Do** label simulated input on screen whenever a lane is fake.",
-      "**Do** let values snap; animate only new caption phrases (opacity, plus 12px slide when motion is allowed)."
+      "**Do** mark missing deck assets as dashed placeholder frames that name what belongs there.",
+      "**Do** let dashboard values snap; let only the deck's camera, labels and builds ease, and honour `?still` and reduced motion."
     ],
     "donts": [
-      "**Don't** add a light scheme or lift the surround; nothing may be brighter than the video.",
-      "**Don't** colour the depth inset or any chart with yellow, green, amber, or red; ramp it within the ground's blue family.",
+      "**Don't** add a light scheme or lift the surround; nothing may be brighter than the picture.",
+      "**Don't** colour point clouds or charts with yellow, green, amber, or red.",
       "**Don't** use shadows or glows to separate plates.",
-      "**Don't** set any text other than the state word, the distance and the spoken instruction above 2.074rem.",
-      "**Don't** set running text or labels in the semi-condensed display cut, track it negatively, or push regular-width Barlow past 600.",
+      "**Don't** set any dashboard text other than the spoken word and the distance above 1.728rem.",
+      "**Don't** set paragraphs, keys or labels in the semi-condensed display cut, track it negatively, or push regular-width Barlow past 600.",
       "**Don't** fall back to the platform UI stack; text names Barlow then its size-adjusted fallback.",
-      "**Don't** use Alert Red for anything but stale frames."
+      "**Don't** use Alert Red for anything but stale frames.",
+      "**Don't** explain the pipeline on the dashboard; how it works belongs in the deck."
     ]
   }
 }

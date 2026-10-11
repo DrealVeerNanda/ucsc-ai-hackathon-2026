@@ -11,7 +11,7 @@
     .row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
     .now { font: 700 34px/1.1 var(--display); }
     .timer { font: 700 44px/1 var(--display); }
-    .timer.is-over { color: var(--leg); }
+    .timer-over { font: 600 1rem/1 var(--font); color: var(--muted); margin-left: 8px; }
     .meta { color: var(--muted); font-size: 0.833rem; margin-top: 4px; }
     .text { margin-top: 20px; font-size: 1.2rem; line-height: 1.45; max-width: 60ch; }
     .next { margin-top: 24px; color: var(--muted); }
@@ -57,7 +57,12 @@
       if (!started) return;
       const s = Math.floor((Date.now() - started) / 1000);
       el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-      el.classList.toggle("is-over", s > budget);
+      if (s > budget) {
+        const over = document.createElement("span");
+        over.className = "timer-over";
+        over.textContent = `${s - budget} s over`;
+        el.append(over);
+      }
     }, 250);
   </script>
 </body>
