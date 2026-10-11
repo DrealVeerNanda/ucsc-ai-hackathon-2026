@@ -1,11 +1,11 @@
 """The checklist launcher.py shows before the demo starts: everything that has to be true, each
 as one line a person can read from across the table.
 
-    line = {"id": "airpods", "title": "AirPods connected", "level": "green" | "amber" | "red",
+    line = {"id": "airpods", "title": "Headphones connected", "level": "green" | "amber" | "red",
             "message": "one plain sentence: what is wrong and what to do",
             "required": True,            # False: shown, but never holds up Start
             "blocked": False,            # True: cannot be judged until a line above is fixed
-            "fix": {"action": "connect_airpods", "label": "Connect AirPods"} or None}
+            "fix": {"action": "connect_airpods", "label": "Connect headphones"} or None}
 
 Each group below looks at the machine and returns its lines. Nothing here changes anything: the
 buttons' actions live in launcher.py. Standard library only, so it starts in a blink and cannot
@@ -254,7 +254,7 @@ def bt_info(s: Setup, addr: str) -> dict:
     """What bluetoothctl knows about one device: name, paired, connected, and its services."""
     rc, out = s.run(["bluetoothctl", "info", addr])
     if rc != 0 or "not available" in out:
-        return {"addr": addr, "known": False, "name": "AirPods", "connected": False, "paired": False, "audio": False}
+        return {"addr": addr, "known": False, "name": "The headphones", "connected": False, "paired": False, "audio": False}
     name = (re.search(r"^\s*(?:Alias|Name): (.+)$", out, re.M) or [None, addr])[1].strip()
     return {"addr": addr, "known": True, "name": name,
             "connected": bool(re.search(r"Connected: yes", out)), "paired": bool(re.search(r"Paired: yes", out)),
@@ -320,17 +320,17 @@ def airpods(s: Setup) -> list[dict]:
     pods = find_headset(s)
     name = pods["name"]
     are = "are" if name.lower().rstrip().endswith(("s", "pro")) else "is"
-    t1, t2, t3 = "AirPods connected", "Sound goes to the AirPods", "AirPods microphone"
+    t1, t2, t3 = "Headphones connected", "Sound goes to the headphones", "Headphones' microphone"
     if not pods["known"]:
-        first = line("airpods", t1, RED, "No AirPods are paired with this computer. Pair them in Settings, Bluetooth, "
-                     "with the case open and its button held.")
+        first = line("airpods", t1, RED, "No headphones are paired with this computer. Pair them in Settings, Bluetooth, "
+                     "with the headphones in pairing mode (AirPods: case open and its button held).")
     elif not pods["connected"]:
-        first = line("airpods", t1, RED, f"{name} {are} not connected. Put them in your ears (or open the case next to the GX10), "
-                     "then press Connect.", fix=("connect_airpods", "Connect AirPods"))
+        first = line("airpods", t1, RED, f"{name} {are} not connected. Switch them on and put them on, next to the GX10, "
+                     "then press Connect.", fix=("connect_airpods", "Connect headphones"))
     else:
         first = line("airpods", t1, GREEN, f"{name} {are} connected.")
     if not pods["connected"]:
-        wait = "Waiting for the AirPods."
+        wait = "Waiting for the headphones."
         return [first, line("airpods_output", t2, RED, wait, blocked=True), line("airpods_mic", t3, RED, wait, blocked=True),
                 bluetooth(s)]
 
@@ -338,23 +338,23 @@ def airpods(s: Setup) -> list[dict]:
     if sink["name"] and sink["name"].startswith("bluez_output."):
         second = line("airpods_output", t2, GREEN, f"Sound goes to {sink['says']}.")
     elif sink["name"]:
-        second = line("airpods_output", t2, RED, f"Sound is going to {sink['says']}, not the AirPods.",
-                      fix=("use_airpods_output", "Send sound to the AirPods"))
+        second = line("airpods_output", t2, RED, f"Sound is going to {sink['says']}, not the headphones.",
+                      fix=("use_airpods_output", "Send sound to the headphones"))
     else:
         second = line("airpods_output", t2, RED, f"The sound server is not answering ({sink.get('error')}).")
 
     device, modes = bluez_device(s)
     headset = next((m for m in ("headset-head-unit-msbc", "headset-head-unit") if m in modes), None)
     if device is None:
-        third = line("airpods_mic", t3, RED, "The sound server does not see the AirPods yet. Press Reconnect.",
+        third = line("airpods_mic", t3, RED, "The sound server does not see the headphones yet. Press Reconnect.",
                      fix=("reconnect_airpods", "Reconnect"))
     elif headset is None or "a2dp-sink" not in modes:
-        third = line("airpods_mic", t3, RED, "The AirPods are offering no microphone mode. Press Reconnect.",
+        third = line("airpods_mic", t3, RED, f"{name} {are} offering no microphone mode. Press Reconnect.",
                      fix=("reconnect_airpods", "Reconnect"))
     elif lost_modes(s):
-        third = line("airpods_mic", t3, AMBER, f"The AirPods refused a mode switch {lost_modes(s)} time(s) in the last ten minutes "
+        third = line("airpods_mic", t3, AMBER, f"{name} refused a mode switch {lost_modes(s)} time(s) in the last ten minutes "
                      "(\"invalid profile\"); they can take two minutes to recover by themselves. Press Reconnect.",
-                     fix=("reconnect_airpods", "Reconnect AirPods"))
+                     fix=("reconnect_airpods", "Reconnect headphones"))
     else:
         third = line("airpods_mic", t3, GREEN, f"Stereo and microphone modes are both there (a2dp-sink, {headset}).")
     return [first, second, third, bluetooth(s)]
@@ -380,7 +380,7 @@ def bluetooth(s: Setup) -> dict:
         return line("bluetooth", "Bluetooth quiet", RED, "Bluetooth is switched off. Switch it on in Settings.")
     if flag("Discovering") or flag("Discoverable"):
         doing = "scanning for devices" if flag("Discovering") else "announcing itself to other devices"
-        return line("bluetooth", "Bluetooth quiet", AMBER, f"Bluetooth is {doing}, which costs the AirPods sound quality. "
+        return line("bluetooth", "Bluetooth quiet", AMBER, f"Bluetooth is {doing}, which costs the headphones sound quality. "
                     "It is usually a Settings window left open on Bluetooth.", fix=("quiet_bluetooth", "Close Settings and stop it"), minor=True)
     return line("bluetooth", "Bluetooth quiet", GREEN, "Not scanning and not announcing itself.", minor=True)
 
@@ -734,12 +734,12 @@ def room(s: Setup) -> list[dict]:
     rc, link = s.run(["iw", "dev", dev.group(1), "link"]) if dev else (1, "")
     freq = re.search(r"freq: (\d+)", link)
     if not freq:
-        wifi = advice("wifi", "Wi-Fi band", GREEN, "Wi-Fi is not connected, so it cannot crowd the AirPods.")
+        wifi = advice("wifi", "Wi-Fi band", GREEN, "Wi-Fi is not connected, so it cannot crowd the headphones.")
     elif int(freq.group(1)) < 5000:
-        wifi = advice("wifi", "Wi-Fi band", AMBER, f"Wi-Fi is on 2.4 GHz ({freq.group(1)} MHz), the AirPods' own band, and one chip "
+        wifi = advice("wifi", "Wi-Fi band", AMBER, f"Wi-Fi is on 2.4 GHz ({freq.group(1)} MHz), the headphones' own band, and one chip "
                       "does both. Join a 5 GHz network or switch Wi-Fi off.")
     else:
-        wifi = advice("wifi", "Wi-Fi band", GREEN, f"On 5 GHz ({freq.group(1)} MHz), clear of the AirPods.")
+        wifi = advice("wifi", "Wi-Fi band", GREEN, f"On 5 GHz ({freq.group(1)} MHz), clear of the headphones.")
 
     loud = [what for schema, key, value, what in QUIET if s.run(["gsettings", "get", schema, key])[1].strip() != value]
     if loud:

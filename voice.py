@@ -1008,9 +1008,19 @@ class Headset:
         try:
             status = subprocess.run(["wpctl", "status"], capture_output=True, text=True, timeout=3).stdout
             devices = status.split("Audio", 1)[1].split("Sinks:", 1)[0]
-            m = re.search(r"(\d+)\.\s+(.+?)\s+\[bluez5\]", devices)
-            if not m:
+            found = list(re.finditer(r"(\d+)\.\s+(.+?)\s+\[bluez5\]", devices))
+            if not found:
                 return None
+            m = found[0]
+            wanted = os.environ.get("PROPRIO_HEADSET", "").strip().upper()
+            if wanted and len(found) > 1:
+                # Two headsets are connected (somebody's earbuds came out of their case): the one
+                # named in the settings is the one. If it is not among them, the first will do.
+                for other in found:
+                    about = subprocess.run(["wpctl", "inspect", other.group(1)], capture_output=True, text=True, timeout=3).stdout
+                    if wanted in about.upper() or wanted.replace(":", "_") in about.upper():
+                        m = other
+                        break
             params = subprocess.run(["pw-cli", "enum-params", m.group(1), "EnumProfile"], capture_output=True,
                                     text=True, timeout=3).stdout
         except Exception:

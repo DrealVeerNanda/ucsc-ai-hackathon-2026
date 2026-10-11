@@ -8,6 +8,7 @@ import ssl
 import sys
 import threading
 import time
+import types
 import urllib.request
 import wave
 from collections import deque
@@ -1301,3 +1302,33 @@ def test_of_several_typed_requests_the_newest_is_taken_and_none_is_left_behind(q
         assert mic.listen() == "blue cup" and mic._requests.empty()      # a stale one would be taken for the next request
     finally:
         mic.close()
+
+
+# --- which headset, when two are connected (11 Oct: the Sony for the judges, AirPods nearby) -----
+
+def _two_headsets(monkeypatch):
+    status = ("Audio\n ├─ Devices:\n │      42. Built-in Audio                      [alsa]\n"
+              " │      78. AirPods Pro                         [bluez5]\n"
+              " │      61. WH-1000XM5                          [bluez5]\n │  \n ├─ Sinks:\n")
+    profiles = {"78": ' Profile:index\n Int 5\n Profile:name\n String "a2dp-sink"\n Profile:index\n Int 261\n Profile:name\n String "headset-head-unit-msbc"\n',
+                "61": ' Profile:index\n Int 11\n Profile:name\n String "a2dp-sink"\n Profile:index\n Int 262\n Profile:name\n String "headset-head-unit-msbc"\n'}
+    about = {"78": '  api.bluez5.address = "18:3F:70:53:BD:95"\n  * device.name = "bluez_card.18_3F_70_53_BD_95"\n',
+             "61": '  api.bluez5.address = "80:99:E7:4A:5B:83"\n  * device.name = "bluez_card.80_99_E7_4A_5B_83"\n'}
+
+    def run(cmd, **kw):
+        out = status if cmd[:2] == ["wpctl", "status"] else about[cmd[2]] if cmd[:2] == ["wpctl", "inspect"] else profiles[cmd[2]]
+        return types.SimpleNamespace(stdout=out, returncode=0)
+    monkeypatch.setattr(voice.subprocess, "run", run)
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/" + name)
+    monkeypatch.delenv("VOICE_HEADSET", raising=False)
+
+
+def test_of_two_connected_headsets_the_one_named_in_the_settings_is_used(monkeypatch):
+    _two_headsets(monkeypatch)
+    monkeypatch.delenv("PROPRIO_HEADSET", raising=False)
+    assert voice.Headset.find().name == "AirPods Pro"       # nothing named: the first, as before
+    monkeypatch.setenv("PROPRIO_HEADSET", "80:99:e7:4a:5b:83")
+    h = voice.Headset.find()
+    assert (h.name, h.device, h.stereo, h.headset) == ("WH-1000XM5", 61, 11, 262)
+    monkeypatch.setenv("PROPRIO_HEADSET", "AA:BB:CC:DD:EE:FF")      # named, but not here: one that is here will do
+    assert voice.Headset.find().name == "AirPods Pro"

@@ -350,7 +350,7 @@ class Supervisor:
         through = silent or (pods.get("airpods_output") or {}).get("level") == GREEN
         out = []
         for id, title, label, ask in (("sound_check", "Sound check", "Play a test phrase", "Press the button and listen: you should hear "
-                                       "a sentence in the AirPods."),
+                                       "a sentence in the headphones."),
                                       ("mic_check", "Microphone check", "Test the microphone", "Press the button, wait for the beep, say "
                                        "\"blue cup\", and listen to what it heard.")):
             last = self.ear.get(id)
@@ -358,9 +358,9 @@ class Supervisor:
                 out.append(line(id, title, AMBER, "Running now: listen.", required=False))
             elif running:
                 out.append(line(id, title, last["level"] if last else "none", (last["message"] + " " if last else "")
-                                + "Stop the demo to test again: the pipeline is using the AirPods.", required=False))
+                                + "Stop the demo to test again: the pipeline is using the headphones.", required=False))
             elif not through:
-                out.append(line(id, title, "none", "Waiting for the AirPods to be where the sound goes.", required=False, blocked=True))
+                out.append(line(id, title, "none", "Waiting for the headphones to be where the sound goes.", required=False, blocked=True))
             else:
                 out.append(line(id, title, last["level"] if last else "none", last["message"] if last else ask,
                                 required=False, fix=(id, label)))
@@ -734,7 +734,7 @@ class Supervisor:
         if modes.get("level") == RED and not modes.get("blocked"):
             self.mode_lost = self.mode_lost or now
             if now - self.mode_lost >= 10.0 and "reconnect_airpods" not in self.busy and self.due("airpods_modes", now, 90.0):
-                self.event("The AirPods have lost a mode: disconnecting and connecting them again.")
+                self.event("The headphones have lost a mode: disconnecting and connecting them again.")
                 self.do("reconnect_airpods")
         else:
             self.mode_lost = 0.0
@@ -785,7 +785,7 @@ class Supervisor:
         if action in self.busy:
             return True, "Already at it."
         if action in ("sound_check", "mic_check") and self.mode != "checklist":
-            return False, "Stop the demo first: the pipeline is using the AirPods."
+            return False, "Stop the demo first: the pipeline is using the headphones."
         self.busy[action] = time.time()
 
         def work():
@@ -859,9 +859,9 @@ class Supervisor:
     def use_airpods_output(self):
         sink = checks.bluez_sink(self.s)
         if sink is None:
-            return self.note("airpods_output", False, "The sound server has no AirPods output yet. Press Reconnect on the line below.")
+            return self.note("airpods_output", False, "The sound server has no headphones output yet. Press Reconnect on the line below.")
         rc, out = self.s.run(["wpctl", "set-default", str(sink)])
-        self.note("airpods_output", rc == 0, "Sound now goes to the AirPods." if rc == 0 else f"Could not switch the sound ({out}).")
+        self.note("airpods_output", rc == 0, "Sound now goes to the headphones." if rc == 0 else f"Could not switch the sound ({out}).")
 
     def pair_phone(self):
         rc, out = self.s.run(["idevicepair", "pair"], 15.0)
