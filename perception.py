@@ -442,6 +442,7 @@ class Perception:
         self._hand_last = None       # (t, u, v) of the hand last taken as the wearer's
         self._next_hands = None      # (tracker, settings) waiting to be swapped in between two frames
         self._locate_t = -1e9        # when locate() last ran: a long gap means a new reach
+        self._again = False          # asked to look for the object afresh (look_again): done between two frames
         self._hand_pool = None
         self.hand = None             # HandDetails for the last frame, or None
         self._set_hands(hands, {})
@@ -800,6 +801,15 @@ class Perception:
         if self._next_hands is not None:
             (tracker, settings), self._next_hands = self._next_hands, None
             self._set_hands(tracker, settings)
+        if self._again and target == self.target:
+            # Asked for again, or the option clicked again: the object may have been moved. Whatever
+            # is remembered of its place goes; the hand, and what is known of its size, stay.
+            if self._lock is not None:
+                tracing.event("object.unlocked", target=target, why="asked to look again")
+            self._unlock()
+            self._anchor, self._box, self._seen, self._from_helper = None, None, False, False
+            self._obj_avg.clear()
+        self._again = False
         if target != self.target:
             self.target = target
             self._forget()
@@ -1172,7 +1182,16 @@ def set_object_option(which) -> str:
     if _default is not None:
         _default.cfg.object_mode = key   # one assignment, read once a frame: safe from any thread
     tracing.event("object_option", option=key, number=i + 1, title=title)
+    look_again()                         # also when it is the option already on: that is how to reset it by hand
     return title
+
+
+def look_again() -> None:
+    """Forget where the object was and look for it afresh from the next frame. For when it has
+    been moved: "found once" would otherwise keep sending the hand to where it stood. main.py
+    calls this for every new request; choosing an object option, even the one already on, does too."""
+    if _default is not None:
+        _default._again = True
 
 
 def object_option() -> tuple[int, str, str]:

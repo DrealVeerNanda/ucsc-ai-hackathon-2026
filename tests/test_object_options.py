@@ -219,3 +219,30 @@ def test_an_option_clicked_between_start_and_the_first_request_is_not_lost(monke
     now = {f["family"]: f["current"] for f in dashboard.option_families()}
     assert now["object"] == 3 and now["hand"] == 2
     assert perception.OBJECT_OPTIONS[perception._object_wanted()][0] == "locked" and perception.hand_option()[0] == 2
+
+
+def test_asking_again_or_clicking_the_option_again_looks_for_it_afresh(monkeypatch):
+    monkeypatch.setenv("OBJECT_OPTION", "locked")
+    p = make(hands=(), object_mode="locked")
+    monkeypatch.setattr(perception, "_default", p)
+    _, t = looks(p)
+    assert p._lock is not None
+    there = OBJ + np.array([0.15, 0.0, 0.0])                # moved while the place was fixed
+    p.detector.obj = there
+    s, t = looks(p, n=5, t0=t, obj=there)
+    assert np.allclose(s.object_xyz, OBJ, atol=0.004)       # not noticed: that is the option's price
+    perception.look_again()                                 # what main.py does when it is asked for again
+    s, t = looks(p, n=1, t0=t, obj=there)
+    assert p._lock is None and np.allclose(s.object_xyz, there, atol=0.004)
+    s, t = looks(p, n=20, t0=t, obj=there)
+    assert np.allclose(p._lock[0], there, atol=0.004)
+    p.detector.obj = OBJ                                    # ...and moved back
+    assert perception.set_object_option(3) == "found once"  # the same option, clicked again on the page
+    s, t = looks(p, n=1, t0=t, obj=OBJ)
+    assert p._lock is None and np.allclose(s.object_xyz, OBJ, atol=0.004)
+
+
+def test_main_tells_perception_when_something_is_asked_for():
+    import main
+    src = open(main.__file__).read()
+    assert "m.look_again = perception.locate, perception.look_again" in src and "attempt(\"perception\", mods.look_again)" in src

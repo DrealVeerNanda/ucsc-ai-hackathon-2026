@@ -264,7 +264,7 @@ def parse_args(argv=None):
 
 
 def load_modules(args) -> SimpleNamespace:
-    m = SimpleNamespace(fake_locate=None, reset=None)
+    m = SimpleNamespace(fake_locate=None, reset=None, look_again=None)
     if args.stream == "real":
         m.get_frame = importlib.import_module("stream").get_frame
     else:
@@ -272,7 +272,7 @@ def load_modules(args) -> SimpleNamespace:
     if args.perception == "real":
         perception = importlib.import_module("perception")
         perception.in_use = True     # so an option picked before the first request is taken, not refused
-        m.locate = perception.locate
+        m.locate, m.look_again = perception.locate, perception.look_again
     else:
         m.fake_locate = fakes.FakeLocate()
         m.locate = m.fake_locate.locate
@@ -502,6 +502,8 @@ def run(args, mods, beat: Heartbeat | None = None):
             dash.pop_keys()                          # "new target" pressed while it was asking: this answer is that target
         if mods.reset:
             attempt("guidance", mods.reset, target)
+        if getattr(mods, "look_again", None):
+            attempt("perception", mods.look_again)   # asked for again: it may have been moved since
         if mods.fake_locate:
             mods.fake_locate.reset_hand()
         run.update(status="running", started=time.monotonic(), elapsed_s=0.0, target=target)
