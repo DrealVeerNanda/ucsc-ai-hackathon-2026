@@ -158,7 +158,7 @@ def test_cosmos_is_asked_less_often_after_it_says_not_there():
         p.locate(frame(t=t, obj=None), "unicorn")
         t += 0.1
     gaps = np.diff([a[0] for a in h.asked])
-    assert len(h.asked) <= 6 and gaps[-1] > 2 * gaps[0]      # backs off instead of hammering the GPU
+    assert 2 <= len(h.asked) <= 4 and gaps[0] >= 6.0 and gaps[-1] >= gaps[0]    # backs off instead of hammering the GPU
 
 
 def test_an_answer_about_the_previous_target_is_ignored():
