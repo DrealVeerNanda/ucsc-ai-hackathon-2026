@@ -35,13 +35,13 @@
 
   <main class="deck" id="deck">
 
-    <section class="slide" data-id="title" data-shots="title" data-trans="none" data-dur="6">
+    <section class="slide" data-id="title" data-shots="title" data-trans="none" data-dur="5">
       <h1 class="poster" data-scramble>Proprio</h1>
       <p class="lede">Find it. Grab it. Eyes closed.</p>
       <aside class="notes">One sentence: a blind person asks for something on the table and spoken words walk their hand to it. Every model runs on the ASUS GX10.</aside>
     </section>
 
-    <section class="slide" data-id="problem" data-shots="fog,query,phone" data-steps="2" data-trans="lights" data-dur="12">
+    <section class="slide" data-id="problem" data-shots="fog,query,phone" data-steps="2" data-trans="lights" data-dur="13">
       <div class="swap">
         <div class="stat" data-only="0"><p class="stat-n" data-count="43" data-suffix="M">43M</p><p class="stat-l">people are blind</p></div>
         <div class="stat" data-only="1"><p class="stat-n">#1</p><p class="stat-l">everyday challenge: finding a dropped or misplaced item</p></div>
@@ -55,13 +55,13 @@
       <aside class="notes">43M blind worldwide, 61M by 2050 (Lancet GH 2020). #1: finding dropped or misplaced items is described as the most common challenge (Yi et al. 2013); interview studies say it touches nearly every household task. 68%: in VizWiz Social, most questions needed an answer within 10 minutes, so help has to be real time (Brady et al., CHI 2013).</aside>
     </section>
 
-    <section class="slide" data-id="provide" data-shots="ask" data-trans="iris" data-dur="9">
+    <section class="slide" data-id="provide" data-shots="ask" data-trans="iris" data-dur="11">
       <h2 class="head">Ask for it.<br><span class="nw">Follow what you hear.</span></h2>
       <p class="lede small">It remembers the room, so it can find what you can’t see.</p>
       <aside class="notes">Say it out loud: "Find my mug." Then let the scene talk: the hand moves one axis at a time and each bubble is the word in the earbud. Hands-free, any object by name, no setup. Memory: it keeps where items are in the room, so an item behind your hand or outside the camera's view can still be found. Today it holds a hidden item's place for 15 seconds using the phone's own motion tracking; the product keeps a map of everything it has seen.</aside>
     </section>
 
-    <section class="slide" data-id="others" data-shots="recede" data-steps="5" data-trans="wipe" data-dur="14">
+    <section class="slide" data-id="others" data-shots="recede" data-steps="5" data-trans="wipe" data-dur="12">
       <h2 class="head">What exists today</h2>
       <ol class="vs">
         <li data-step="1"><span class="vs-n">Meta glasses</span><span class="vs-w">a volunteer talks you through it</span><span class="vs-r">needs internet and a person</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
@@ -74,7 +74,7 @@
       <aside class="notes">One Enter per tool: say what it does, then the gap. Meta glasses: hands-free, "Hey Meta, Be My Eyes" calls a sighted volunteer; needs internet and a person; 56% retrieval accuracy in an ASSETS 2025 study. Be My AI sends a photo to the cloud and describes it. Seeing AI Find My Things needs four videos per item and leads you until the item is within arm's reach, then stops: it never steers your hand onto it. AIGuide guides the hand but is handheld with pre-scanned objects. Last Enter: ours fills every gap.</aside>
     </section>
 
-    <section class="slide" data-id="haptics" data-shots="overload" data-trans="columns" data-dur="8">
+    <section class="slide" data-id="haptics" data-shots="overload" data-trans="columns" data-dur="6">
       <h2 class="head">Why not vibration?</h2>
       <div class="stat"><p class="stat-n" data-count="74" data-suffix="%">74%</p><p class="stat-l">of overlapping buzzes were misread</p></div>
       <p class="fine">Yeganeh, University of Iceland 2026: 26% read correctly when buzzes overlapped, 93% one at a time.</p>
@@ -85,7 +85,7 @@
       <aside class="notes">Vibration needs a motor per direction spread over the body (a wrist band, a belt, a face rig), and the buzzes overlap: when buzzes overlapped, 74% were misread (26% read correctly, vs 93% one at a time). A face rig has the same problem with more motors. Even single wrist buzzes were felt in the wrong spot 1 time in 10 (Trant et al., Sci Rep 2025, 41 blind participants), and spoken cues gave faster grasps. One word in an earbud needs no decoding.</aside>
     </section>
 
-    <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="3" data-trans="blinds" data-dur="10">
+    <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="3" data-trans="blinds" data-dur="9">
       <h2 class="head">How it works</h2>
       <div class="swap words roll">
         <p class="word" data-only="0">See</p>
@@ -96,7 +96,7 @@
       <aside class="notes">See: iPhone color + lidar to the GX10. Find: Whisper hears the request and Nemotron turns it into an item name ("I'm thirsty" becomes water bottle); YOLO-World finds the mug, MediaPipe the fingertip. Measure: lidar turns both into 3D points. Speak: the biggest gap becomes one word in the earbuds.</aside>
     </section>
 
-    <section class="slide" data-id="math" data-shots="plan" data-trans="split" data-dur="10">
+    <section class="slide" data-id="math" data-shots="plan" data-trans="split" data-dur="4">
       <h2 class="head">The core loop</h2>
       <ol class="math write">
         <li><span class="eq" data-tex="\mathbf{p} = d\,K^{-1}\!\begin{bmatrix}u\\ v\\ 1\end{bmatrix}"></span><span class="eq-l">pixel and lidar depth to 3D</span></li>
@@ -107,7 +107,7 @@
       <aside class="notes">Median depth over a small patch, ignoring holes. Table plane by RANSAC. Words at most twice a second. About 35 ms per frame on the GX10.</aside>
     </section>
 
-    <section class="slide slide-live" data-id="live" data-shots="off" data-trans="screen" data-dur="12">
+    <section class="slide slide-live" data-id="live" data-shots="off" data-trans="screen" data-dur="38">
       <iframe class="live" id="live" title="Live dashboard" tabindex="-1" data-src="/#demo"></iframe>
       <p class="live-note" id="live-note">Live demo</p>
       <figure class="live-video" id="live-video" hidden>
@@ -115,10 +115,10 @@
         <div class="live-frame"><iframe data-src="https://www.youtube-nocookie.com/embed/wdUEhJDfMpk?rel=0" title="Proprio demo video" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
         <a href="https://www.youtube.com/watch?v=wdUEhJDfMpk" target="_blank" rel="noopener">youtube.com/watch?v=wdUEhJDfMpk</a>
       </figure>
-      <aside class="notes">Blindfold on. "Find my mug." Move the mug and repeat. Pull the network cable and run it again. Fallback: the demo video on YouTube, which this slide shows whenever the dashboard is not reachable.</aside>
+      <aside class="notes">The Ethernet cable is already out. "She's blindfolded, and the internet is unplugged." Wearer: "Find my mug." Narrate the screen; one grab, about 30 s, then back to the deck. Fallback: the demo video on YouTube, which this slide shows whenever the dashboard is not reachable.</aside>
     </section>
 
-    <section class="slide" data-id="results" data-shots="camonly,both" data-steps="1" data-trans="lift" data-dur="10">
+    <section class="slide" data-id="results" data-shots="camonly,both" data-steps="1" data-trans="lift" data-dur="8">
       <div class="duo">
         <div class="stat"><p class="stat-n" data-count="52" data-suffix="%">52%</p><p class="stat-l">camera only</p></div>
         <div class="stat" data-step="1"><p class="stat-n is-grab" data-count="99" data-suffix="%">99%</p><p class="stat-l">with lidar</p></div>
@@ -128,7 +128,7 @@
       <aside class="notes">First camera only: 52% accurate, the grey dots scatter. Then add lidar: 99%, the green dots land on the mug. Accuracy is 100% minus the average depth error over six known distances (45, 83, 100, 120, 150, 200 cm). Camera only read 37 to 72 cm at every one of them, so the farther the item, the worse it got: 64% off at 2 m. Lidar stayed within 2 cm.</aside>
     </section>
 
-    <section class="slide" data-id="local" data-shots="dome,boxed,quick,cut" data-steps="3" data-trans="diagonal" data-dur="12">
+    <section class="slide" data-id="local" data-shots="dome,boxed,quick,cut" data-steps="3" data-trans="diagonal" data-dur="11">
       <h2 class="head">Why local</h2>
       <div class="swap">
         <div class="stat" data-only="0"><p class="stat-n sm">Private</p><p class="stat-l">video of your home never leaves the room</p></div>
@@ -139,7 +139,7 @@
       <aside class="notes">Private: a camera in someone's home never streams out. 128 GB unified memory keeps YOLO-World, MediaPipe, Whisper, the 30B Nemotron 3 Nano and the 8B Cosmos Reason model loaded together; most laptops can't hold the 30B model next to the rest. 35 ms: measured perception per frame on the GX10; guidance needs a steady loop and a cloud round trip adds varying delay. Offline: in the demo we unplug the GX10's internet and it keeps guiding, because nothing needs the network. Then thank the judges.</aside>
     </section>
 
-    <section class="slide" data-id="close" data-shots="finale" data-trans="fade" data-dur="6">
+    <section class="slide" data-id="close" data-shots="finale" data-trans="fade" data-dur="3">
       <h2 class="poster">Proprio</h2>
       <p class="lede">Find it. Grab it. Eyes closed.</p>
       <ul class="team"><li>Veer</li><li>Gavin</li><li>Jake</li><li>Sasha</li></ul>

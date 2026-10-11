@@ -56,7 +56,7 @@ def main(out_dir: str) -> None:
   <link rel="stylesheet" href="../readme.css">
 </head>
 <body>
-  <nav class="top" aria-label="Site"><a href="../">Presentation</a><a href="../readme/">README</a></nav>
+  <nav class="top" aria-label="Site"><a href="../">Presentation</a><span><a href="../script/">Script</a> &nbsp; <a href="../writeup/">Write-up</a> &nbsp; <a href="../readme/">README</a></span></nav>
   <main class="doc">
     <h1>Proprio</h1>
 {body(md)}
