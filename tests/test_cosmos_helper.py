@@ -535,6 +535,13 @@ def test_a_listed_name_is_taken_as_said_with_its_colour(monkeypatch):
     assert voice.interpret("blue cup, blue cup, what is on the table?") == ("list", "")
 
 
+def test_nonsense_from_whisper_is_not_a_request():
+    assert not voice.plausible("F" * 100) and not voice.worth_hearing("F" * 100)          # seen live on the GX10
+    assert not voice.plausible("the the the the the the the the the the the the the the the the the the the the")
+    assert voice.plausible("blue cup, blue cup, what is on the table?") and voice.plausible("blue cup")
+    assert voice.plausible("so the phone streams color and depth to the box, the detector finds the object")
+
+
 def test_the_listening_beep_is_short_and_not_the_chime():
     m = Mixer(ToneConfig(), clips={})
     assert 0.1 < len(m.clips["listen"]) / m.cfg.sr < 0.4 and len(m.clips["listen"]) < len(m.clips["aligned"])

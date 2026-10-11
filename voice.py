@@ -346,7 +346,14 @@ def _gpu_whisper(model: str):
         speech = get_speech_timestamps(audio)
         if not speech:
             return ""
-        return write(np.concatenate([audio[c["start"]:c["end"]] for c in speech]), expected_words())
+        spoken = np.concatenate([audio[c["start"]:c["end"]] for c in speech])
+        # The names help with a short answer ("blue cup"). On a long sentence they pull the
+        # whole transcript towards themselves, so there Whisper is left alone.
+        text = write(spoken, expected_words() if spoken.size <= 4 * SR else None)
+        if not plausible(text):
+            _keep_rejected(audio, text)
+            return ""
+        return text
     write(np.zeros(SR, np.float32), None)                 # the first request is slow; get it over with now
     hear.on = "gpu"
     return hear
@@ -425,8 +432,34 @@ def expected_words() -> str | None:
     return ", ".join(last_objects) if last_objects else None
 
 
+def plausible(text: str) -> bool:
+    """False for what Whisper writes when it loses the thread: one letter or phrase repeated
+    ("FFFFFFFF", "the the the the"). Such text packs down far better than speech does."""
+    import zlib
+    raw = text.strip().encode()
+    if len(raw) < 20:
+        return True
+    return max(len(w) for w in text.split()) <= 25 and len(raw) / len(zlib.compress(raw)) <= 2.4
+
+
+def _keep_rejected(audio: np.ndarray, text: str):
+    """The last recording that came out as nonsense, kept so it can be listened to."""
+    try:
+        import wave
+        path = Path(__file__).resolve().parent / "out" / "heard_rejected.wav"
+        path.parent.mkdir(exist_ok=True)
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(SR)
+            w.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
+        tracing.event("whisper.rejected", text=text[:60], audio_s=round(audio.size / SR, 2))
+    except Exception:
+        pass
+
+
 def worth_hearing(text: str) -> bool:
-    return re.sub(r"[^a-z ]+", "", text.lower()).strip() not in _NOT_SPEECH
+    return plausible(text) and re.sub(r"[^a-z ]+", "", text.lower()).strip() not in _NOT_SPEECH
 
 
 def cut_speech(blocks, sr: int = SR, block_s: float = 0.03, start_wait_s: float = 6.0, max_s: float = 8.0,
