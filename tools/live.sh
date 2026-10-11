@@ -9,6 +9,8 @@
 #
 #   UI=web bash tools/live.sh mug # fastest: no window, only the browser dashboard (it opens in
 #                                 # Firefox on the GX10's screen). The window costs about 9 ms a frame.
+#   UI=web VIEW=logs bash tools/live.sh   # the dashboard opens showing only the live log, no camera:
+#                                 # for testing by ear. The button on the page (or L) switches back.
 #
 # Works at the GX10's terminal or over SSH (the window still opens on the GX10's screen).
 # Sound follows GUIDANCE_AUDIO (auto, on, off). The web dashboard is at http://GX10_IP:8642 too.
@@ -34,6 +36,6 @@ fi
 UI="${UI:-both}"
 if [ "$UI" = web ] && command -v firefox >/dev/null; then
     export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
-    (sleep 6; firefox --new-window http://localhost:8642/ >/dev/null 2>&1 || true) &
+    (sleep 6; firefox --new-window "http://localhost:8642/${VIEW:+#$VIEW}" >/dev/null 2>&1 || true) &
 fi
 exec python main.py --stream real --perception real --guidance real "${args[@]}" --ui "$UI" --no-open
