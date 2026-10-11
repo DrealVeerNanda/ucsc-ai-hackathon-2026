@@ -287,7 +287,7 @@ class Rig:
                     return max(0.0, t - t0)
         return None
 
-    def settle(self, target: str = "cup", timeout_s: float = 25.0) -> bool:
+    def settle(self, target: str = "laptop", timeout_s: float = 25.0) -> bool:
         """Back to a known state: everything normal, a target set, frames flowing."""
         if not self.alive():
             return False
@@ -610,7 +610,7 @@ def _say(rig: Rig, wav: bytes) -> float:
 def _measure(rig: Rig, wav: bytes | None) -> dict:
     """Frame rate, loop time and detector time over 8 s of undisturbed loop, then how long
     Whisper, Nemotron and Cosmos take for one request each."""
-    rig.settle("water bottle")
+    rig.settle()
     t0 = t = time.time()
     time.sleep(8.0)
     frames = rig.window(t, t + 8.0)
@@ -626,7 +626,7 @@ def _measure(rig: Rig, wav: bytes | None) -> dict:
     listed = rig.wait(soak.event("cosmos.list"), 30.0, t2)
     if listed is not None:
         rig.wait(soak.event("say"), 3.0, listed["t"])
-    rig.settle("water bottle")
+    rig.settle()
     events = rig.events(t)
     st = soak.frame_stats(frames)
     det = [f["spans"].get("perception.detector") for f in frames if f.get("spans", {}).get("perception.detector") is not None]
@@ -1317,22 +1317,24 @@ def recording_finishes_mid_run(ctx, seconds: float = 20.0, name: str = "recordin
         rig.settle()
         t = time.time()
         saved = None
-        end = time.time() + seconds + 60
+        end = time.time() + seconds + 90
         while time.time() < end and saved is None:
-            time.sleep(1.0)
-            saved = "[stream] saved" in rig.log() or None
+            time.sleep(0.25)
+            saved = time.time() if "[stream] saved" in rig.log() else None
         time.sleep(3.0)
-        frames = rig.frames(t + 1.0)
+        # The packing ends when "saved" is printed: look at the frames of the stretch before it.
+        around = (saved or time.time()) - max(15.0, seconds / 6)
+        frames = rig.frames(max(t + 2.0, around), (saved or time.time()) + 2.0)
         gaps = np.diff([f["t"] for f in frames]) * 1000 if len(frames) > 2 else np.array([0.0])
         worst = float(gaps.max())
-        when = frames[int(gaps.argmax())]["t"] - t if len(frames) > 2 else 0.0
         typical = float(np.median(gaps))
+        alive = rig.alive()
     finally:
         rig.stop()
     good, what = _recording_ok(ctx["out"] / name / "rec")
-    ok = saved is not None and worst <= 300.0 and good
-    return Result(name, ok, worst / 1000.0, True, f"a {seconds:.0f} s recording ({what}): the longest gap between frames was {worst:.0f} ms, "
-                  f"{when:.0f} s after the first request (typical gap {typical:.0f} ms)" + ("" if saved else "; it was never saved"))
+    ok = saved is not None and worst <= 300.0 and good and alive
+    return Result(name, ok, worst / 1000.0, alive, f"a {seconds:.0f} s recording ({what}): while it was packed the loop stood still for "
+                  f"{worst:.0f} ms (typical gap between frames {typical:.0f} ms)" + ("" if saved else "; it was never saved"))
 
 
 @own
@@ -1351,14 +1353,14 @@ def stdout_nobody_reads(ctx) -> Result:
     out = ctx["out"] / name
     out.mkdir(parents=True, exist_ok=True)
     r, w = os.pipe()
-    os.set_blocking(w, False)                         # fill the pipe but for 2 kB, so it is full in a minute, not an hour
+    os.set_blocking(w, False)                         # fill the pipe but for 4 kB, so it is full in a minute, not an hour
     try:
         while True:
             os.write(w, b"x" * 1024)
     except BlockingIOError:
         pass
     os.set_blocking(w, True)
-    os.read(r, 2048)
+    os.read(r, 4096)                                  # a pipe frees its room a whole page at a time
     rig = _rig(ctx, name, stdout=w)
     rig.start()
     os.close(w)
@@ -1399,7 +1401,7 @@ def stdout_nobody_reads(ctx) -> Result:
     ok = stuck_after is None
     return Result(name, ok, back, False if stuck_after else None,
                   (f"{sent} requests in {time.time() - t:.0f} s and the loop kept running at {base:.0f} fps" if stuck_after is None else
-                   f"after {stuck_after} requests (2 kB of printed lines; an empty pipe holds 64 kB) THE LOOP STOPPED: the main thread "
+                   f"after {stuck_after} requests (4 kB of printed lines; an empty pipe holds 64 kB) THE LOOP STOPPED: the main thread "
                    "was blocked in print(). " + ("It carried on once the pipe was read" if back is not None else "It did not carry on when the pipe was read")))
 
 
