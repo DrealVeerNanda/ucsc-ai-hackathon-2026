@@ -301,10 +301,11 @@ def test_kalman_carries_on_along_the_path_for_a_few_frames():
     assert k.ahead(19 / 30 + 1.0) is None                                # a second on, it would be a guess
 
 
-def test_a_blink_of_the_tracker_is_coasted_through_only_when_asked():
+@pytest.mark.parametrize("smoothing", ["kalman", "one_euro"])
+def test_a_blink_of_the_tracker_is_coasted_through_only_when_asked(smoothing):
     xyz = place((-0.10, 0.08, 0.40))
     for coast, expect in ((0.25, True), (0.0, False)):
-        p = make(xyz, hand_filter="kalman", hand_coast_s=coast)
+        p = make(xyz, hand_filter=smoothing, hand_coast_s=coast)
         for i in range(5):
             p.locate(frame(t=i / 30, hand_xyz=[xyz]), "mug")
         p.hands.xyz = []

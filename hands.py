@@ -769,6 +769,12 @@ class OneEuro:
         self._x = a * p + (1 - a) * self._x
         return self._x.copy()
 
+    def ahead(self, t: float, limit_s: float = 0.3) -> np.ndarray | None:
+        """Where the hand should be at time t, without a measurement; None once that is a guess."""
+        if self._x is None or not (0 <= t - self._t <= limit_s):
+            return None
+        return self._x + self._dx * (t - self._t)
+
 
 class Kalman:
     """Constant-velocity Kalman filter on the 3D point: no lag at a steady speed, and it can
