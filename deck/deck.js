@@ -116,7 +116,7 @@ async function loadLive() {
   const base = await findDashboard();
   if (base !== false) {
     f.addEventListener("load", () => f.classList.add("is-loaded"), { once: true });
-    f.src = `${base}/`;
+    f.src = `${base}/#demo`;
     return;
   }
   const recorded = await fetch(RECORDED, { method: "HEAD" }).then((r) => r.ok).catch(() => false);

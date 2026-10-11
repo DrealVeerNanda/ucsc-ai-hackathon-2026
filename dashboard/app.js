@@ -311,6 +311,9 @@
   // each mark is. Points are splatted into an offscreen canvas with a depth buffer: no
   // WebGL and no library, so it runs with the network unplugged. Drag to look around,
   // double-click to go back to the default view.
+  const HAND_OPEN = ['M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2', 'M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2', 'M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8', 'M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'].map((d) => new Path2D(d));
+  const HAND_GRAB = ['M18 11.5V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v1.4', 'M14 10V8a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2', 'M10 9.9V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v5', 'M6 14a2 2 0 0 0-2-2a2 2 0 0 0-2 2', 'M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-4a8 8 0 0 1-8-8 2 2 0 1 1 4 0'].map((d) => new Path2D(d));
+
   const scene3d = (() => {
     const canvas = $("scene");
     const note = $("scene-note");
@@ -547,14 +550,18 @@
       if (hp) {
         const p = at(hp);
         if (p) {
-          ctx.beginPath();
-          ctx.arc(p[0], p[1], Math.max(5 * dpr, (F * 0.014) / p[2]), 0, Math.PI * 2);
-          ctx.fillStyle = C.text;
-          ctx.fill();
-          ctx.lineWidth = 2 * dpr;
-          ctx.strokeStyle = C.ground;
-          ctx.stroke();
-          if (!close) tag("Hand", p, C.ground, C.text, 0, -20);
+          // the hand: the deck's Lucide outline icon, open while reaching, gripping when close
+          const size = Math.max(30 * dpr, (F * 0.06) / p[2]);
+          ctx.save();
+          ctx.translate(p[0] - size / 2, p[1] - size * 0.55);
+          ctx.scale(size / 24, size / 24);
+          ctx.lineCap = ctx.lineJoin = "round";
+          for (const [w, c] of [[4.4, C.ground], [1.7, close ? C.grab : C.text]]) {
+            ctx.lineWidth = w;
+            ctx.strokeStyle = c;
+            (close ? HAND_GRAB : HAND_OPEN).forEach((d) => ctx.stroke(d));
+          }
+          ctx.restore();
         }
       }
     }
@@ -645,10 +652,39 @@
     }
   }
 
+  // demo mode for judges: full-bleed 3D, camera picture-in-picture, poster word, distance meter
+  let startDist = 0;
+  let runKey = "";
+  function renderDemo(d) {
+    const run = d.run || {};
+    const key = `${run.target}|${run.status === "running"}`;
+    if (key !== runKey) { runKey = key; startDist = 0; }
+    if (d.dist != null) startDist = Math.max(startDist, d.dist);
+    const k = d.dist != null && startDist > 0 ? Math.max(0, Math.min(1, d.dist / startDist)) : 1;
+    $("meter-fill").style.setProperty("--k", String(k));
+    toggle($("meter"), "is-close", d.dist != null && d.dist < GRAB_M);
+    toggle(document.body, "is-grabbed", d.state === "grab");
+  }
+  function setDemo(on) {
+    document.body.classList.toggle("demo", on);
+    $("demo-btn").setAttribute("aria-pressed", String(on));
+    try { localStorage.setItem("blindfold-demo", on ? "1" : "0"); } catch (e) {}
+    window.dispatchEvent(new Event("resize"));
+  }
+  $("demo-btn").addEventListener("click", () => setDemo(!document.body.classList.contains("demo")));
+  document.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.target.tagName === "INPUT") return;
+    if (e.key === "d" || e.key === "D") setDemo(!document.body.classList.contains("demo"));
+  });
+  let demoSaved = false;
+  try { demoSaved = localStorage.getItem("blindfold-demo") === "1"; } catch (e) {}
+  setDemo(location.hash === "#demo" || (location.hash !== "#camera" && demoSaved));
+
   function render() {
     scheduled = false;
     const d = latest;
     if (!d) return;
+    renderDemo(d);
     vis($("notice"), !(true));
     renderImages(d);
     toggle(video, "is-grab", d.state === "grab");

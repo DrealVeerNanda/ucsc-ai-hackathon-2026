@@ -369,3 +369,58 @@ body.logs-only .screen { grid-template-columns: minmax(0, 1fr); }
   .logs-took { display: none; }
   .logs-what { grid-column: 1 / -1; }
 }
+
+/* demo mode (D, or #demo): the judge view ---------------------------------
+   The 3D perception view fills the screen, the chest camera becomes a small
+   picture-in-picture, the spoken word is poster-sized with a distance meter
+   that empties as the hand closes in, and developer info is hidden. */
+.meter, .grab-flash { display: none; }
+body.demo .bar { border-bottom: 0; position: relative; z-index: 2; background: transparent; }
+body.demo .bar-sim, body.demo #e2e-label, body.demo #e2e, body.demo .logs, body.demo .scene-note, body.demo #mode { display: none; }
+body.demo .screen { display: block; position: fixed; inset: 0; padding: 0; }
+body.demo .hero { position: absolute; inset: 0; border-radius: 0; }
+body.demo .cam { position: absolute; right: var(--sp5); top: calc(var(--sp7) + var(--sp6)); height: 34dvh; z-index: 2; }
+body.demo .video { box-shadow: 0 0 0 1px var(--rule); }
+body.demo .hud { left: var(--sp7); top: auto; bottom: 12dvh; }
+body.demo .say-now { font-size: min(11rem, 18cqi); }
+body.demo .say-why { font-size: var(--s3); }
+body.demo .dist { margin-top: var(--sp4); }
+body.demo #dist { font-size: min(5.16rem, 9cqi); }
+body.demo .said { left: auto; right: var(--sp5); bottom: var(--sp5); justify-content: flex-end; }
+body.demo .meter {
+  display: block;
+  position: relative;
+  width: min(36rem, 42vw);
+  height: 10px;
+  margin-top: var(--sp4);
+  border-radius: var(--radius);
+  background: var(--rule);
+  overflow: hidden;
+}
+.meter-fill { position: absolute; inset: 0; background: var(--leg); transform-origin: left; transform: scaleX(var(--k, 1)); transition: transform 120ms linear; }
+.meter-zone { position: absolute; left: 0; top: 0; bottom: 0; width: 6%; background: var(--grab); opacity: 0.5; }
+.meter.is-close .meter-fill { background: var(--grab); }
+body.demo .grab-flash {
+  display: block;
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  translate: -50% -50%;
+  margin: 0;
+  font: 700 min(22rem, 30vw)/1 var(--display);
+  color: var(--grab);
+  opacity: 0;
+  scale: 0.92;
+  transition: opacity 180ms var(--ease), scale 300ms var(--ease);
+  pointer-events: none;
+}
+body.demo.is-grabbed .grab-flash { opacity: 1; scale: 1; }
+body.demo.is-grabbed .hud { opacity: 0; }
+body.demo .hud { transition: opacity 180ms var(--ease); }
+body.demo .hero::after { border-width: 10px; border-radius: 0; }
+#demo-btn[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: var(--ground); }
+@media (prefers-reduced-motion: reduce) { body.demo .grab-flash { scale: 1; transition: opacity 180ms linear; } }
+@media (max-width: 899px) {
+  body.demo .cam { height: 22dvh; top: auto; bottom: var(--sp4); right: var(--sp4); }
+  body.demo .hud { left: var(--sp4); bottom: 30dvh; }
+}
