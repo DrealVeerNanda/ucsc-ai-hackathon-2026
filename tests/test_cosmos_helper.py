@@ -488,6 +488,8 @@ def test_switching_option_mid_reach_keeps_the_target(quiet_voice):
     assert voice.respond("option 4") == "mug"                       # main.py restarts guidance on the same object
     assert guidance.option()[1] == "combined_beeps"
     assert voice.respond("next option") == "mug" and guidance.option()[1] == "clock"
+    for _ in guidance.OPTIONS[5:]:
+        voice.respond("next option")
     assert voice.respond("next option") == "mug" and guidance.option()[1] == "tones"      # wraps round
 
 
