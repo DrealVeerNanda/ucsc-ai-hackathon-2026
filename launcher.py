@@ -228,6 +228,7 @@ class Supervisor:
                  pipeline_argv: list[str] | None = None, home: Path | None = None):
         self.root, self.port = Path(root), port
         self.env = load_env(self.root) if env is None else env
+        self._env_from_file = env is None
         self.s = checks.Setup(root=self.root, env=self.env, run=run, home=home or Path.home())
         self.out = self.root / "out"
         self.status_dir = self.out / "status"
@@ -459,11 +460,27 @@ class Supervisor:
             waiting = [l["title"] for l in self.all_lines() if l["required"] and l["level"] != GREEN]
             if waiting and not anyway:
                 return False, "Not ready: " + ", ".join(waiting) + "."
+            self.reread_settings()
             self.mode, self.since, self.restarts, self.in_a_row = "running", time.time(), 0, 0
             self.next_start, self.trouble, self.dash_shown = 0.0, "", False
             self.event("Started" + (f" anyway, without: {', '.join(waiting)}" if waiting else "") + ".")
             self.spawn()
         return True, "Started."
+
+    def reread_settings(self):
+        """Take in .env.launcher again, so an edit made between Stop and Start counts without
+        ending the keeper (which would let go of the phone). The dictionary is changed in place:
+        the checks hold the same one."""
+        if not self._env_from_file:
+            return
+        fresh = load_env(self.root)
+        if fresh != self.env:
+            self.env.clear()
+            self.env.update(fresh)
+            self.event("Settings read again from .env.launcher.")
+        if not self.s.bridge.exists() and self.bridge.alive():
+            self.event("The phone bridge is switched off in the settings: stopping it.")
+            self.stop_bridge()
 
     def spawn(self):
         self.pipeline.start(self.pipeline_env())
