@@ -56,6 +56,8 @@ class Tracer:
             if self._f is None:
                 self.dir.mkdir(parents=True, exist_ok=True)
                 self.path = self.dir / time.strftime("trace_%Y%m%d_%H%M%S.jsonl")
+                if self.path.exists():       # two runs started in the same second must not share a file
+                    self.path = self.path.with_name(f"{self.path.stem}_{os.getpid()}.jsonl")
                 self._f = open(self.path, "a")
                 self._f.write(json.dumps({"type": "meta", "started": time.time(), "pid": os.getpid(),
                                           **self._meta}) + "\n")
