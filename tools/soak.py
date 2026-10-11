@@ -102,6 +102,10 @@ def silent_sink(mode: str = "auto", device=None, cfg=None):
 def run_pipeline(argv: list[str]):
     """main.py, in this process, with the sound going nowhere."""
     os.chdir(ROOT)
+    if os.environ.get("SOAK_FILE_LIMIT_KB"):          # a full disk, without filling one: no file may grow past this
+        import resource
+        limit = int(os.environ["SOAK_FILE_LIMIT_KB"]) * 1024
+        resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))
     if os.environ.get("SOAK_AUDIO", "silent") == "silent":
         import audio_out
         audio_out.open_sink = silent_sink     # before guidance imports it
@@ -113,7 +117,9 @@ def run_pipeline(argv: list[str]):
 # ---------------------------------------------------------------------------
 # Camera
 
-DEFAULT_CONTROL = {"fps": 26.0, "pause": False, "depth": "real", "pose": "real", "drop": False}
+# restart: change the number to start again at recording number `recording`, `seek` seconds in.
+DEFAULT_CONTROL = {"fps": 26.0, "pause": False, "depth": "real", "pose": "real", "drop": False,
+                   "restart": 0, "recording": 0, "seek": 0.0}
 
 
 def read_control(path, previous: dict | None = None) -> dict:
@@ -152,13 +158,16 @@ def encode_pictures(rgb: np.ndarray, depth_m: np.ndarray, quality: int = 85) -> 
     return jpg.tobytes(), png.tobytes()
 
 
-def recorded_frames(folders: list, loop: bool = True):
+def recorded_frames(folders: list, loop: bool = True, first: int = 0, seek_s: float = 0.0):
     """(rgb, depth in metres, K, pose or None, kind, seconds until the next frame) from each
-    recording in turn, for ever. A recording without depth gets a flat one at 45 cm."""
+    recording in turn, for ever, starting `seek_s` into recording number `first`. A recording
+    without depth gets a flat one at 45 cm."""
     import cv2
     import stream
+    folders = list(folders)
+    order = folders[first % len(folders):] + folders[:first % len(folders)]
     while True:
-        for folder in folders:
+        for folder in order:
             folder = Path(folder)
             data = np.load(folder / "frames.npz")
             depth_mm, Ks, poses, ts = data["depth_mm"], data["K"], data["pose"], data["t"]
@@ -166,11 +175,14 @@ def recorded_frames(folders: list, loop: bool = True):
             kind = json.loads(meta.read_text()).get("kind", "record3d") if meta.exists() else "record3d"
             flat = float((depth_mm[::max(1, len(ts) // 40)] > 0).mean()) < 0.2
             cap = cv2.VideoCapture(str(folder / "rgb.mp4"))
+            skip, seek_s = int(np.searchsorted(ts - ts[0], seek_s)), 0.0
             try:
                 for i in range(len(ts)):
-                    ok, bgr = cap.read()
+                    ok, bgr = cap.read() if i >= skip else (cap.grab(), None)
                     if not ok:
                         break
+                    if i < skip:
+                        continue
                     depth = depth_mm[i].astype(np.float32) / 1000.0
                     if flat:
                         depth = np.full_like(depth, 0.45)
@@ -187,7 +199,10 @@ def run_camera(folders: list, port: int, control: str | None, host: str = "127.0
     """Send recorded frames to the pipeline's relay port, at `fps` whatever the recording's own
     rate was: each recorded picture is repeated until the next one is due."""
     settings = dict(DEFAULT_CONTROL, fps=fps)
-    source = frames if frames is not None else recorded_frames(folders)
+    if control:
+        settings = read_control(control, settings)
+    source = frames if frames is not None else recorded_frames(folders, True, int(settings["recording"]), float(settings["seek"]))
+    restart = settings["restart"]
     conn = None
     current = next(source)
     shown_until = time.monotonic() + current[5]
@@ -198,6 +213,10 @@ def run_camera(folders: list, port: int, control: str | None, host: str = "127.0
         if control:
             settings = read_control(control, settings)
         now = time.monotonic()
+        if settings["restart"] != restart and frames is None:      # a cut: another recording, or back to the start
+            restart = settings["restart"]
+            source = recorded_frames(folders, True, int(settings["recording"]), float(settings["seek"]))
+            shown_until = now
         while now >= shown_until:                     # the recording moves on in real time, paused or not
             current = next(source)
             shown_until += current[5]
@@ -601,6 +620,28 @@ def _f(v, default=None):
         return default
 
 
+# A gap between two frames with one of these inside it is the loop doing what it was asked:
+# waiting for a request, or loading a model. A gap with none is the loop hanging.
+EXPECTED_PAUSES = ("say", "nemotron", "cosmos.list", "option", "whisper", "detector.set_target")
+
+
+def stalls(frames: list[dict], events: list[dict], longer_ms: float = 250.0) -> list[tuple[float, float]]:
+    """(when, how long in ms) for every pause in the loop that nothing in the trace explains."""
+    import bisect
+    marks = sorted(e["t"] for e in events if e["name"] in EXPECTED_PAUSES or e["name"].startswith("load."))
+    out = []
+    for a, b in zip(frames, frames[1:]):
+        gap = (b["t"] - a["t"]) * 1000
+        if gap <= longer_ms:
+            continue
+        # a model call is logged when it ends and a retarget during the frame after the pause
+        i = bisect.bisect_left(marks, a["t"] - 0.05)
+        if i < len(marks) and marks[i] <= b["t"] + min(2.0, gap / 1000):
+            continue
+        out.append((a["t"], gap))
+    return out
+
+
 def slope_per_hour(xs, ys) -> float:
     """Straight-line trend of ys against xs (seconds), per hour."""
     xs, ys = np.asarray(xs, float), np.asarray(ys, float)
@@ -640,6 +681,8 @@ def buckets(samples: list[dict], frames: list[dict], events: list[dict], minutes
                "cosmos_find_p50": ms("cosmos.find"), "set_target_p50": ms("detector.set_target"),
                "requests": sum(1 for e in ev if e["name"] == "nemotron") + sum(1 for e in ev if e["name"] == "cosmos.list")}
         row.update(frame_stats(fr))
+        hangs = stalls(fr, ev)
+        row["stalls"], row["stall_max"] = len(hangs), max((g for _, g in hangs), default=0.0)
         rows.append(row)
     return rows
 
@@ -682,8 +725,8 @@ def verdicts(samples: list[dict], rows: list[dict], warm_s: float = 600.0) -> li
         first, last = later[0], later[-1]
         drift = last["loop_p50"] / first["loop_p50"] - 1 if first["loop_p50"] else 0.0
         out.append((drift <= 0.15, f"loop time at the end is {drift:+.0%} against the first steady stretch"))
-        fps = last["fps"] / first["fps"] - 1 if first["fps"] else 0.0
-        out.append((fps >= -0.10, f"frame rate at the end is {fps:+.0%} against the first steady stretch"))
+    worst = max((r.get("stall_max", 0.0) for r in rows), default=0.0)
+    out.append((worst <= 1000.0, f"longest pause in the loop that nothing explains: {worst:.0f} ms (limit 1000)"))
     return out
 
 
@@ -703,12 +746,13 @@ def report(folder, minutes: float | None = None) -> str:
     cols = [("min", "from_min", "{:.0f}"), ("RSS MB", "rss_mb", "{:.0f}"), ("GPU MB", "gpu_mb", "{:.0f}"),
             ("thr", "threads", "{:.0f}"), ("fds", "fds", "{:.0f}"), ("cpu%", "cpu_pct", "{:.0f}"),
             ("fps", "fps", "{:.1f}"), ("loop p50", "loop_p50", "{:.1f}"), ("p95", "loop_p95", "{:.1f}"),
-            ("max", "loop_max", "{:.0f}"), ("e2e p95", "e2e_p95", "{:.0f}"), ("gap max", "gap_max_ms", "{:.0f}"),
+            ("stalls", "stalls", "{:.0f}"), ("longest", "stall_max", "{:.0f}"), ("e2e p95", "e2e_p95", "{:.0f}"),
             ("dash/s", "dash_events_s", "{:.1f}"), ("logs MB", "logs_mb", "{:.1f}"), ("nemo p50", "nemotron_p50", "{:.0f}"),
             ("max", "nemotron_max", "{:.0f}"), ("list p50", "cosmos_list_p50", "{:.0f}"), ("max", "cosmos_list_max", "{:.0f}"),
             ("find p50", "cosmos_find_p50", "{:.0f}"), ("retarget", "set_target_p50", "{:.0f}"), ("GPU busy%", "gpu_busy_pct", "{:.0f}")]
     lines = [f"Soak {folder}: {total_min:.0f} minutes, {len(frames)} frames, {len(requests)} requests. "
-             f"Times in ms; each row is the {minutes:g} minutes from 'min'.",
+             f"Times in ms; each row is the {minutes:g} minutes from 'min'. fps counts the time spent waiting for a "
+             "request too; stalls are pauses over 250 ms that no request or model load explains.",
              "  ".join(f"{name:>8}" for name, _, _ in cols)]
     for r in rows:
         lines.append("  ".join(f"{cell(r.get(key), fmt):>8}" for _, key, fmt in cols))
