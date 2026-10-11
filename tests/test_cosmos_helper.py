@@ -226,7 +226,10 @@ def test_helper_thread_delivers_one_answer_and_survives_errors():
 @pytest.fixture
 def quiet_voice(monkeypatch):
     monkeypatch.setenv("VOICE_LLM_URL", "off")
+    monkeypatch.setenv("VOICE_AUTO_LIST", "0")
     monkeypatch.setenv("GUIDANCE_AUDIO", "off")
+    monkeypatch.delenv("GUIDANCE_MODE", raising=False)
+    monkeypatch.setattr(voice, "_ask_next", True)
     monkeypatch.setattr(guidance, "_default", None)
     monkeypatch.setattr(voice, "last_objects", [])
     monkeypatch.setattr(voice, "_llm_ok", None)
@@ -396,7 +399,8 @@ def test_a_recording_from_the_page_becomes_the_target(mic):
     t.join(3)
     assert status == 200 and json.loads(body) == {"heard": "find my mug"}
     assert out["target"] == "mug" and mic.poked == []            # it was waiting: nothing to interrupt
-    assert json.loads(_https(mic.base + "/status")[1]) == {"heard": "find my mug", "target": "mug"}
+    status = json.loads(_https(mic.base + "/status")[1])
+    assert status["heard"] == "find my mug" and status["target"] == "mug" and status["option"] == "1: tones"
 
 
 def test_a_request_during_a_reach_interrupts_it(mic):
@@ -433,3 +437,55 @@ def test_pipewire_source_list_decides_when_there_is_no_pactl(quiet_voice):
     paired = empty.replace("Sources:\n \u2502  \n", "Sources:\n \u2502  *   71. AirPods Pro [vol: 1.00]\n")
     quiet_voice.setattr(voice.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=paired))
     assert voice.has_microphone() is True
+
+
+# --- speaking up after a grab, and switching the way of guiding ---------------------
+
+def _looking(quiet_voice, objects):
+    quiet_voice.setenv("VOICE_AUTO_LIST", "1")
+    quiet_voice.setattr(stream, "_default", _Camera())
+    quiet_voice.setattr(cosmos, "available", lambda *a, **k: True)
+    quiet_voice.setattr(cosmos, "list_objects", lambda rgb, **k: list(objects))
+
+
+def test_it_looks_and_asks_by_itself_at_the_start_and_after_each_grab(quiet_voice):
+    _looking(quiet_voice, ["mug", "phone"])
+    answers = iter(["the mug", "um", "the second one"])
+    quiet_voice.setattr("builtins.input", lambda prompt="": next(answers))
+    assert voice.typed() == "mug"                                   # start: it speaks first
+    assert guidance.pop_phrases() == ["I can see mug and phone. What do you want to grab?"]
+    # ...the reach happens, grab, main.py asks again...
+    assert voice.typed() == ""                                      # an answer it could not use
+    assert guidance.pop_phrases() == ["I can see mug and phone. What do you want to grab?"]
+    assert voice.typed() == "phone"                                 # asked again: it does not repeat the list
+    assert guidance.pop_phrases() == []
+
+
+def test_a_request_already_waiting_is_not_talked_over(quiet_voice, mic):
+    _looking(quiet_voice, ["mug", "phone"])
+    mic.submit("find the phone")                                    # said during the reach
+    assert mic.listen() == "phone" and guidance.pop_phrases() == []
+
+
+def test_without_cosmos_it_still_asks(quiet_voice):
+    quiet_voice.setenv("VOICE_AUTO_LIST", "1")
+    quiet_voice.setattr(stream, "_default", _Camera())
+    quiet_voice.setattr(cosmos, "available", lambda *a, **k: False)
+    quiet_voice.setattr("builtins.input", lambda prompt="": "mug")
+    assert voice.typed() == "mug" and guidance.pop_phrases() == ["What do you want to grab?"]
+
+
+@pytest.mark.parametrize("said, number, name", [("option three", 3, "combined words"), ("Option 5.", 5, "clock face"),
+                                               ("switch to mode two please", 2, "one step at a time")])
+def test_saying_an_option_switches_the_way_of_guiding(quiet_voice, said, number, name):
+    assert voice.respond(said) == ""                                # nothing being looked for: main.py asks again
+    assert guidance.option()[0] == number and guidance.pop_phrases() == [f"Option {number}: {name}."]
+
+
+def test_switching_option_mid_reach_keeps_the_target(quiet_voice):
+    guidance.reset("mug")
+    guidance.pop_phrases()
+    assert voice.respond("option 4") == "mug"                       # main.py restarts guidance on the same object
+    assert guidance.option()[1] == "combined_beeps"
+    assert voice.respond("next option") == "mug" and guidance.option()[1] == "clock"
+    assert voice.respond("next option") == "mug" and guidance.option()[1] == "tones"      # wraps round
