@@ -156,6 +156,7 @@ def _resample(x: np.ndarray, src: int, sr: int) -> np.ndarray:
 
 
 _piper = None
+_piper_retry = 0.0             # after a failure, when Piper may be loaded again
 _spoken_cache: dict = {}
 
 
@@ -182,8 +183,8 @@ def synthesize(text: str, sr: int) -> np.ndarray | None:
 
 
 def _synthesize(text: str, sr: int) -> np.ndarray | None:
-    global _piper
-    if PIPER_VOICE.exists() and _piper is not False:
+    global _piper, _piper_retry
+    if PIPER_VOICE.exists() and _piper is not False and time.monotonic() >= _piper_retry:
         try:
             if _piper is None:
                 from piper import PiperVoice
@@ -192,8 +193,10 @@ def _synthesize(text: str, sr: int) -> np.ndarray | None:
             if chunks:
                 return _resample(np.concatenate(chunks) * 0.8, _piper.config.sample_rate, sr)
         except Exception as e:
-            print(f"[audio] Piper could not speak ({e}); falling back", file=sys.stderr)
-            _piper = False
+            # One bad sentence must not silence every sentence after it: load the voice afresh
+            # next time, but not more than once every ten seconds if it keeps failing.
+            print(f"[audio] Piper could not speak ({e}); will load it again", file=sys.stderr)
+            _piper, _piper_retry = None, time.monotonic() + 10.0
     if sys.platform == "darwin" and shutil.which("say") and shutil.which("afconvert"):
         with tempfile.TemporaryDirectory() as d:
             aiff, wav = Path(d) / "s.aiff", Path(d) / "s.wav"
@@ -411,17 +414,63 @@ class AudioEngine(Mixer):
         import sounddevice as sd
 
         super().__init__(cfg, clips)
-        self.stream = sd.OutputStream(samplerate=self.cfg.sr, channels=2, dtype="float32", device=device,
-                                      blocksize=blocksize, callback=self._cb, latency="low")
-        self.stream.start()
+        self._device, self._blocksize = device, blocksize
         self._blocks = self._underruns = 0
         self._render_max = 0.0
-        self._reported = time.monotonic()
+        self._reported = self._heard = self._reopened = time.monotonic()
+        self.reopens = 0
+        self.stream = self._open()
         tracing.meta(audio_out_ms=round(float(self.stream.latency) * 1000, 1), audio_block=blocksize,
                      audio_device=str(sd.query_devices(self.stream.device).get("name", "")))
 
+    def _open(self):
+        import sounddevice as sd
+        stream = sd.OutputStream(samplerate=self.cfg.sr, channels=2, dtype="float32", device=self._device,
+                                 blocksize=self._blocksize, callback=self._cb, latency="low")
+        stream.start()
+        return stream
+
+    def _keep_alive(self):
+        """If the sound card has stopped asking for sound (the sound server restarted, or the
+        device went away with nothing to fall back to), open the output again. Without this a
+        dead stream means silence for the rest of the run, and every sentence waits out its
+        full time-out because nothing ever finishes playing. Called from the pipeline's side,
+        never from the sound callback."""
+        now = time.monotonic()
+        if now - self._heard < 2.0 or now - self._reopened < 5.0:
+            return
+        self._reopened = now
+        try:
+            old, self.stream = self.stream, None
+            try:
+                old.abort()
+                old.close()
+            except Exception:
+                pass
+            self.stream = self._open()
+            self._heard = time.monotonic()
+            self.reopens += 1
+            tracing.event("audio.reopened", count=self.reopens)
+            print("[audio] the sound output had stopped; opened it again", file=sys.stderr)
+        except Exception as e:
+            tracing.event("audio.reopen_failed", error=str(e)[:120])
+            print(f"[audio] the sound output has stopped and will not reopen yet ({e})", file=sys.stderr)
+
+    def set_tone(self, pan: float, freq: float, rate: float, mode: str):
+        self._keep_alive()
+        super().set_tone(pan, freq, rate, mode)
+
+    def say(self, name: str, now: bool = False):
+        self._keep_alive()
+        super().say(name, now)
+
+    def speak(self, text: str, now: bool = False):
+        self._keep_alive()
+        super().speak(text, now)
+
     def _cb(self, outdata, frames, time_info, status):
         t = time.perf_counter()
+        self._heard = time.monotonic()
         outdata[:] = self.render(frames)
         self._render_max = max(self._render_max, (time.perf_counter() - t) * 1000)
         self._blocks += 1
@@ -436,8 +485,9 @@ class AudioEngine(Mixer):
     def close(self):
         self.synth.set(0.0, self.cfg.base_hz, 1.0, "silent")
         time.sleep(0.1)
-        self.stream.stop()
-        self.stream.close()
+        if self.stream is not None:
+            self.stream.stop()
+            self.stream.close()
 
 
 class PrintSink:
