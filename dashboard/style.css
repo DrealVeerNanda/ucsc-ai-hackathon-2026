@@ -329,8 +329,14 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; o
 .bar-mode:focus-visible { outline: 2px solid var(--leg); outline-offset: 2px; }
 .bar-mode[aria-pressed="true"] { background: var(--leg); border-color: var(--leg); color: var(--on-leg); }
 
-.logs { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--sp4); min-height: 0; grid-column: 1 / -1; }
-.logs-k { margin: 0; color: var(--muted); max-width: 80ch; }
+/* The log is always there: a strip under the camera view, the whole screen in logs-only view. */
+.screen { grid-template-rows: minmax(0, 1fr) auto; }
+.logs { display: grid; grid-template-rows: minmax(0, 1fr); gap: var(--sp4); min-height: 0; grid-column: 1 / -1; }
+.logs-k { display: none; margin: 0; color: var(--muted); max-width: 80ch; }
+body:not(.logs-only) .logs-list { height: 21vh; font-size: var(--s0); padding: var(--sp3) var(--sp4); }
+body.logs-only .screen { grid-template-rows: minmax(0, 1fr); }
+body.logs-only .logs { grid-template-rows: auto minmax(0, 1fr); }
+body.logs-only .logs-k { display: block; }
 .logs-list {
   list-style: none;
   margin: 0;
@@ -341,7 +347,7 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; o
   font-size: var(--s1);
   line-height: 1.5;
 }
-.logs-list li { display: grid; grid-template-columns: 8ch 10ch 7ch minmax(0, 1fr); gap: var(--sp4); align-items: baseline; padding: var(--sp1) 0; }
+.logs-list li { display: grid; grid-template-columns: 8ch 11ch 7ch minmax(0, 1fr); gap: var(--sp4); align-items: baseline; padding: var(--sp1) 0; }
 .logs-list li + li { border-top: 1px solid oklch(0.33 0.03 255 / 0.5); }
 .logs-t, .logs-took { color: var(--faint); }
 .logs-took { text-align: right; }
@@ -357,6 +363,7 @@ body { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100dvh; o
 body.logs-only .cam, body.logs-only .hero { display: none; }
 body.logs-only .screen { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 899px) {
+  body:not(.logs-only) .logs-list { height: 34vh; }
   .logs-list { font-size: var(--s0); padding: var(--sp3) var(--sp4); }
   .logs-list li { grid-template-columns: 7ch minmax(0, 1fr); }
   .logs-took { display: none; }
