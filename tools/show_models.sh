@@ -19,12 +19,20 @@ COSMOS="${COSMOS_LOG:-$(ls -t "$HOME"/models/cosmos_*.log 2>/dev/null | head -1)
 KEEP='POST /|prompt eval time|       eval time|total time|launch_slot|slot release|n_tokens'
 
 tmux kill-session -t models 2>/dev/null || true
-tmux new-session -d -s models -x 118 -y 54 "printf '\033[1;32mNEMOTRON server log\033[0m  %s\n' '$NEMO'; tail -n 400 -F '$NEMO' | grep --line-buffered -E '$KEEP'"
+tmux new-session -d -s models -x 104 -y 52 "printf '\033[1;32mNEMOTRON server log\033[0m  %s\n' '$NEMO'; tail -n 400 -F '$NEMO' | grep --line-buffered -E '$KEEP'"
 tmux split-window -v -t models "printf '\033[1;35mCOSMOS server log\033[0m  %s\n' '$COSMOS'; tail -n 400 -F '$COSMOS' | grep --line-buffered -E '$KEEP'"
 tmux split-window -v -t models "source .venv/bin/activate && python tools/model_log.py --all"
 tmux select-layout -t models even-vertical
 tmux set-option -t models -g mouse on >/dev/null
 tmux set-option -t models status off >/dev/null
 
-gnome-terminal --title="Models: real logs" --geometry=118x54+985+30 -- tmux attach -t models
+gnome-terminal --title="Models: real logs" --geometry=104x52+1000+28 -- tmux attach -t models
+# Put the two windows side by side on the left monitor: live view on the left, logs on the right.
+if command -v xdotool >/dev/null; then
+    sleep 2
+    t=$(xdotool search --name '^Models: real logs$' 2>/dev/null | tail -1 || true)
+    [ -n "$t" ] && xdotool windowsize "$t" 912 1000 windowmove "$t" 1000 28
+    w=$(xdotool search --name '^blindfold-pickup$' 2>/dev/null | tail -1 || true)
+    [ -n "$w" ] && xdotool windowsize "$w" 960 678 windowmove "$w" 5 30
+fi
 echo "opened on the GX10's screen. Also: tmux attach -t models"
