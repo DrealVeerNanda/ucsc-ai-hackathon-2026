@@ -71,7 +71,7 @@ def test_find_says_none_when_cosmos_does_not_see_it(monkeypatch):
 
 def test_list_objects_gives_short_names_without_repeats(monkeypatch):
     _server(monkeypatch, {"objects": ["Water Bottle.", "laptop  computer", "water bottle", "", "mug", "pen", "book", "cap"]})
-    assert cosmos.list_objects(np.zeros((64, 64, 3), np.uint8), n=4) == ["water bottle", "laptop computer", "mug", "pen"]
+    assert cosmos.list_objects(np.zeros((64, 64, 3), np.uint8), n=4) == ["water bottle", "laptop", "mug", "pen"]
 
 
 def test_available_is_false_when_nothing_answers(monkeypatch):

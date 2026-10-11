@@ -82,7 +82,7 @@ def _ask(rgb: np.ndarray, prompt: str, schema: dict, name: str, url: str | None,
     return json.loads(reply["choices"][0]["message"]["content"]), time.perf_counter() - t0, reply.get("usage", {})
 
 
-def find(rgb: np.ndarray, target: str, url: str | None = None, max_side: int = 640, timeout_s: float = 30.0) -> dict:
+def find(rgb: np.ndarray, target: str, url: str | None = None, max_side: int = 640, timeout_s: float = 12.0) -> dict:
     """{"box": (x1, y1, x2, y2) in pixels of rgb or None, "grasp": str, "seconds": float}. Raises OSError
     if the server is not answering."""
     d, seconds, usage = _ask(rgb, FIND_PROMPT.format(target=target), FIND_SCHEMA, "find", url, max_side, 120, timeout_s)
@@ -98,14 +98,30 @@ def find(rgb: np.ndarray, target: str, url: str | None = None, max_side: int = 6
     return {"box": box, "grasp": d.get("grasp", ""), "seconds": seconds, "usage": usage}
 
 
-def list_objects(rgb: np.ndarray, n: int = 5, url: str | None = None, max_side: int = 768, timeout_s: float = 30.0) -> list[str]:
-    """Short names of what could be picked up, most prominent first, without repeats."""
-    d, seconds, usage = _ask(rgb, LIST_PROMPT.format(n=n), LIST_SCHEMA, "objects", url, max_side, 120, timeout_s)
+# Second words that add nothing when spoken: Cosmos says "laptop computer" on one frame and
+# "laptop" on the next, and the detector finds the same thing for both.
+_PLAIN = {"laptop computer": "laptop", "orange fruit": "orange", "computer mouse": "mouse", "monitor screen": "monitor",
+          "smartphone": "phone", "cell phone": "phone", "mobile phone": "phone"}
+
+
+def tidy(names, n: int = 5) -> list[str]:
+    """The list as it should be spoken: plain names, no repeats, and no bare "cup" beside "blue cup"
+    (heard as two choices, it is one object named twice, or a choice the wearer cannot tell apart)."""
     out = []
-    for name in d.get("objects", []):
+    for name in names:
         name = " ".join(str(name).lower().replace(".", " ").split())
+        name = _PLAIN.get(name, name)
         if name and name not in out:
             out.append(name)
-    out = out[:n]
+    out = [a for a in out if not any(b != a and b.endswith(" " + a) for b in out)]
+    return out[:n]
+
+
+def list_objects(rgb: np.ndarray, n: int = 5, url: str | None = None, max_side: int = 768, timeout_s: float = 10.0) -> list[str]:
+    """Short names of what could be picked up, most prominent first, without repeats. The wearer
+    is waiting in silence while this runs, so it gives up after 10 s (a call takes about 2 s;
+    3 s is the slowest seen, with the detector running beside it)."""
+    d, seconds, usage = _ask(rgb, LIST_PROMPT.format(n=n), LIST_SCHEMA, "objects", url, max_side, 120, timeout_s)
+    out = tidy(d.get("objects", []), n)
     tracing.event("cosmos.list", seconds * 1000, objects=out, tokens=usage.get("completion_tokens"))
     return out
