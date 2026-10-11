@@ -557,17 +557,30 @@ def test_a_hand_trembling_on_and_off_the_line_chimes_once(option):
 
 
 @pytest.mark.parametrize("seed", range(5))
-def test_tracking_jitter_beside_the_line_chimes_once(seed):
+def test_tracking_jitter_beside_the_line_chimes_at_most_once(seed):
     # The live run: a hand held still 3.5 cm off the line, seen with 6 mm of jitter at 30 frames a
-    # second. The lead multiplies frame-to-frame jitter, so it crosses the whole band many times.
+    # second. Speed taken from one frame to the next turned that jitter into 5 cm of lead, so the
+    # hand crossed the whole band 70 times in 20 s. Held still, it is simply 3.5 cm off: a direction.
     rng = np.random.default_rng(seed)
     g = dyn()
-    recent = []
+    recent, flips, was = [], 0, False
     for i in range(300):                                    # 10 s
         recent = (recent + [rng.normal(0.0, 0.006, 2)])[-3:]    # perception averages three frames
         jx, jy = np.mean(recent, axis=0)
         g.update(near(dx=0.035 + jx, dy=jy, dz=0.25), now=1.0 + i / 30)
-    assert said(g).count("aligned") == 1
+        flips += all(g._lined) != was
+        was = all(g._lined)
+    assert said(g).count("aligned") <= 1 and flips <= 6
+
+
+def test_a_moving_hand_is_still_called_lined_up_early():
+    g = dyn()
+    for i in range(48):                                     # 25 cm a second towards the line, from 20 cm away
+        dx = 0.20 - 0.25 * i / 30
+        g.update(near(dx=dx, dy=0.0, dz=0.25), now=1.0 + i / 30)
+        if all(g._lined):
+            break
+    assert 0.05 < dx < 0.09                                 # about 7 cm early: 0.2 s of travel plus the band
 
 
 def test_the_chime_comes_back_after_a_real_spell_off_the_line():

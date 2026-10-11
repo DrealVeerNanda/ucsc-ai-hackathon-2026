@@ -76,6 +76,9 @@ class GuidanceConfig:
     option: str = "tones"        # which of OPTIONS is in use
     lead_s: float = 0.2          # judge the direction from where the hand will be this much later: the
                                  # sound reaches the ears late, and a moving hand has overshot by then
+    vel_window_s: float = 0.25   # the hand's speed is measured over this long, so tracking jitter does not pass for motion
+    vel_min_s: float = 0.09      # ...and not at all until the hand has been watched this long
+    still_mps: float = 0.06      # slower than this counts as holding still
     line_in_m: float = 0.025     # sideways or vertical error below this: lined up...
     line_out_m: float = 0.05     # ...and stays lined up until it grows past this, so it cannot flip-flop
     rechime_s: float = 2.0       # back on the line after less than this off it: no second chime
@@ -137,8 +140,7 @@ class Guidance:
         self._step_word = None
         self._step_near_t = None
         self._step_pause_until = 0.0
-        self._prev_hand = None
-        self._prev_t = 0.0
+        self._track = []             # (time, hand position) over the last moments, for its speed
         self._vel = None
         self._lined = [False, False]
         self._was_lined = False
@@ -178,12 +180,16 @@ class Guidance:
 
     def _guide_dynamic(self, err, hand, now: float):
         cfg = self.cfg
-        if self._prev_hand is not None and 0 < now - self._prev_t < 0.5:
-            v = (hand - self._prev_hand) / (now - self._prev_t)
-            self._vel = v if self._vel is None else 0.5 * self._vel + 0.5 * v
-        else:
-            self._vel = None
-        self._prev_hand, self._prev_t = hand.copy(), now
+        # The hand's speed, from where it was a quarter of a second ago rather than one frame
+        # ago: 6 mm of tracking jitter between two frames reads as 0.25 m/s, which the lead
+        # would turn into 5 cm of error, wider than the whole lined-up band.
+        if self._track and now - self._track[-1][0] >= 0.5:
+            self._track = []                              # the hand was away: its old path says nothing
+        self._track = [(t, h) for t, h in self._track if now - t <= cfg.vel_window_s] + [(now, hand.copy())]
+        t0, h0 = self._track[0]
+        self._vel = (hand - h0) / (now - t0) if now - t0 >= cfg.vel_min_s else None
+        if self._vel is not None and float(np.linalg.norm(self._vel)) < cfg.still_mps:
+            self._vel = None                              # a hand held still is where it is: nothing to anticipate
         lead = err if self._vel is None else err - self._vel * cfg.lead_s
 
         phrase = self._phrase_for(lead)
