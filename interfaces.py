@@ -37,6 +37,10 @@ class Scene:
     t: float
     aim_xyz: Optional[np.ndarray] = None  # where the fingertip should go: the nearest part of the
                                           # object, not its middle. None means the centre, object_xyz.
+    hand: Optional[object] = None         # perception.HandDetails: xyz, px, point, confidence, tracker,
+                                          # depth_from, box, keypoints_px (21x2), keypoints_xyz (21x3),
+                                          # palm_xyz, index_tip_xyz, nearest_m, coasting
+    object_out_of_reach: bool = False     # farther than a seated wearer's arm (0.75 m)
 
 
 def hand_error(scene: Scene) -> Optional[np.ndarray]:

@@ -509,6 +509,10 @@ def model_files(s: Setup) -> list[dict]:
     want = [("YOLO-World weights", models / YOLO_WEIGHTS, 20e6, "start the pipeline once with the network on"),
             ("YOLO-World's CLIP text encoder", weights / "clip" / "ViT-B-32.pt", 300e6, "start the pipeline once with the network on"),
             ("MediaPipe hand model", models / "hand_landmarker.task", 5e6, "start the pipeline once with the network on"),
+            ("YOLO hand model, small (hand options 3, 5, 7)", models / "wilor_hand_small.pt", 6e6,
+             "curl -L -o models/wilor_hand_small.pt https://huggingface.co/rolpotamias/WiLoR/resolve/main/detector_small.pt"),
+            ("YOLO hand model, large (hand option 4)", models / "wilor_hand_medium.pt", 40e6,
+             "curl -L -o models/wilor_hand_medium.pt https://huggingface.co/rolpotamias/WiLoR/resolve/main/detector_medium_v2.pt"),
             ("Piper voice", piper, 50e6, "bash tools/fetch_models.sh piper"),
             ("Piper voice settings", Path(str(piper) + ".json"), 1e3, "bash tools/fetch_models.sh piper"),
             ("Nemotron (GGUF)", nemotron, 1e9, "download it again into ~/unsloth"),
@@ -622,6 +626,12 @@ def prove() -> dict:
         import numpy as np
         get_speech_timestamps(np.zeros(16000, np.float32))      # the speech detector's own file
 
+    def hand_options():
+        import numpy as np
+        import hands
+        for kind in ("mediapipe_wide", "yolo", "yolo_medium"):
+            hands.make(kind, device="cpu", fetch=False).detect(np.zeros((960, 720, 3), np.uint8), 0)
+
     def piper():
         import audio_out
         if audio_out.synthesize("ready", 48000) is None:
@@ -630,6 +640,7 @@ def prove() -> dict:
     with NoNetwork():
         step("YOLO-World and CLIP", yolo)
         step("MediaPipe hands", hand)
+        step("Hand options 2 to 7", hand_options)
         step("Whisper large-v3", whisper)
         step("Piper voice", piper)
     return {"ok": all(r["ok"] for r in results), "results": results, "t": time.time()}
