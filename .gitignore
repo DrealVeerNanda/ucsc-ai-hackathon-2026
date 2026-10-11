@@ -20,3 +20,6 @@ screenshots/
 models/
 weights/
 .phone_ip
+
+# scratch checkouts made by coding agents
+.claude/worktrees/
