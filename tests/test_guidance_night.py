@@ -837,3 +837,24 @@ def test_the_page_lists_every_option_with_a_player(tmp_path):
     assert page.count("<audio") == len(guidance.OPTIONS) + len(guidance.GRAB_OPTIONS)
     assert "07_echo.wav" in page and "grab_3_over.wav" in page and "table &lt;here&gt;" in page
     assert "ping and echo" in page and "left / right" in page
+
+
+# --- reading the next run -------------------------------------------------------------------------------------------
+
+def test_compare_options_reports_how_long_the_hand_waited_for_grab():
+    spec = importlib.util.spec_from_file_location("compare_options", Path(__file__).resolve().parent.parent / "tools" / "compare_options.py")
+    co = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(co)
+
+    def frame(t, state, zone=None, trusted=1, rule="over"):
+        return {"type": "frame", "t": t, "state": state, "grab_option": rule, "zone": zone, "trusted": trusted}
+    frames = [frame(0.0, "guiding", 5.0)] + [frame(1.0 + 0.1 * i, "guiding", 0.8, trusted=int(i >= 5)) for i in range(20)] + \
+        [frame(3.0, "grab"), frame(3.1, "grab"), frame(4.6, "idle"),
+         frame(10.0, "guiding", 4.0, rule="fingertip"), frame(10.1, "guiding", 0.5, rule="fingertip"), frame(10.4, "grab", rule="fingertip")]
+    waits = co.grabs(frames)
+    assert [w[0] for w in waits] == ["over", "fingertip"]
+    assert waits[0][1] == pytest.approx(2.0) and waits[0][2] == pytest.approx(0.5, abs=0.11)     # 2 s there, half a second of it doubted
+    assert waits[1][1] == pytest.approx(0.3)
+    table = co.grab_table(waits)
+    assert "3 over the object" in table and "1 fingertip touch" in table and "2.0 s" in table
+    assert co.grabs([{"type": "frame", "t": 1.0, "state": "guiding"}, {"type": "frame", "t": 2.0, "state": "grab"}]) == []   # an old trace
