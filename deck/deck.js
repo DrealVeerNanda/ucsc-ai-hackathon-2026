@@ -9,6 +9,8 @@ const stage = createStage($("stage"), {
   word: $("lab-word"), mug: $("lab-mug"), you: $("lab-you"), cloud: $("lab-cloud"),
   ax: $("lab-ax"), ay: $("lab-ay"), az: $("lab-az"),
   gx10: $("lab-gx10"), gxx: $("lab-gxx"), gxy: $("lab-gxy"), gxz: $("lab-gxz"),
+  q: $("lab-q"),
+  motors: [...document.querySelectorAll(".lab-motor")],
 });
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("deck") : null;
 const params = new URLSearchParams(location.search);
@@ -190,6 +192,20 @@ function transition(slide, forward) {
       curtain.style.opacity = "0";
       $("live").animate([{ transform: "scale(0.28)", opacity: 0.4 }, { transform: "scale(1)", opacity: 1 }],
         { duration: 1000, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+      break;
+    case "columns": { // vertical shutters fold away left to right
+      curtain.style.background = "transparent";
+      curtain.style.display = "flex";
+      for (let k = 0; k < 8; k++) {
+        const col = document.createElement("div");
+        col.className = "col";
+        curtain.append(col);
+        col.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(0)" }], { duration: 520, delay: k * 60, easing: EASE, fill: "both" });
+      }
+      break;
+    }
+    case "box": // the screen opens from its centre outward
+      run([{ clipPath: "inset(0% 0% 0% 0%)" }, { clipPath: "inset(0% 50% 0% 50%)" }], { duration: 900 });
       break;
     case "lift":
       run([{ transform: "translateY(0)" }, { transform: "translateY(-100%)" }], { duration: 800 });

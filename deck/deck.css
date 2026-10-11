@@ -68,7 +68,6 @@ h1, h2, p, ol, ul, figure { margin: 0; }
   white-space: nowrap;
   opacity: 0;
   transition: opacity 250ms var(--ease);
-  will-change: transform;
 }
 .lab-word {
   background: var(--text);
@@ -93,6 +92,9 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 .lab-word.pop { animation: pop 260ms cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes pop { from { scale: 0.6; opacity: 0.4; } }
 .lab-gx { background: var(--scrim); color: var(--text); }
+.lab-motor { width: 36px; height: 36px; padding: 0; border: 3px solid var(--muted); border-radius: 50%; background: transparent; }
+.lab-motor.is-on { border-color: var(--text); scale: 1.35; }
+.lab-q { background: var(--text); color: var(--ground); font: 700 min(5vw, 9vh)/1 var(--display); padding: 0.15em 0.4em; }
 .lab-word.is-grab { background: var(--grab); color: var(--on-grab); }
 .lab-mug { background: var(--text); color: var(--ground); }
 .lab-you { background: var(--scrim); color: var(--muted); font-weight: 500; }
@@ -175,6 +177,7 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 /* transitions: the curtain each slide is revealed through (see deck.js) */
 .curtain { position: fixed; inset: 0; background: var(--ground); opacity: 0; pointer-events: none; z-index: 5; }
 .curtain .slat { height: 12.5%; background: var(--ground); transform-origin: center top; }
+.curtain .col { flex: 1; height: 100%; background: var(--ground); transform-origin: left center; }
 .curtain .half { position: absolute; left: 0; right: 0; height: 50%; background: var(--ground); }
 .curtain .half.top { top: 0; }
 .curtain .half.bottom { bottom: 0; }
