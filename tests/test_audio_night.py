@@ -74,3 +74,11 @@ def test_one_failed_sentence_does_not_silence_the_voice(monkeypatch, tmp_path):
     assert audio_out._synthesize("too soon", 48000) is None and calls == ["first"]      # no reload storm
     monkeypatch.setattr(audio_out, "_piper_retry", time.monotonic() - 1.0)
     assert audio_out._synthesize("later", 48000) is not None and calls == ["first", "later"]
+
+
+def test_the_sound_card_takes_the_fifth_tone_value_some_styles_send(monkeypatch):
+    _Card.opened = []
+    monkeypatch.setitem(sys.modules, "sounddevice", _Card)
+    eng = AudioEngine(ToneConfig(), clips={})
+    eng.set_tone(0.3, 600.0, 3.0, "beep", 0.12)             # "ping and echo": the gap before the second note
+    eng.set_tone(0.0, 500.0, 2.0, "beep")

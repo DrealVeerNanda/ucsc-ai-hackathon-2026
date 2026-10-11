@@ -137,7 +137,8 @@ class GuidanceConfig:
                                  # again. Misheard or simply not there, they could otherwise say nothing more:
                                  # the microphone is only open while a request is awaited. 0 = search for ever
     hand_give_up_s: float = 30.0 # waiting for a hand this long: go idle too, for the same reason. 0 = wait for ever
-    far_hold_s: float = 1.0      # the object has been out of arm's reach this long: say so...
+    far_hold_s: float = 2.5      # the object has been out of arm's reach this long: say so. Not sooner: a clear
+                                 # bottle entering the picture reads as the wall behind it for a moment
     far_repeat_s: float = 8.0    # ...and again this often while it stays there
     words: bool = False          # fallback: spoken single words instead of tones
     hybrid: bool = False         # say one direction, beep along that axis, chime, next axis
@@ -313,7 +314,7 @@ class Guidance:
             # lining up after a clear spell away, not for each of those returns.
             if self._lined_t is None or now - self._lined_t >= self.cfg.rechime_s:
                 self.sink.say("aligned", now=True)       # lined up: from here it is only forward
-            self._phrase, self._phrase_t = None, now
+                self._phrase, self._phrase_t = None, now
         if lined:
             self._lined_t = now
         self._was_lined = lined

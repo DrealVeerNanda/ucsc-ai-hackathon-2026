@@ -456,9 +456,9 @@ class AudioEngine(Mixer):
             tracing.event("audio.reopen_failed", error=str(e)[:120])
             print(f"[audio] the sound output has stopped and will not reopen yet ({e})", file=sys.stderr)
 
-    def set_tone(self, pan: float, freq: float, rate: float, mode: str):
+    def set_tone(self, *tone):
         self._keep_alive()
-        super().set_tone(pan, freq, rate, mode)
+        super().set_tone(*tone)                  # whatever the mixer takes: some styles send a fifth value
 
     def say(self, name: str, now: bool = False):
         self._keep_alive()

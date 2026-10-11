@@ -493,7 +493,7 @@ class Perception:
         # While an object within reach is remembered, a different one out of reach is not "it":
         # the near one is only missed for a moment (a clear bottle often is).
         near = self._anchor is not None and not self._anchored and self._anchor[2] <= self.cfg.pick_reach_m
-        if near and within_reach(best) == 0 and iou(best.box, self._box) == 0.0:
+        if near and within_reach(best) < 2 and iou(best.box, self._box) == 0.0:
             return None
         return best
 
@@ -803,7 +803,8 @@ class Perception:
                 measured = box_xyz(self._box, frame.depth, frame.K)
                 if measured is not None and z_was is not None and abs(measured[2] - z_was) > max(0.05, 0.10 * z_was):
                     measured = None
-            hand_z = self._hand_z[1] if self._hand_z is not None and 0 <= frame.t - self._hand_z[0] < 1.5 else None
+            hand_z = (self._hand_z[1] if self._hand_z is not None
+                      and 0 <= frame.t - self._hand_z[0] <= cfg.hold_covered_s else None)
             if (measured is not None and z_was is not None and hand_z is not None and believe
                     and measured[2] < z_was - cfg.leap_m and abs(measured[2] - hand_z) < 0.08):
                 # The object has leapt toward the camera, to where the hand is: what was read is
@@ -813,6 +814,11 @@ class Perception:
             in_front = self._blocked(self._box, z_was, frame.depth)      # hidden behind an arm, not gone
         self._blocked_t = (self._blocked_t if self._blocked_t is not None else frame.t) if in_front else None
         covered = covered or (in_front and believe)
+        if (self._other and covered and self._anchor is not None and not self._anchored
+                and self._anchor[2] <= cfg.pick_reach_m):
+            # A box somewhere else in the picture with the hand over it, while something within reach is
+            # remembered: the camera moved, the object did not change. Keep its depth until it can be read.
+            self._other = False
         if measured is None and seen and covered and (self._anchor is None or self._other) and shadow is not None:
             # First sight of the object with the hand already on it: nothing is remembered yet,
             # so read the depth from the part of the box the hand does not cover.
