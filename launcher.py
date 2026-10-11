@@ -342,6 +342,10 @@ class Supervisor:
         verdict, why = judge(True, hb, p.started, now, self.boot_s, self.frozen_s, self.failing_s)
         if hb is None:
             return line("pipeline", title, AMBER, "Starting: Python and the models are loading.", required=False)
+        quiet = now - float(hb.get("t") or 0)
+        if verdict == "ok" and quiet > 3.0:
+            return line("pipeline", title, AMBER, f"No word from the pipeline for {quiet:.0f} s. At {self.frozen_s:.0f} s it is "
+                        "taken to be frozen and started again.", required=False)
         level = GREEN if hb.get("ok") else AMBER if hb.get("state") == "starting" else RED
         return line("pipeline", title, level if verdict == "ok" else RED, str(hb.get("message") or why), required=False)
 
@@ -520,7 +524,11 @@ class Supervisor:
     def keep_bridge(self, now: float):
         """The phone bridge runs from the moment the page is up, so the checklist can see the
         stream, and is never stopped by Stop: the app stops streaming when its reader goes away."""
-        if self.s.replay or not self.s.bridge.exists() or self.bridge.alive():
+        if self.s.replay or not self.s.bridge.exists():
+            return
+        if self.bridge.alive():
+            if now - self.bridge.started > 30:
+                self.tries.pop("bridge", None)       # it has settled: the next time it dies is a first time again
             return
         if self.bridge.pid is None and self.bridge.adopt():
             return self.event(f"Carrying on with the phone bridge that is already running (pid {self.bridge.pid}).")
@@ -555,7 +563,8 @@ class Supervisor:
             self.mode_lost = 0.0
 
     def write_status(self, now: float):
-        ok = self.mode == "checklist" or judge(self.pipeline.alive(), self.heartbeat(), self.pipeline.started, now)[0] == "ok"
+        ok = self.mode == "checklist" or judge(self.pipeline.alive(), self.heartbeat(), self.pipeline.started, now,
+                                               self.boot_s, self.frozen_s, self.failing_s)[0] == "ok"
         message = {"checklist": "Waiting for Start.", "stopping": "Stopping."}.get(
             self.mode, f"Running, {self.restarts} restart{'' if self.restarts == 1 else 's'}.")
         status = {"t": now, "state": self.mode, "ok": ok, "message": message, "pid": os.getpid(), "port": self.port,

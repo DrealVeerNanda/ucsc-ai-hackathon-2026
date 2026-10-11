@@ -464,8 +464,9 @@ def gpu(s: Setup, ours: set[int] | None = None, running: bool = False, busy: lis
     facts = f"{name}, {temp} °C, {load_now:.0f}% busy"
     if others:
         # A teammate's job took a live run from 26 to 10 frames a second.
-        return [line("gpu", title, AMBER, "Someone else is using the GPU: " + "; ".join(others) + ". It will slow the demo: "
-                     "ask them to stop it.")]
+        more = f"; and {len(others) - 2} more" if len(others) > 2 else ""
+        return [line("gpu", title, AMBER, "Someone else is using the GPU: " + "; ".join(others[:2]) + more + ". It will slow the "
+                     "demo: ask them to stop it.")]
     if not running and busy and len(busy) >= 3 and min(busy[-3:]) >= 50:
         return [line("gpu", title, AMBER, f"The GPU is {load_now:.0f}% busy although the demo is not running: someone is "
                      "using Nemotron or Cosmos right now. Wait for it to finish.")]

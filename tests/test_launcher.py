@@ -634,6 +634,11 @@ def test_a_frozen_pipeline_is_noticed_and_restarted(keeper):
     assert tick_until(keeper, lambda: keeper.heartbeat() is not None)
     first = keeper.pipeline.pid
     os.kill(first, signal.SIGSTOP)                       # alive, but not even its heartbeat moves
+    time.sleep(0.3)
+    keeper.frozen_s = 30.0                               # (long enough to look at the page before it acts)
+    line = keeper.pipeline_line(time.time() + 4)
+    assert line["level"] == AMBER and "No word from the pipeline for 4 s" in line["message"]
+    keeper.frozen_s = 0.6
     assert tick_until(keeper, lambda: keeper.pipeline.pid not in (None, first) and keeper.heartbeat() is not None)
     assert "frozen" in keeper.trouble and keeper.restarts == 1
     with pytest.raises(OSError):
