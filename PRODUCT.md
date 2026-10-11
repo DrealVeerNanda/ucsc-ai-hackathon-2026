@@ -18,6 +18,9 @@ Plain HTML, CSS and JavaScript served by `main.py` from the GX10 itself (Python 
 
 ## Product Purpose
 
+Name: **Proprio**, short for proprioception, the sense of where your own hand is (chosen 2026-10-10).
+
+
 A wearer says "find my mug" and picks it up blindfolded. The iPhone sends color and lidar depth to the ASUS Ascent GX10; the GX10 finds the object and the fingertip, turns both into 3D positions, and plays tones that steer the hand, then says "grab." Success is a blindfolded grab that is faster and more reliable than searching unaided, with every model running on the GX10.
 
 ## Positioning

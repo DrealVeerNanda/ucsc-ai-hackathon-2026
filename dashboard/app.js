@@ -550,21 +550,27 @@
       if (hp) {
         const p = at(hp);
         if (p) {
-          // the hand: the deck's Lucide outline icon, open while reaching, gripping when close
-          const size = Math.max(30 * dpr, (F * 0.06) / p[2]);
-          ctx.save();
-          ctx.translate(p[0] - size / 2, p[1] - size * 0.55);
-          ctx.scale(size / 24, size / 24);
-          ctx.lineCap = ctx.lineJoin = "round";
-          for (const [w, c] of [[4.4, C.ground], [1.7, close ? C.grab : C.text]]) {
-            ctx.lineWidth = w;
-            ctx.strokeStyle = c;
-            (close ? HAND_GRAB : HAND_OPEN).forEach((d) => ctx.stroke(d));
+          // the Proprio hand (same as the deck), anchored so its reticle sits on the tracked point
+          const img = close ? handGrabImg : handOpenImg;
+          if (img.complete && img.naturalWidth) {
+            const size = Math.max(56 * dpr, (F * 0.1) / p[2]);
+            ctx.drawImage(img, p[0] - size * 0.6022, p[1] - size * 0.2400, size, size);
           }
-          ctx.restore();
         }
       }
     }
+
+    const handTemplate = ["<svg class=\"h\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-30 -30 316 316\" width=\"316\" height=\"316\"><g transform=\"rotate(26 128 128)\"><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" transform=\"translate(14 18)\" fill=\"__SHADE__\"/><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" fill=\"__BODY__\" stroke=\"__GROUND__\" stroke-width=\"12\" paint-order=\"stroke\"/><g transform=\"translate(121 40) rotate(-26)\" fill=\"none\" stroke=\"__RET__\" stroke-width=\"4\" stroke-linecap=\"round\"><circle r=\"17\"/><path d=\"M-23 0h-12M23 0h12M0 -23v-12M0 23v12\"/></g></g></svg>", "<svg class=\"h\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-30 -30 316 316\" width=\"316\" height=\"316\"><g transform=\"rotate(26 128 128)\"><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" transform=\"translate(14 18)\" fill=\"__GSHADE__\"/><path d=\"M216,64v90.93c0,46.2-36.85,84.55-83,85.06A83.71,83.71,0,0,1,72.6,215.4C50.79,192.33,26.15,136,26.15,136a16,16,0,0,1,6.53-22.23c7.66-4,17.1-.84,21.4,6.62l21,36.44a6.09,6.09,0,0,0,6,3.09l.12,0A8.19,8.19,0,0,0,88,151.74V48a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V112a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V32a16,16,0,0,1,16.77-16c8.61.4,15.23,7.82,15.23,16.43V120a8,8,0,0,0,8.53,8,8.17,8.17,0,0,0,7.47-8.25V64.45c0-8.61,6.62-16,15.23-16.43A16,16,0,0,1,216,64Z\" fill=\"__GRAB__\" stroke=\"__GROUND__\" stroke-width=\"12\" paint-order=\"stroke\"/><g transform=\"translate(121 40) rotate(-26)\" fill=\"none\" stroke=\"__RET__\" stroke-width=\"4\" stroke-linecap=\"round\"><circle r=\"9\"/><circle r=\"3.5\" fill=\"__RET__\" stroke=\"none\"/></g></g></svg>"];
+    const handImage = (t) => {
+      const svg = t.replaceAll("__BODY__", C.text).replaceAll("__GRAB__", C.grab).replaceAll("__GROUND__", C.ground)
+        .replaceAll("__SHADE__", "rgb(36,52,78)").replaceAll("__GSHADE__", "rgb(30,82,52)").replaceAll("__RET__", "rgb(205,226,245)");
+      const im = new Image();
+      im.onload = () => { dirty = true; };
+      im.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+      return im;
+    };
+    const handOpenImg = handImage(handTemplate[0]);
+    const handGrabImg = handImage(handTemplate[1]);
 
     function tick(now) {
       requestAnimationFrame(tick);

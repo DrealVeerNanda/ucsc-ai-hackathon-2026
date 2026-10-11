@@ -1,5 +1,5 @@
 ---
-name: Blindfold pickup, live
+name: Proprio, live
 description: Broadcast graphics over a luminous point-cloud world, so judges can follow a blindfolded grab they cannot hear; one world shared by the live dashboard and the pitch deck.
 colors:
   ground: "oklch(0.165 0.022 255)"
@@ -198,7 +198,7 @@ components:
     width: "min(30vw, 52vh)"
 ---
 
-# Design System: Blindfold pickup, live
+# Design System: Proprio, live
 
 ## Overview
 
@@ -340,7 +340,10 @@ The 3D view as the hero: where the hand is relative to the object, in one look.
 - **Note:** Faint Label bottom right ("View from behind you, 10 cm grid.", plus the assumed-tilt sentence when no table is found).
 
 ### Demo Mode (judge view)
-D, the Demo button, or `#demo` (the deck's live slide opens it this way). The 3D perception view goes full-bleed; the chest camera becomes a 34dvh picture-in-picture at top right with a 1px Rule edge; the spoken word grows to min(11rem, 18cqi) bottom-left with its reason and distance, plus a 10px distance meter that empties from the run's starting distance toward a green grab zone. Developer info (latency, simulated chip, the live log, scene note) is hidden. On grab the HUD fades and a full-screen Grab Green "Grab." scales in over the scene inside a 10px green frame. The hand in the 3D view is the deck's Lucide outline icon (grip icon in green when close), drawn on the canvas with a ground-coloured halo.
+D, the Demo button, or `#demo` (the deck's live slide opens it this way). The 3D perception view goes full-bleed; the chest camera becomes a 34dvh picture-in-picture at top right with a 1px Rule edge; the spoken word grows to min(11rem, 18cqi) bottom-left with its reason and distance, plus a 10px distance meter that empties from the run's starting distance toward a green grab zone. Developer info (latency, simulated chip, the live log, scene note) is hidden. On grab the HUD fades and a full-screen Grab Green "Grab." scales in over the scene inside a 10px green frame. The hand in the 3D view is the Proprio hand (below), drawn from an SVG image anchored at its reticle.
+
+### The Proprio Hand
+One hand for both surfaces: Phosphor's solid hand (vendor/phosphor, MIT) tilted 26° toward the item so it reads as reaching, a 12-unit ground-coloured outline (paint-order stroke) so it reads as a cut-out, an offset shadow layer (blue-grey; dark green on grab), and a lock-on reticle on the index fingertip, the tracked point. The element is anchored at the reticle, not its centre, so the yellow line starts exactly at the fingertip. On grab the hand turns Grab Green and the reticle closes to a dot. Chosen 2026-10-10 over an outline icon, a 3D clay arm, a point cloud and a landmark skeleton, which read as too basic or too odd.
 
 ### Pitch Deck (second surface)
 Same world, staged, and extremely minimal: eleven slides (title, problem, the ask, competitors, why not vibration, how it works, core loop, live demo, results, why local, close), one line or one number per build. `deck/index.html`, `deck.css`, `deck.js`, `stage.js`; three.js r169, the fonts and the icon live inside `deck/`, so any static server runs it offline. Mechanics informed by the standardphysics deck (github.com/Imhaohao/standardphysics, apps/web/src/components/deck).

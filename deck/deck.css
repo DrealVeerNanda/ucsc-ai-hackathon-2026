@@ -103,6 +103,10 @@ h1, h2, p, ol, ul, figure { margin: 0; }
 /* Phosphor styles (vendor/phosphor, MIT) are filled shapes, not strokes */
 .lab-hand.ph .hi { fill: currentColor; stroke: none; color: var(--text); }
 .lab-hand.ph.is-grab .hi-grab { color: var(--grab); }
+/* the Proprio hand is anchored so its reticle, not its centre, sits on the tracked point */
+.lab-hand.pp { translate: -60.2% -24.0%; width: min(9vw, 16vh); height: min(9vw, 16vh); }
+.lab-hand.pp .hi { stroke: none; fill: none; filter: none; }
+.lab-hand.pp.is-grab .hi-grab { stroke: none; }
 .toast { position: fixed; left: 50%; bottom: 3vh; translate: -50% 0; margin: 0; padding: 0.5vh 1vw; border-radius: var(--radius); background: var(--text); color: var(--ground); font: 600 var(--t-small)/1.3 var(--font); opacity: 0; transition: opacity 150ms linear; pointer-events: none; z-index: 6; }
 .toast.is-on { opacity: 1; }
 

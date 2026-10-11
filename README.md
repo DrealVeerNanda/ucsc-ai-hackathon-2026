@@ -8,7 +8,7 @@ Our team's project for the UCSC AI Hackathon, October 10–11, 2026, at UC Santa
 - Gavin Wang (gavinyhwang@gmail.com)
 - _add yourself_
 
-## Project: Blindfold pickup (ASUS Local AI track)
+## Project: Proprio (ASUS Local AI track)
 
 A person wears an iPhone on their chest, says "find my mug," and picks it up blindfolded.
 Audio tones steer their hand to the object. Every model runs on the ASUS Ascent GX10.
