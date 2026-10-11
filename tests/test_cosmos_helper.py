@@ -409,3 +409,27 @@ def test_silence_or_a_bad_recording_asks_for_nothing(mic):
     assert json.loads(_https(mic.base + "/say", b"RECORDING-2", "audio/webm")[1]) == {"heard": ""}
     assert json.loads(_https(mic.base + "/say", b"BROKEN", "audio/webm")[1]) == {"heard": ""}
     assert mic._requests.empty() and mic.poked == []
+
+
+def test_a_sound_server_with_nothing_to_record_from_is_not_a_microphone(quiet_voice):
+    import shutil
+    from types import SimpleNamespace
+    quiet_voice.setattr(shutil, "which", lambda name: "/usr/bin/pactl")
+    monitors = "55\talsa_output.hdmi.monitor\tPipeWire\ts32le 2ch 48000Hz\tSUSPENDED\n"
+    quiet_voice.setattr(voice.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=monitors))
+    assert voice.has_microphone() is False                     # only the speakers' loopback
+    real = monitors + "60\tbluez_input.AA_BB.0\tPipeWire\ts16le 1ch 16000Hz\tSUSPENDED\n"
+    quiet_voice.setattr(voice.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=real))
+    assert voice.has_microphone() is True                      # earbuds with a microphone
+
+
+def test_pipewire_source_list_decides_when_there_is_no_pactl(quiet_voice):
+    import shutil
+    from types import SimpleNamespace
+    quiet_voice.setattr(shutil, "which", lambda name: "/usr/bin/wpctl" if name == "wpctl" else None)
+    empty = "Audio\n \u251c\u2500 Sinks:\n \u2502  *   55. Built-in Audio Digital Stereo (HDMI) [vol: 0.40]\n \u251c\u2500 Sources:\n \u2502  \n \u251c\u2500 Source endpoints:\n \u2514\u2500 Streams:\nVideo\n"
+    quiet_voice.setattr(voice.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=empty))
+    assert voice.has_microphone() is False
+    paired = empty.replace("Sources:\n \u2502  \n", "Sources:\n \u2502  *   71. AirPods Pro [vol: 1.00]\n")
+    quiet_voice.setattr(voice.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=paired))
+    assert voice.has_microphone() is True

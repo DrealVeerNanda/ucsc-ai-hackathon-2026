@@ -417,6 +417,32 @@ class WebMic:
         self._server.server_close()
 
 
+def has_microphone() -> bool:
+    """Is a real microphone plugged in or paired? The sound server always offers a default
+    input, even with nothing to record from, so that alone proves nothing."""
+    import shutil
+    if shutil.which("pactl"):
+        try:
+            rows = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True, timeout=3).stdout
+            return any(r.split("\t")[1:2] and not r.split("\t")[1].endswith(".monitor") for r in rows.splitlines() if r.strip())
+        except Exception:
+            pass
+    if shutil.which("wpctl"):            # PipeWire without the pulse tools: read its "Sources:" list
+        try:
+            out = subprocess.run(["wpctl", "status"], capture_output=True, text=True, timeout=3).stdout
+            audio = out.split("Audio", 1)[1].split("Video", 1)[0]
+            sources = audio.split("Sources:", 1)[1].split("Source endpoints:", 1)[0]
+            return bool(re.search(r"\d+\.\s+\S", sources))
+        except Exception:
+            pass
+    try:
+        import sounddevice as sd
+        return any(d["max_input_channels"] > 0 and d["name"] not in ("default", "pipewire", "pulse", "sysdefault")
+                   for d in sd.query_devices())
+    except Exception:
+        return False
+
+
 _listener = None                # Listener (local microphone) or WebMic (a phone or laptop as the microphone)
 _mode: str | None = None
 
@@ -428,7 +454,8 @@ def listen_for_target() -> str:
         want = os.environ.get("VOICE_MODE", "auto")
         model = os.environ.get("VOICE_MODEL", "base.en")
         _mode = "type"
-        if want in ("auto", "speech"):
+        why = "none is plugged in or paired"
+        if want == "speech" or (want == "auto" and (os.environ.get("VOICE_DEVICE") or has_microphone())):
             try:
                 _listener = Listener(model, os.environ.get("VOICE_DEVICE") or None)
                 _mode = "speech"
