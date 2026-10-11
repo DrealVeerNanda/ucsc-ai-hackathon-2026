@@ -273,6 +273,7 @@ document.addEventListener("keydown", (e) => {
     if (document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen?.();
   } else if (k === "n" || k === "N") window.open("notes.html", "deck-notes", "width=760,height=560");
+  else if (k === "h" || k === "H") cycleHand();
 });
 document.addEventListener("click", (e) => { if (e.button === 0) next(); });
 document.addEventListener("contextmenu", (e) => { e.preventDefault(); prev(); });
@@ -301,6 +302,29 @@ document.querySelectorAll("[data-tex]").forEach((el) => {
   if (window.katex) window.katex.render(el.dataset.tex, el, { throwOnError: false });
   else el.textContent = el.dataset.tex;
 });
+
+// hand style: ?hand=outline|fill|duotone|thin|bold, or press H to cycle while presenting
+const HAND_STYLES = ["outline", "fill", "duotone", "thin", "bold"];
+let handStyle = HAND_STYLES.includes(params.get("hand")) ? params.get("hand") : "outline";
+const outlineHand = $("lab-hand").innerHTML;
+async function applyHand(style) {
+  const el = $("lab-hand");
+  el.classList.toggle("ph", style !== "outline");
+  if (style === "outline") { el.innerHTML = outlineHand; return; }
+  const get = (n) => fetch(`vendor/phosphor/${n}-${style}.svg`).then((r) => r.text());
+  const [open, grab] = await Promise.all([get("hand"), get("hand-grabbing")]);
+  el.innerHTML = open.replace("<svg", '<svg class="hi hi-open"') + grab.replace("<svg", '<svg class="hi hi-grab"');
+}
+function cycleHand() {
+  handStyle = HAND_STYLES[(HAND_STYLES.indexOf(handStyle) + 1) % HAND_STYLES.length];
+  applyHand(handStyle);
+  const t = $("toast");
+  t.textContent = `Hand: ${handStyle}`;
+  t.classList.add("is-on");
+  clearTimeout(cycleHand.t);
+  cycleHand.t = setTimeout(() => t.classList.remove("is-on"), 1200);
+}
+applyHand(handStyle);
 
 show(...parseHash());
 if (auto) { started = Date.now(); autoplay(); }

@@ -221,7 +221,7 @@
     setText($("dist"), hasDist ? cm(d.dist) : "–");
     toggle(wrap, "is-empty", !hasDist);
     toggle(wrap, "is-close", hasDist && d.dist < GRAB_M);
-    const thing = d.target || "object";
+    const thing = d.target || "item";
     setText(wrap.querySelector(".dist-label"), hasDist ? `to the ${thing}` : `Needs the fingertip and the ${thing}`);
     setText($("target"), d.heard ? `“${d.heard}”` : d.target || "nothing yet");
 
@@ -235,7 +235,7 @@
 
   // Why the latest word was said, from the measured positions, so a judge can check it.
   function whyFor(text, d) {
-    const thing = d.target || "object";
+    const thing = d.target || "item";
     const e = d.err;
     const off = (axis) => (e ? cm(e[axis]) : "");
     switch (text) {
