@@ -1071,14 +1071,16 @@ def object_not_there(rig: Rig) -> Result:
     says nothing more: with earbuds the microphone is only open while it waits for a request."""
     t = rig.ask("banana")
     cant = rig.wait(soak.event("say", text="I can't see that"), 20.0, t)
-    asked = rig.wait(lambda r: r.get("type") == "event" and r["name"] == "say" and "want" in r.get("text", "").lower(), 40.0, t)
+    # 20 s if it never sees one; 30 s if the detector takes something else for it and no hand comes;
+    # two minutes at the outside, when hands in the picture keep it guiding to the wrong thing.
+    asked = rig.wait(lambda r: r.get("type") == "event" and r["name"] == "say" and "want" in r.get("text", "").lower(), 135.0, t)
     time.sleep(1.0)
     said = rig.said(t)
     ok = asked is not None
     told = "never said it could not see it" if cant is None else f'said "I can\'t see that" after {cant["t"] - t:.0f} s'
     return Result("object_not_there", ok, None if asked is None else asked["t"] - t, ok,
                   f"it {told}, " + (f"and asked what to grab instead after {asked['t'] - t:.0f} s" if ok else
-                                    "then went on searching in silence: 40 s later it had still not asked for another request "
+                                    "then went on searching in silence: 135 s later it had still not asked for another request "
                                     "(only a key on the dashboard or a typed request gets it out)") + f". Said: {said}")
 
 
