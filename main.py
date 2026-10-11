@@ -12,23 +12,35 @@ The judge dashboard opens in the browser at http://localhost:8642 (--ui web, the
 Keys (dashboard or window): q / esc quit, t ask for a new target. Fake perception adds
 hand keys (see fakes.py). Each run writes a per-frame CSV to logs/ and prints a latency
 summary on exit.
+
+Once started it keeps going: an exception in the camera, perception, guidance, voice or the
+views is printed and the loop carries on. Once a second it writes what it is doing to
+out/status/pipeline.json, which is how launcher.py tells a run that is waiting for the wearer
+to speak from one that is stuck.
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import importlib
+import inspect
+import json
 import os
+import signal
 import sys
+import threading
 import time
+import traceback
 import webbrowser
 from collections import deque
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 
 import debug_view
 import fakes
+import tracing
 from dashboard import Dashboard
 from interfaces import hand_error
 
@@ -43,8 +55,150 @@ CLIP_TEXT = {"looking": "Looking", "found_it": "Found it", "show_me_your_hand": 
              "grab": "Grab", "i_lost_it": "I lost it", "i_cant_see_that": "I can't see that"}
 
 
+STATUS_DIR = Path(__file__).resolve().parent / "out" / "status"
+# A step other than waiting for the wearer that has not come back for this long is stuck. The
+# slowest honest ones are opening the camera when the phone is not streaming (10 s, in stream.py)
+# and a new target's first frame (3 s in the last live run).
+STUCK_S = 30.0
+STARTING_S = 120.0      # before the first frame is through: importing torch and loading the models, cold
+NO_CAMERA_S = 2.0       # this long without a frame while it should be guiding: say so
+FAILING_S = 5.0         # a step that has failed on every try for this long is not a blip
+
+
 def clip_text(name: str) -> str:
     return CLIP_TEXT.get(name, name.replace("_", " ").capitalize())
+
+
+class Faults:
+    """What went wrong, per step. The first failure of a step is printed whole; while it keeps
+    failing, one line every five seconds, so a broken step cannot bury the log."""
+
+    def __init__(self, every_s: float = 5.0):
+        self.counts: dict = {}
+        self.since: dict = {}        # step -> time.monotonic() of the first failure in a row
+        self.last: str | None = None
+        self._every_s = every_s
+        self._printed: dict = {}
+
+    def failed(self, step: str, e: BaseException):
+        now = time.monotonic()
+        self.counts[step] = self.counts.get(step, 0) + 1
+        self.since.setdefault(step, now)
+        self.last = f"{step}: {e.__class__.__name__}: {e}"
+        if step not in self._printed:
+            print(f"[main] {step} failed, carrying on:\n{traceback.format_exc()}", file=sys.stderr, flush=True)
+        elif now - self._printed[step] >= self._every_s:
+            print(f"[main] {step} has failed {self.counts[step]} times, last: {e.__class__.__name__}: {e}",
+                  file=sys.stderr, flush=True)
+        else:
+            return
+        self._printed[step] = now
+
+    def ok(self, step: str):
+        self.since.pop(step, None)
+
+    def failing(self, now: float) -> dict:
+        """Steps that are failing right now -> for how many seconds."""
+        return {step: round(now - t, 1) for step, t in list(self.since.items())}
+
+
+class Heartbeat:
+    """Writes pipeline.json once a second from its own thread: what the loop is doing, for how
+    long, and how the run is going. The loop only says which step it is on (`beat.now("perception")`),
+    so a loop that is stuck shows up as a step that never ends, and a frozen process as a file
+    that stops changing. Waiting for the wearer to speak can take minutes and is never "stuck"."""
+
+    def __init__(self, folder: str | Path | None, faults: Faults | None = None, every_s: float = 1.0):
+        self.path = None if not folder or str(folder) == "off" else Path(folder) / "pipeline.json"
+        self.faults = faults or Faults()
+        self.every_s = every_s
+        self.started = time.time()
+        self.at = ("starting", time.monotonic())     # (step, since when), replaced whole
+        self.warm = False                            # a frame has been through every step
+        self.frames, self.fps, self.last_frame = 0, 0.0, None
+        self.target = self.guidance = self.heard = self.said = None
+        self.voice = None
+        self._seen = 0
+        self._stop = threading.Event()
+        self._thread = None
+
+    def now(self, step: str):
+        self.at = (step, time.monotonic())
+
+    def start(self) -> "Heartbeat":
+        if self.path is not None and self._thread is None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._thread = threading.Thread(target=self._run, daemon=True, name="heartbeat")
+            self._thread.start()
+        return self
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                self.write(self.snapshot())
+            except Exception as e:                   # a full disk must not end the run
+                print(f"[main] could not write {self.path}: {e}", file=sys.stderr)
+            self._stop.wait(self.every_s)
+
+    def snapshot(self) -> dict:
+        now = time.monotonic()
+        step, since = self.at
+        for e in tracing.events_since(self._seen)[0]:
+            if e.get("name") == "whisper" and e.get("text"):
+                self.heard = e["text"]
+            elif e.get("name") == "say" and e.get("text"):
+                self.said = e["text"]
+        self._seen = tracing.events_since(self._seen)[1]
+        heard = self.heard or getattr(self.voice, "last_transcript", None)
+        age = None if self.last_frame is None else now - self.last_frame
+        failing = {k: v for k, v in self.faults.failing(now).items() if v >= FAILING_S}
+        what = f"the {self.target}" if self.target else "nothing yet"
+        if failing:
+            worst = max(failing, key=failing.get)
+            state, message = "failing", f"{worst.capitalize()} has been failing for {failing[worst]:.0f} s ({self.faults.last})."
+        elif step == "listening":
+            state, message = "listening", "Waiting for the wearer to say what to pick up."
+        elif now - since > (STUCK_S if self.warm else STARTING_S):
+            state, message = "stuck", f"Stuck in {step} for {now - since:.0f} s."
+        elif not self.warm:
+            state, message = "starting", "Starting: loading the models and waiting for the first frame."
+        elif age is not None and age > NO_CAMERA_S:
+            state, message = "no_camera", f"No camera frame for {age:.0f} s."
+        else:
+            doing = str(self.guidance or "starting").replace("_", " ")
+            state, message = "running", f"Looking for {what}: {doing}, {self.fps:.0f} frames a second."
+        return {"t": round(time.time(), 3), "state": state, "ok": state in ("listening", "running"), "message": message,
+                "pid": os.getpid(), "started": round(self.started, 3), "doing": step, "doing_s": round(now - since, 2),
+                "warm": self.warm, "target": self.target, "guidance": self.guidance, "frames": self.frames,
+                "fps": round(self.fps, 1), "last_frame_age_s": None if age is None else round(age, 2),
+                "heard": heard, "said": self.said, "errors": dict(self.faults.counts),
+                "failing": failing, "last_error": self.faults.last}
+
+    def write(self, status: dict):
+        if self.path is None:
+            return
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(status))
+        os.replace(tmp, self.path)                   # readers never see half a file
+
+    def stop(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            try:
+                self.write(dict(self.snapshot(), state="stopped", ok=False, message="Stopped."))
+            except Exception:
+                pass
+
+
+def patient(get_frame, wait_s: float = 0.05):
+    """(get_frame that waits for the next frame, can it wait?). stream.get_frame can block until
+    a frame arrives; the fakes cannot, and return None at once."""
+    try:
+        waits = "wait" in inspect.signature(get_frame).parameters
+    except (TypeError, ValueError):
+        waits = False
+    return ((lambda: get_frame(wait=wait_s)) if waits else get_frame), waits
 
 
 def listen_to_guidance(g):
@@ -68,7 +222,7 @@ def listen_to_guidance(g):
     return pop
 
 
-def parse_args():
+def parse_args(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     for lane in LANES:
         ap.add_argument(f"--{lane}", choices=("fake", "real"), default="fake")
@@ -87,7 +241,9 @@ def parse_args():
     ap.add_argument("--fullscreen", action="store_true", help="OpenCV window fullscreen")
     ap.add_argument("--frames", type=int, default=0, help="stop after N frames (smoke tests)")
     ap.add_argument("--log-dir", default="logs")
-    args = ap.parse_args()
+    ap.add_argument("--status-dir", default=str(STATUS_DIR),
+                    help="where pipeline.json is written once a second; \"off\" for nowhere")
+    args = ap.parse_args(argv)
     if args.all_real:
         for lane in LANES:
             setattr(args, lane, "real")
@@ -188,11 +344,30 @@ class Stats:
         return "\n".join(lines)
 
 
-def main():
-    args = parse_args()
+FAILED = object()        # what attempt() returns when the step raised
+
+
+def main(argv=None):
+    args = parse_args(argv)
     # Spoken words (left, right, up, down, forward, back) are the default guidance.
     os.environ.setdefault("GUIDANCE_WORDS", "0" if args.tones else "1")
-    mods = load_modules(args)
+    # A plain `kill` ends Python without the summary below or the last status; make it a normal exit.
+    if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    beat = Heartbeat(args.status_dir).start()        # before the modules load: that can take a while
+    try:
+        mods = load_modules(args)
+    except BaseException:
+        beat.stop()
+        raise
+    run(args, mods, beat)
+
+
+def run(args, mods, beat: Heartbeat | None = None):
+    """The loop. Returns when asked to quit (q, esc, Ctrl-C, --frames); nothing else ends it."""
+    beat = (beat or Heartbeat(args.status_dir)).start()
+    faults = beat.faults
+    beat.voice = getattr(mods, "voice", None)
     view = args.ui in ("cv", "both")
     modes = "  ".join(f"{lane}:{getattr(args, lane)}" for lane in LANES)
     modes_map = {lane: getattr(args, lane) for lane in LANES}
@@ -206,36 +381,63 @@ def main():
     if args.ui in ("web", "both"):
         dash = Dashboard(args.host, args.port)
         url = dash.start()
+        os.environ["DASHBOARD_PORT"] = str(args.port)      # voice.py presses "new target" through it
         print(f"[main] dashboard at {url}")
         if not args.no_open:
             webbrowser.open(url)
 
+    next_frame, waits = patient(mods.get_frame)
     pop_phrases = mods.pop_phrases
     run = {"status": "idle", "started": None, "elapsed_s": None, "target": None}
     last = None              # (frame, scene, info) for redraws while no frames arrive
     last_shown = 0.0
     t_recv_src = None
     prev_state = None
+    target = None
     n = 0
 
+    def attempt(step: str, fn, *a, default=None):
+        """fn(*a), or `default` if it raised: one bad frame or a module having a moment must not
+        end the run. Ctrl-C and sys.exit are not caught."""
+        try:
+            out = fn(*a)
+        except Exception as e:
+            faults.failed(step, e)
+            return default
+        faults.ok(step)
+        return out
+
+    def show(frame, scene, info) -> str | None:
+        """Both views; the key pressed in the OpenCV window, if any."""
+        if dash:
+            attempt("dashboard", dash.publish, frame, scene, info)
+        return attempt("view", debug_view.show, frame, scene, info) if view else None
+
     def request_target(prev: str | None = None) -> str:
+        beat.now("listening")
         if view:
-            debug_view.show_message("LISTENING...")
+            attempt("view", debug_view.show_message, "LISTENING...")
         if dash and last is not None:
             f, s, info = last
-            dash.publish(f, s, dict(info, state="listening"))
+            attempt("dashboard", dash.publish, f, s, dict(info, state="listening"))
         target = None
         while not target:
-            target = mods.listen()
+            t = time.monotonic()
+            target = attempt("voice", mods.listen, default=FAILED)
+            # Asked again at once, a voice module that fails or returns nothing straight away would spin.
+            pause = 1.0 if target is FAILED else 0.2
+            if not target or target is FAILED:
+                target = None
+                time.sleep(max(0.0, pause - (time.monotonic() - t)))
         print(f"[main] target: {target!r}" + (f" (was {prev!r})" if prev else ""))
         if mods.reset:
-            mods.reset(target)
+            attempt("guidance", mods.reset, target)
         if mods.fake_locate:
             mods.fake_locate.reset_hand()
         run.update(status="running", started=time.monotonic(), elapsed_s=0.0, target=target)
+        beat.target = target
+        beat.now("loop")
         return target
-
-    target = request_target()
 
     def handle_key(key: str | None) -> bool:
         """Returns False to quit."""
@@ -251,22 +453,36 @@ def main():
     def handle_web_keys() -> bool:
         return all(handle_key(k) for k in dash.pop_keys()) if dash else True
 
+    def redraw() -> str | None:
+        """No new picture this turn: keep the views alive with the last one."""
+        nonlocal last_shown
+        now = time.monotonic()
+        if last is None or now - last_shown <= 0.1:
+            return None
+        f, s, info = last
+        info["age_ms"] = (now - info["t_recv"]) * 1000
+        last_shown = now
+        return show(f, s, info)
+
     try:
+        target = request_target()
         while True:
             t0 = time.perf_counter()
-            frame = mods.get_frame()
+            beat.now("stream")
+            frame = attempt("stream", mods.get_frame)
+            if frame is None and waits:
+                # Nothing new yet: wait for the next frame inside the stream instead of asking
+                # again and again. The wait is not the stream's own work, so it is left out of
+                # its time: that starts when the frame arrived.
+                frame = attempt("stream", next_frame)
+                if frame is not None and getattr(frame, "t_recv", None) is not None:
+                    t0 = time.perf_counter() - (time.monotonic() - frame.t_recv)
             if frame is None:
-                time.sleep(0.002)
-                now = time.monotonic()
-                if last is not None and now - last_shown > 0.1:
-                    f, s, info = last
-                    info["age_ms"] = (now - info["t_recv"]) * 1000
-                    last_shown = now
-                    if dash:
-                        dash.publish(f, s, info)
-                    if view and not handle_key(debug_view.show(f, s, info)):
-                        break
-                if not handle_web_keys():
+                # A source that cannot wait (the fakes, a camera that is not open yet) came back
+                # at once: sleep here, so a missing frame never spins the loop.
+                spent = time.perf_counter() - t0
+                time.sleep(max(0.002, 0.02 - spent) if waits else 0.002)
+                if not handle_key(redraw()) or not handle_web_keys():
                     break
                 continue
             t1 = time.perf_counter()
@@ -281,9 +497,18 @@ def main():
                 if src == "proc":
                     print("[main] frames carry no t_recv; latency covers processing only")
 
-            scene = mods.locate(frame, target)
+            beat.now("perception")
+            scene = attempt("perception", mods.locate, frame, target, default=FAILED)
             t2 = time.perf_counter()
-            state = mods.update(scene)
+            beat.now("guidance")
+            state = FAILED if scene is FAILED else attempt("guidance", mods.update, scene, default=FAILED)
+            if state is FAILED:
+                # Nothing to guide on this frame. The sound goes quiet by itself when it stops
+                # being updated; the views and the keys carry on.
+                beat.last_frame = time.monotonic()
+                if not handle_key(redraw()) or not handle_web_keys():
+                    break
+                continue
             t3 = time.perf_counter()
             now = time.monotonic()
             e2e_ms = (now - t_recv) * 1000
@@ -292,12 +517,12 @@ def main():
                       "guidance": (t3 - t2) * 1000}
 
             if pop_phrases:
-                phrases = pop_phrases()
+                phrases = attempt("guidance", pop_phrases, default=[])
             else:
                 phrases = [STATE_PHRASES[state]] if state != prev_state and state in STATE_PHRASES else []
             if dash:
                 for name in phrases:
-                    dash.say(clip_text(name))
+                    attempt("dashboard", dash.say, clip_text(name))
             if run["status"] == "running":
                 run["elapsed_s"] = now - run["started"]
                 if state == "grab":
@@ -313,16 +538,15 @@ def main():
                 "models": getattr(sys.modules.get("perception"), "MODEL_NAMES", None),
                 "run": {k: run[k] for k in ("status", "elapsed_s", "target")},
             }
-            key = None
-            if view:
-                key = debug_view.show(frame, scene, info)
-            if dash:
-                dash.publish(frame, scene, info)
+            beat.now("view")
+            key = show(frame, scene, info)
             last, last_shown = (frame, scene, info), now
             stages["view"] = (time.perf_counter() - t3) * 1000
 
             stats.add(stages, e2e_ms, now)
-            log.row(frame, scene, t_recv, info["age_ms"], e2e_ms, stages, target, state)
+            attempt("log", log.row, frame, scene, t_recv, info["age_ms"], e2e_ms, stages, target, state)
+            n += 1
+            beat.frames, beat.fps, beat.last_frame, beat.guidance, beat.warm = n, stats.fps, now, state, True
 
             if not handle_key(key) or not handle_web_keys():
                 break
@@ -330,12 +554,12 @@ def main():
                 target = request_target(target)
             prev_state = state
 
-            n += 1
             if args.frames and n >= args.frames:
                 break
     except KeyboardInterrupt:
         pass
     finally:
+        beat.stop()
         log.close()
         if view:
             debug_view.close()

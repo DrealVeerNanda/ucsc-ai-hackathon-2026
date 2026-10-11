@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#080f18">
+  <title>Proprio, start</title>
+  <meta name="description" content="Everything that has to be true before the demo starts, and what keeps it running afterwards.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/barlow-semi-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="bar">
+    <h1 class="bar-state" id="state">Looking…</h1>
+    <p class="bar-item"><span class="bar-k" id="k1">Before the demo</span><b class="bar-v" id="v1">–</b></p>
+    <p class="bar-item" id="i2" hidden><span class="bar-k">Restarts</span><b class="bar-v" id="v2">0</b></p>
+    <p class="bar-item" id="i3" hidden><span class="bar-k">Finding</span><b class="bar-v" id="v3" translate="no">–</b></p>
+    <div class="bar-actions">
+      <button class="btn btn-quiet" id="anyway" type="button" hidden>Start anyway</button>
+      <button class="btn btn-go" id="start" type="button" disabled>Start</button>
+      <a class="btn btn-go" id="live" target="proprio-live" hidden>Open the live view</a>
+      <button class="btn btn-quiet" id="stop" type="button" hidden>Stop</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <p class="banner" id="banner" role="alert" hidden></p>
+
+    <section class="run" id="run" aria-label="The run" hidden>
+      <ol class="lines" id="g-run"></ol>
+      <dl class="talk">
+        <div><dt>Heard</dt><dd id="heard">nothing yet</dd></div>
+        <div><dt>Said</dt><dd id="said">nothing yet</dd></div>
+      </dl>
+    </section>
+
+    <div class="cols">
+      <section class="group" aria-labelledby="h-phone">
+        <h2 id="h-phone">Phone</h2>
+        <ol class="lines" id="g-phone"></ol>
+      </section>
+      <section class="group" aria-labelledby="h-airpods">
+        <h2 id="h-airpods">AirPods</h2>
+        <ol class="lines" id="g-airpods"></ol>
+      </section>
+      <section class="group" aria-labelledby="h-computer">
+        <h2 id="h-computer">GX10</h2>
+        <ol class="lines" id="g-computer"></ol>
+      </section>
+    </div>
+
+    <section class="after">
+      <div class="events">
+        <h2>What happened</h2>
+        <ol id="events"></ol>
+      </div>
+      <details class="log" id="log">
+        <summary>The pipeline's last lines</summary>
+        <pre id="log-text">Nothing yet.</pre>
+      </details>
+    </section>
+    <p class="foot" id="foot"></p>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

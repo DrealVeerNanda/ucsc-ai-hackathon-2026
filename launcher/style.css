@@ -1,0 +1,230 @@
+/* The launcher's page. Same tokens and type as the dashboard (dashboard/style.css, DESIGN.md),
+   so the two read as one thing; its fonts are served from the dashboard's folder. */
+
+@font-face { font-family: "Barlow"; font-weight: 400; font-display: swap; src: url("fonts/barlow-400.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 500; font-display: swap; src: url("fonts/barlow-500.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: swap; src: url("fonts/barlow-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; font-display: swap; src: url("fonts/barlow-semi-condensed-700.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Fallback"; src: local("Arial"), local("Helvetica"), local("Liberation Sans"); size-adjust: 93%; ascent-override: 100%; descent-override: 20%; }
+@font-face { font-family: "Barlow Display Fallback"; src: local("Arial Narrow"), local("Arial"), local("Liberation Sans Narrow"); size-adjust: 88%; ascent-override: 100%; descent-override: 20%; }
+
+:root {
+  color-scheme: dark;
+
+  --ground: oklch(0.165 0.022 255);
+  --plate: oklch(0.215 0.026 255);
+  --rule: oklch(0.33 0.03 255);
+  --text: oklch(0.965 0.005 255);
+  --muted: oklch(0.76 0.02 255);
+  --faint: oklch(0.6 0.022 255);
+  --leg: oklch(0.88 0.165 96);
+  --on-leg: oklch(0.21 0.04 96);
+  --grab: oklch(0.82 0.16 152);
+  --on-grab: oklch(0.2 0.04 152);
+  --warn: oklch(0.8 0.13 65);
+  --alert: oklch(0.62 0.19 27);
+  --alert-text: oklch(0.8 0.13 27);
+  --deep: oklch(0.13 0.02 255);
+
+  --font: "Barlow", "Barlow Fallback", sans-serif;
+  --display: "Barlow Semi Condensed", "Barlow Display Fallback", sans-serif;
+  --s-1: 0.833rem;
+  --s0: 1rem;
+  --s1: 1.2rem;
+  --s2: 1.44rem;
+  --s3: 1.728rem;
+  --s4: 2.074rem;
+  --s6: 2.986rem;
+
+  --sp1: 4px;
+  --sp2: 8px;
+  --sp3: 12px;
+  --sp4: 16px;
+  --sp5: 24px;
+  --sp6: 32px;
+  --sp7: 48px;
+
+  --radius: 3px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (min-width: 1600px) { :root { font-size: 112.5%; } }
+@media (min-width: 1880px) { :root { font-size: 125%; } }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--ground); }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font: 400 var(--s0)/1.4 var(--font);
+  font-variant-numeric: tabular-nums;
+  font-variant-ligatures: none;      /* command lines are quoted here: "--" must stay two hyphens */
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p, ol, dl, dd, pre { margin: 0; }
+ol { padding: 0; list-style: none; }
+[hidden] { display: none !important; }
+
+/* the bar: the one word that matters, and the one button ------------------------ */
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp3) var(--sp7);
+  padding: var(--sp3) var(--sp5);
+  background: var(--ground);
+  border-bottom: 1px solid var(--rule);
+}
+.bar-state { min-width: 8ch; font: 700 var(--s4)/1 var(--display); }
+.bar-state.is-green { color: var(--grab); }
+.bar-state.is-amber { color: var(--warn); }
+.bar-state.is-red { color: var(--alert-text); }
+.bar-item { display: grid; gap: 2px; }
+.bar-k { font-size: var(--s-1); color: var(--muted); }
+.bar-v { font: 700 var(--s2)/1 var(--display); }
+.bar-actions { display: flex; align-items: center; gap: var(--sp4); margin-left: auto; }
+
+.btn {
+  padding: var(--sp3) var(--sp5);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--plate);
+  color: var(--text);
+  font: 600 var(--s1)/1 var(--font);
+  text-decoration: none;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible { outline: 2px solid var(--leg); outline-offset: 2px; }
+.btn:disabled { color: var(--faint); cursor: not-allowed; }
+.btn:disabled:hover { border-color: var(--rule); }
+.btn-go {
+  padding: var(--sp3) var(--sp7);
+  background: var(--grab);
+  border-color: var(--grab);
+  color: var(--on-grab);
+  font: 700 var(--s3)/1 var(--display);
+}
+.btn-go:hover { border-color: var(--text); }
+.btn-go:disabled { background: var(--plate); border-color: var(--rule); color: var(--faint); }
+.btn-quiet { background: transparent; color: var(--muted); }
+
+/* the page ------------------------------------------------------------------------- */
+
+.page { display: grid; gap: var(--sp4); padding: var(--sp4) var(--sp5); }
+
+.banner {
+  padding: var(--sp3) var(--sp4);
+  border-radius: var(--radius);
+  background: var(--alert);
+  color: var(--text);
+  font: 600 var(--s1)/1.3 var(--font);
+}
+.banner.is-info { background: var(--plate); color: var(--muted); font-weight: 500; }
+
+.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp5); align-items: start; }
+@media (max-width: 1399px) { .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 899px) { .cols { grid-template-columns: minmax(0, 1fr); } .page { padding: var(--sp4); } }
+
+.group h2, .events h2 {
+  margin-bottom: var(--sp2);
+  font: 500 var(--s0)/1.2 var(--font);
+  color: var(--muted);
+}
+.lines { display: grid; gap: var(--sp2); }
+
+/* one requirement: a mark you can read from across the table, its name, and what to do */
+.line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 2px var(--sp3);
+  align-items: start;
+  padding: var(--sp2) var(--sp4) var(--sp3);
+  border-radius: var(--radius);
+  background: var(--plate);
+  border-left: 6px solid var(--rule);
+}
+.mark {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  margin-top: 0.1rem;
+  border-radius: var(--radius);
+  background: var(--rule);
+  color: var(--ground);
+}
+.mark svg { width: 70%; height: 70%; fill: none; stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+.line-title { font: 700 var(--s2)/1.2 var(--display); }
+.line-title { align-self: center; }
+.line-msg { grid-column: 2 / -1; font-size: var(--s1); line-height: 1.3; color: var(--text); overflow-wrap: anywhere; }
+.line-note { grid-column: 2 / -1; font-size: var(--s0); color: var(--leg); }
+/* the button sits beside the title, so a line with something to press is no taller */
+.line-fix { grid-column: 3; grid-row: 1; padding: var(--sp2) var(--sp4); font-size: var(--s0); }
+.line-detail { grid-column: 2 / -1; font-size: var(--s-1); color: var(--muted); }
+.line-detail summary { cursor: pointer; }
+.line-detail li { padding: 1px 0; overflow-wrap: anywhere; }
+.line-detail li.is-bad { color: var(--alert-text); }
+
+.line.is-green { border-left-color: var(--grab); }
+.line.is-green .mark { background: var(--grab); color: var(--on-grab); }
+.line.is-green .line-msg { color: var(--muted); }
+.line.is-amber { border-left-color: var(--warn); }
+.line.is-amber .mark { background: var(--warn); color: var(--on-leg); }
+.line.is-red { border-left-color: var(--alert); }
+.line.is-red .mark { background: var(--alert); color: var(--text); }
+.line.is-none .line-msg { color: var(--muted); }
+/* cannot be judged until a line above is fixed: step back, so the one line to act on stands out */
+.line.is-blocked { background: transparent; border: 1px dashed var(--rule); border-left-width: 6px; }
+.line.is-blocked .mark { background: transparent; border: 2px solid var(--rule); color: var(--faint); }
+.line.is-blocked .line-title, .line.is-blocked .line-msg { color: var(--faint); }
+
+/* a line that is fine and never interesting while it is: one small row, name then fact */
+.line.is-minor:is(.is-green, .is-none) { grid-template-columns: auto auto minmax(0, 1fr); padding: var(--sp2) var(--sp4); align-items: baseline; }
+.line.is-minor:is(.is-green, .is-none) .mark { width: 1.1rem; height: 1.1rem; margin-top: 0; align-self: center; }
+.line.is-minor:is(.is-green, .is-none) .line-title { font: 600 var(--s0)/1.3 var(--font); }
+.line.is-minor:is(.is-green, .is-none) .line-msg { grid-column: 3; grid-row: 1; font-size: var(--s0); color: var(--muted); }
+.line.is-minor:is(.is-green, .is-none) .line-fix { display: none; }
+
+/* running ------------------------------------------------------------------------------ */
+
+.run { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp5); align-items: start; }
+.run .line-title { font-size: var(--s3); }
+.talk { display: grid; gap: var(--sp3); }
+.talk dt { font-size: var(--s-1); color: var(--muted); }
+.talk dd { font: 700 var(--s3)/1.15 var(--display); overflow-wrap: anywhere; }
+.talk dd.is-empty { color: var(--faint); }
+@media (max-width: 899px) { .run { grid-template-columns: minmax(0, 1fr); } }
+
+.after { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp5); align-items: start; }
+@media (max-width: 1399px) { .after { grid-template-columns: minmax(0, 1fr); } }
+.events ol { display: grid; gap: 2px; font-size: var(--s0); color: var(--muted); }
+.events li { display: grid; grid-template-columns: 8ch minmax(0, 1fr); gap: var(--sp3); overflow-wrap: anywhere; }
+.events li:first-child { color: var(--text); }
+.events time { color: var(--faint); }
+.log summary { cursor: pointer; color: var(--muted); }
+.log pre {
+  max-height: 50vh;
+  margin-top: var(--sp2);
+  padding: var(--sp3) var(--sp4);
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--deep);
+  color: var(--muted);
+  font: 400 var(--s-1)/1.5 ui-monospace, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.foot { font-size: var(--s-1); color: var(--faint); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .line, .mark { transition: background-color 200ms var(--ease), border-color 200ms var(--ease); }
+}
