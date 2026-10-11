@@ -85,7 +85,8 @@ LLM_PROMPT = ('You work out what a blind person wearing a camera wants. Reply wi
               '{"intent": "pick" or "list" or "none", "target": "<object>"}. '
               'intent is "list" when they ask what is there, what you can see, or what they could pick up. '
               'intent is "pick" when they want an object: then target is that object as 1 to 3 plain words an object '
-              'detector can find, such as mug, water bottle, phone. Name the physical thing, not the wish: thirsty '
+              'detector can find, such as mug, water bottle, phone. Keep a colour or other word they used to tell it '
+              'apart: blue cup stays blue cup, red phone stays red phone. Name the physical thing, not the wish: thirsty '
               'means water bottle. intent is "none" for anything else. target is an empty string unless intent is "pick".')
 LLM_SCHEMA = {"type": "object",
               "properties": {"intent": {"type": "string", "enum": ["pick", "list", "none"]},
@@ -131,6 +132,9 @@ def interpret(text: str) -> tuple[str, str]:
         i = _ORDER[m.group(1)]
         if -1 <= i < len(last_objects):
             return "pick", last_objects[i]
+    listed = [o for o in last_objects if re.search(rf"\b{re.escape(o)}\b", clean)]
+    if listed and not _LIST.search(clean):                   # they said one of the names they were just told
+        return "pick", max(listed, key=len)
     by_rule = ("list", "") if _LIST.search(clean) else ("pick", extract_target(text))
     url = os.environ.get("VOICE_LLM_URL", "http://127.0.0.1:8000/v1")
     if url == "off" or _llm_ok is False or len(clean.split()) < 2:     # one word is already a name

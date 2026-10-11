@@ -527,6 +527,14 @@ def test_whisper_is_told_the_names_that_were_just_listed(monkeypatch):
     assert voice.expected_words() is None
 
 
+def test_a_listed_name_is_taken_as_said_with_its_colour(monkeypatch):
+    monkeypatch.setenv("VOICE_LLM_URL", "off")
+    monkeypatch.setattr(voice, "last_objects", ["water bottle", "blue cup", "orange", "cup"])
+    assert voice.interpret("Blue cup.") == ("pick", "blue cup")              # not the plain cup beside it
+    assert voice.interpret("I want the cup") == ("pick", "cup")
+    assert voice.interpret("blue cup, blue cup, what is on the table?") == ("list", "")
+
+
 def test_the_listening_beep_is_short_and_not_the_chime():
     m = Mixer(ToneConfig(), clips={})
     assert 0.1 < len(m.clips["listen"]) / m.cfg.sr < 0.4 and len(m.clips["listen"]) < len(m.clips["aligned"])
