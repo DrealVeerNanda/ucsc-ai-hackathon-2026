@@ -62,8 +62,9 @@ RECORD_S = 12 * 3600    # see Supervisor.pipeline_env: one recording for the who
 
 # How the pipeline is judged (its own words for its state are in main.py's Heartbeat).
 BOOT_S = 60.0           # no heartbeat this long after it was started: it never came up
-FROZEN_S = 15.0         # a heartbeat this old: the whole process is frozen. It writes one a second;
-                        # the longest gap measured while loading every model on the GX10 was under 3 s
+FROZEN_S = 10.0         # a heartbeat this old: the whole process is frozen. It writes one a second; the
+                        # longest gap measured on the GX10 through a whole start (Whisper, YOLO-World and
+                        # CLIP loading, two other pipelines sharing the machine) was 1.2 s
 FAILING_S = 20.0        # a step failing on every frame for this long will not heal by itself
 BACKOFF_S = (1, 2, 5, 10, 20, 30)   # the wait before each restart in a row; back to the first after a good run
 SETTLED_S = 60.0        # a run this long was a good run
@@ -230,7 +231,8 @@ class Supervisor:
         self.status_dir = self.out / "status"
         self.status_dir.mkdir(parents=True, exist_ok=True)
         self.pipeline = Proc("pipeline", pipeline_argv or ["bash", "tools/live.sh"], self.root, self.out, "main.py")
-        self.bridge = Proc("phone_bridge", [sys.executable, "tools/phone_bridge.py"], self.root, self.out, "phone_bridge.py")
+        # "bridge", not "phone_bridge": out/phone_bridge.log is the bridge's own log
+        self.bridge = Proc("bridge", [sys.executable, "tools/phone_bridge.py", "run"], self.root, self.out, "phone_bridge.py")
         self.boot_s, self.frozen_s, self.failing_s, self.backoff_s = BOOT_S, FROZEN_S, FAILING_S, BACKOFF_S
         self.settled_s, self.stop_wait_s = SETTLED_S, STOP_WAIT_S
         self.lock = threading.RLock()
@@ -336,13 +338,36 @@ class Supervisor:
         level = GREEN if hb.get("ok") else AMBER if hb.get("state") == "starting" else RED
         return line("pipeline", title, level if verdict == "ok" else RED, str(hb.get("message") or why), required=False)
 
+    def tell_bridge_to_record(self):
+        """The phone bridge does the recording when there is one (a new folder every 15 minutes):
+        it is told through out/status/phone_record, and records only between Start and Stop."""
+        if self.s.bridge.exists() and not self.s.replay:
+            want = "on" if self.record and self.mode == "running" else "off"
+            switch = self.status_dir / "phone_record"
+            try:
+                if not switch.exists() or switch.read_text().strip() != want:
+                    switch.write_text(want + "\n")
+            except OSError as e:
+                self.event(f"Could not write {switch}: {e}")
+
     def record_line(self) -> dict | None:
         if self.s.replay:
-            return line("record", "Recording", "none", "Nothing to record: the camera is a replayed recording.", required=False)
+            return line("record", "Recording", "none", "Nothing to record: the camera is a replayed recording.", required=False,
+                        minor=True)
         free = checks.shutil.disk_usage(self.root).free / 1e9
         if not self.record:
             return line("record", "Recording", AMBER, "Off: this session is not being saved.", required=False,
                         fix=("toggle_record", "Record"))
+        if self.s.bridge.exists() and self.mode != "checklist":
+            st = checks.read_status(self.status_dir / "phone.json") or {}
+            where = str(st.get("record_folder") or "").replace(str(self.root) + "/", "")
+            if st.get("record_error"):
+                return line("record", "Recording", RED, f"Not recording: {st['record_error']}", required=False)
+            if st.get("recording"):
+                return line("record", "Recording", GREEN, f"Into {where}: {st.get('record_frames', 0)} frames so far, a new folder "
+                            f"every 15 minutes. {free:.0f} GB left on the disk.", required=False, fix=("toggle_record", "Stop recording"))
+            return line("record", "Recording", AMBER, "Waiting for the phone's first frame to start the recording. "
+                        f"{free:.0f} GB left on the disk.", required=False, fix=("toggle_record", "Do not record"))
         folder = self.record_dir
         if self.mode == "checklist" or folder is None:
             return line("record", "Recording", GREEN, f"Every session is recorded into recordings/demo_DATE_TIME (colour and depth, "
@@ -394,7 +419,7 @@ class Supervisor:
         env.update(OPEN="0", PORT=str(self.s.dash_port), PYTHONUNBUFFERED="1")
         env.update(checks.offline_env(self.s, self.proof))
         self.record_dir = None
-        if self.record and not self.s.replay and "STREAM_RECORD" not in self.env:
+        if self.record and not self.s.replay and "STREAM_RECORD" not in self.env and not self.s.bridge.exists():
             # One folder for this run of the pipeline, closed when it ends. stream.py can also
             # stop after a set time, but it packs the recording right then, inside the camera
             # thread: a quarter of an hour of depth is 900 MB and guidance would stall while it
@@ -441,7 +466,7 @@ class Supervisor:
         ran = now - self.pipeline.started
         code = self.pipeline.exit_code()
         if self.pipeline.alive():
-            self.pipeline.stop(signal.SIGTERM, 3.0)
+            self.pipeline.stop(signal.SIGTERM, 1.0)        # a hung program rarely hears this; it is killed a second later
         else:
             self.pipeline.forget()
         self.in_a_row = 0 if ran >= self.settled_s else self.in_a_row + 1
@@ -473,6 +498,7 @@ class Supervisor:
                 self.dash_shown = True
                 show_window(self.env, "Proprio, live", f"http://localhost:{self.s.dash_port}/#{self.env.get('VIEW', 'camera')}")
         self.keep_bridge(now)
+        self.tell_bridge_to_record()
         self.write_status(now)
 
     def due(self, what: str, now: float, every_s: float, later_s: float | None = None, after: int = 6) -> bool:
@@ -491,6 +517,8 @@ class Supervisor:
             return
         if self.bridge.pid is None and self.bridge.adopt():
             return self.event(f"Carrying on with the phone bridge that is already running (pid {self.bridge.pid}).")
+        if checks.bridge_running(self.s):
+            return                   # one started by hand: leave it, a second would only fight it for the phone
         if self.due("bridge", now, 3.0, 15.0):
             self.bridge.forget()
             self.bridge.start(dict(self.env, PYTHONUNBUFFERED="1"))
@@ -584,7 +612,7 @@ class Supervisor:
             self.event("Quitting: stopping the pipeline and the phone bridge.")
             self.mode = "stopping"
             self.pipeline.stop(signal.SIGINT, self.stop_wait_s)
-            self.bridge.stop(signal.SIGINT, 5.0)
+            self.stop_bridge()
             self.mode = "checklist"
             self.write_status(time.time())
             self.stopped.set()
@@ -598,8 +626,9 @@ class Supervisor:
         if again:
             self.s.run(["bluetoothctl", "disconnect", pods["addr"]], 10.0)
             time.sleep(2.0)
-        rc, out = self.s.run(["bluetoothctl", "connect", pods["addr"]], 20.0)
+        rc, out = self.s.run(["bluetoothctl", "connect", pods["addr"]], 40.0)     # Bluetooth itself gives up after about 25 s
         ok = rc == 0 and "successful" in out.lower()
+        self.next_try["airpods"] = time.time() + 10.0      # the next try counts from the end of this one
         if ok and again:
             self.s.reconnected = time.time()       # mode trouble from before this is no longer news
         self.note("airpods", ok, f"{pods['name']}: connected." if ok else
@@ -644,8 +673,14 @@ class Supervisor:
                                  env=dict(self.env, **{port_var: str(checks.port_of(url) or "")}))
         self.note(id, True, f"{id.capitalize()} is starting (pid {p.pid}); its model takes about half a minute to load.")
 
-    def restart_bridge(self):
+    def stop_bridge(self):
+        """Its own `stop` lets go of the phone cleanly, whoever started it; then whatever is left."""
+        if self.s.bridge.exists():
+            self.s.run([sys.executable, str(self.s.bridge), "stop"], 60.0)
         self.bridge.stop(signal.SIGINT, 5.0)
+
+    def restart_bridge(self):
+        self.stop_bridge()
         self.next_try.pop("bridge", None)
         self.note("phone_stream", True, "The phone bridge was restarted. If the app shows Start again, tap it.")
 

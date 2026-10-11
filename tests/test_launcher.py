@@ -126,14 +126,20 @@ def test_no_frame_does_not_spin_the_loop(tmp_path):
     assert calls[0] < 40            # 0.4 s at one ask per 20 ms; a spinning loop makes thousands
 
 
-def test_a_camera_that_can_wait_is_asked_to(tmp_path):
-    waits, stream = [], fakes.FakeStream(None, 200.0)
+def test_a_camera_that_can_wait_is_asked_to_when_it_has_nothing_new(tmp_path):
+    waits, stream = [], fakes.FakeStream(None, 50.0)
 
     def get_frame(wait: float = 0.0):
         waits.append(wait)
+        if wait:
+            time.sleep(0.02)                 # stream.py blocks here until the next frame arrives
         return stream.get_frame()
-    main.run(loop_args(tmp_path, "--frames", "2"), fake_mods(get_frame=get_frame), main.Heartbeat("off"))
-    assert waits and all(w > 0 for w in waits)
+    args = loop_args(tmp_path, "--frames", "3")
+    main.run(args, fake_mods(get_frame=get_frame), main.Heartbeat("off"))
+    assert 0.0 in waits and max(waits) > 0                # asked plainly first, then asked to wait
+    rows = (tmp_path / "logs").glob("run_*.csv").__next__().read_text().splitlines()
+    stream_ms = [float(r.split(",")[5]) for r in rows[1:]]
+    assert max(stream_ms) < 15                             # the wait itself is not counted as the stream's time
 
 
 def test_a_voice_module_that_returns_nothing_at_once_does_not_spin(tmp_path):
@@ -791,3 +797,51 @@ def test_tail_gives_the_last_lines_without_colour_codes(tmp_path):
     got = launcher.tail(log, 200)
     assert len(got) == 200 and got[-1] == "green" and got[0] == "line 301"
     assert launcher.tail(tmp_path / "missing.log") == []
+
+
+def test_recording_goes_through_the_phone_bridge_when_there_is_one(keeper):
+    with_bridge(keeper.root)
+    switch = keeper.root / "out" / "status" / "phone_record"
+    assert "STREAM_RECORD" not in keeper.pipeline_env()           # the pipeline does not record a second copy
+    keeper.tell_bridge_to_record()
+    assert switch.read_text().strip() == "off"                    # nothing is saved while the checklist is up
+    keeper.mode = "running"
+    keeper.tell_bridge_to_record()
+    assert switch.read_text().strip() == "on"
+    write_phone(keeper.root, state="streaming", ok=True, recording=True, record_frames=120,
+                record_folder=str(keeper.root / "recordings" / "demo_20261011_090000"))
+    line = keeper.record_line()
+    assert line["level"] == GREEN and "recordings/demo_20261011_090000" in line["message"] and "120 frames" in line["message"]
+    write_phone(keeper.root, state="streaming", ok=True, recording=False, record_error="less than 5 GB free on the disk")
+    assert keeper.record_line()["level"] == RED
+    keeper.toggle_record()
+    keeper.tell_bridge_to_record()
+    assert switch.read_text().strip() == "off"
+    keeper.mode = "checklist"
+
+
+def test_a_phone_bridge_started_by_hand_is_left_alone(keeper):
+    import fcntl
+    with_bridge(keeper.root)
+    held = open(keeper.root / "out" / "phone_bridge.lock", "w")
+    fcntl.flock(held, fcntl.LOCK_EX)
+    assert checks.bridge_running(keeper.s)
+    keeper.keep_bridge(time.time())
+    assert keeper.bridge.pid is None                              # no second bridge to fight it for the phone
+    held.close()
+    assert not checks.bridge_running(keeper.s)
+    keeper.keep_bridge(time.time())
+    assert keeper.bridge.pid is not None and keeper.bridge.argv[-2:] == ["tools/phone_bridge.py", "run"]
+    keeper.bridge.stop(signal.SIGKILL, 0.2)
+
+
+def test_the_bridge_says_whether_the_phone_trusts_us(tmp_path):
+    with_bridge(tmp_path)
+    m = Machine(**{"idevice_id": (0, "00008130-001A2B3C4D5E6F78")})
+    write_phone(tmp_path, state="untrusted", ok=False, message="Unlock the phone and tap Trust.")
+    trust = by_id(checks.phone(setup(tmp_path, m)))["phone_trust"]
+    assert trust["level"] == RED and trust["message"] == "Unlock the phone and tap Trust."
+    write_phone(tmp_path, state="app_not_streaming", ok=False, message="Open PathOn on the phone and tap Start.")
+    got = by_id(checks.phone(setup(tmp_path, m)))
+    assert got["phone_trust"]["level"] == GREEN and got["phone_stream"]["level"] == RED
+    assert not any(a.startswith("idevicepair") for a in m.asked)

@@ -165,7 +165,8 @@ class Heartbeat:
         elif age is not None and age > NO_CAMERA_S:
             state, message = "no_camera", f"No camera frame for {age:.0f} s."
         else:
-            state, message = "running", f"Looking for {what}: {self.guidance or 'starting'}, {self.fps:.0f} frames a second."
+            doing = str(self.guidance or "starting").replace("_", " ")
+            state, message = "running", f"Looking for {what}: {doing}, {self.fps:.0f} frames a second."
         return {"t": round(time.time(), 3), "state": state, "ok": state in ("listening", "running"), "message": message,
                 "pid": os.getpid(), "started": round(self.started, 3), "doing": step, "doing_s": round(now - since, 2),
                 "warm": self.warm, "target": self.target, "guidance": self.guidance, "frames": self.frames,
@@ -385,7 +386,7 @@ def run(args, mods, beat: Heartbeat | None = None):
         if not args.no_open:
             webbrowser.open(url)
 
-    get_frame, waits = patient(mods.get_frame)
+    next_frame, waits = patient(mods.get_frame)
     pop_phrases = mods.pop_phrases
     run = {"status": "idle", "started": None, "elapsed_s": None, "target": None}
     last = None              # (frame, scene, info) for redraws while no frames arrive
@@ -468,10 +469,17 @@ def run(args, mods, beat: Heartbeat | None = None):
         while True:
             t0 = time.perf_counter()
             beat.now("stream")
-            frame = attempt("stream", get_frame)
+            frame = attempt("stream", mods.get_frame)
+            if frame is None and waits:
+                # Nothing new yet: wait for the next frame inside the stream instead of asking
+                # again and again. The wait is not the stream's own work, so it is left out of
+                # its time: that starts when the frame arrived.
+                frame = attempt("stream", next_frame)
+                if frame is not None and getattr(frame, "t_recv", None) is not None:
+                    t0 = time.perf_counter() - (time.monotonic() - frame.t_recv)
             if frame is None:
-                # A source that cannot wait for the next frame (the fakes, a camera that is not
-                # open yet) came back at once: sleep here, so a missing frame never spins the loop.
+                # A source that cannot wait (the fakes, a camera that is not open yet) came back
+                # at once: sleep here, so a missing frame never spins the loop.
                 spent = time.perf_counter() - t0
                 time.sleep(max(0.002, 0.02 - spent) if waits else 0.002)
                 if not handle_key(redraw()) or not handle_web_keys():

@@ -21,6 +21,7 @@ phone bridge writes (out/status/phone.json).
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -153,6 +154,11 @@ def phone(s: Setup, bridge_note: str = "") -> list[dict]:
     if streaming:
         # Frames are arriving, so it trusts us. Not asking the phone saves it a question a second.
         trust = line("phone_trust", "Phone trusts this computer", GREEN, "Trusted: frames are arriving.", required=bool(ids))
+    elif fresh and st.get("state") == "untrusted":
+        trust = line("phone_trust", "Phone trusts this computer", RED, str(st.get("message") or "Unlock the phone and tap Trust."),
+                     fix=("pair_phone", "Pair"))
+    elif fresh and st.get("state") in ("app_not_streaming", "connecting", "stalled"):
+        trust = line("phone_trust", "Phone trusts this computer", GREEN, "Trusted and paired.")     # the bridge has asked it
     elif not ids:
         trust = line("phone_trust", "Phone trusts this computer", RED, "Waiting for the phone on the cable.", blocked=True)
     else:
@@ -193,6 +199,21 @@ def phone(s: Setup, bridge_note: str = "") -> list[dict]:
         stream = line(title=title, id="phone_stream", level=AMBER if slow else GREEN,
                       message=("Streaming, but slowly: " if slow else "Streaming: ") + (facts or str(st.get("message", "ok"))) + ".")
     return [usb, trust, stream, cable(s)]
+
+
+def bridge_running(s: Setup) -> bool:
+    """True while a phone bridge holds its lock, whoever started it (as stream.bridge_running does)."""
+    try:
+        fd = os.open(s.root / "out" / "phone_bridge.lock", os.O_RDWR)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return False                 # nobody had it (closing the file gives it back)
+    except OSError:
+        return True
+    finally:
+        os.close(fd)
 
 
 def cable(s: Setup) -> dict:
@@ -388,7 +409,7 @@ def server(s: Setup, id: str, name: str, url: str, does: str) -> dict:
     state, why = health(url)
     port = port_of(url)
     if state == "up":
-        return line(id, name, GREEN, f"{name} is answering on port {port}.")
+        return line(id, name, GREEN, f"Answering on port {port}.")
     if state == "loading":
         return line(id, name, AMBER, f"{name} is loading its model ({why}). It takes about half a minute.")
     if state == "off":
@@ -432,7 +453,7 @@ def gpu(s: Setup, ours: set[int] | None = None, running: bool = False, busy: lis
             mine.append({port_of(s.nemotron_url): "Nemotron", port_of(s.cosmos_url): "Cosmos"}[int(served.group(1))])
         else:
             gb = f"{float(mem) / 1024:.1f} GB" if mem.replace(".", "").isdigit() else "memory unknown"
-            others.append(f"{_short(args)} ({user}, {gb}, running for {_ago(float(took or 0))})")
+            others.append(f"{_short(args)} ({user}, {gb}, for {_ago(float(took or 0))})")
     try:
         load_now = float(load)
     except ValueError:
@@ -442,8 +463,9 @@ def gpu(s: Setup, ours: set[int] | None = None, running: bool = False, busy: lis
         del busy[:-5]
     facts = f"{name}, {temp} °C, {load_now:.0f}% busy"
     if others:
-        return [line("gpu", title, AMBER, ("Someone else is using the GPU: " + "; ".join(others) + ". It will slow the demo "
-                                           "(a job like this took a run from 26 to 10 frames a second). Ask them to stop it."))]
+        # A teammate's job took a live run from 26 to 10 frames a second.
+        return [line("gpu", title, AMBER, "Someone else is using the GPU: " + "; ".join(others) + ". It will slow the demo: "
+                     "ask them to stop it.")]
     if not running and busy and len(busy) >= 3 and min(busy[-3:]) >= 50:
         return [line("gpu", title, AMBER, f"The GPU is {load_now:.0f}% busy although the demo is not running: someone is "
                      "using Nemotron or Cosmos right now. Wait for it to finish.")]
@@ -451,7 +473,7 @@ def gpu(s: Setup, ours: set[int] | None = None, running: bool = False, busy: lis
     return [line("gpu", title, GREEN, f"Only {using} on it ({facts}).")]
 
 
-def _short(args: str, n: int = 60) -> str:
+def _short(args: str, n: int = 44) -> str:
     """A command line as a person would name it: no folders, not too long."""
     words = [w.rsplit("/", 1)[-1] if w.startswith("/") else w for w in args.split()]
     out = " ".join(words)
@@ -651,14 +673,14 @@ def machine(s: Setup, running: bool = False) -> list[dict]:
     elif free < 20:
         disk = line("disk", "Disk space", AMBER, f"{free:.0f} GB free: enough for today, but clear old recordings soon.")
     else:
-        disk = line("disk", "Disk space", GREEN, f"{free:.0f} GB free.")
+        disk = line("disk", "Disk space", GREEN, f"{free:.0f} GB free.", minor=True)
 
     names = {s.dash_port: "the dashboard", s.voice_port: "the microphone page"}
     if running:
-        return [disk, line("ports", "Ports free", GREEN, f"Ports {s.dash_port} and {s.voice_port} are in use by this run.")]
+        return [disk, line("ports", "Ports free", GREEN, f"{s.dash_port} and {s.voice_port} are in use by this run.", minor=True)]
     taken = [p for p in names if listening(p)]
     if not taken:
-        return [disk, line("ports", "Ports free", GREEN, f"Ports {s.dash_port} (dashboard) and {s.voice_port} (microphone page) are free.")]
+        return [disk, line("ports", "Ports free", GREEN, f"{s.dash_port} (dashboard) and {s.voice_port} (microphone page).", minor=True)]
     pid, args = holder(s, taken[0])
     who = f"{_short(args)} (pid {pid})" if pid else "another program"
     old_run = pid is not None and "main.py" in args

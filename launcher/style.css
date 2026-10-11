@@ -61,6 +61,7 @@ body {
   color: var(--text);
   font: 400 var(--s0)/1.4 var(--font);
   font-variant-numeric: tabular-nums;
+  font-variant-ligatures: none;      /* command lines are quoted here: "--" must stay two hyphens */
   -webkit-font-smoothing: antialiased;
 }
 
@@ -82,7 +83,7 @@ ol { padding: 0; list-style: none; }
   background: var(--ground);
   border-bottom: 1px solid var(--rule);
 }
-.bar-state { min-width: 8ch; font: 700 var(--s6)/1 var(--display); }
+.bar-state { min-width: 8ch; font: 700 var(--s4)/1 var(--display); }
 .bar-state.is-green { color: var(--grab); }
 .bar-state.is-amber { color: var(--warn); }
 .bar-state.is-red { color: var(--alert-text); }
@@ -106,7 +107,7 @@ ol { padding: 0; list-style: none; }
 .btn:disabled { color: var(--faint); cursor: not-allowed; }
 .btn:disabled:hover { border-color: var(--rule); }
 .btn-go {
-  padding: var(--sp4) var(--sp7);
+  padding: var(--sp3) var(--sp7);
   background: var(--grab);
   border-color: var(--grab);
   color: var(--on-grab);
@@ -118,7 +119,7 @@ ol { padding: 0; list-style: none; }
 
 /* the page ------------------------------------------------------------------------- */
 
-.page { display: grid; gap: var(--sp5); padding: var(--sp5); }
+.page { display: grid; gap: var(--sp4); padding: var(--sp4) var(--sp5); }
 
 .banner {
   padding: var(--sp3) var(--sp4);
@@ -143,10 +144,10 @@ ol { padding: 0; list-style: none; }
 /* one requirement: a mark you can read from across the table, its name, and what to do */
 .line {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--sp1) var(--sp3);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 2px var(--sp3);
   align-items: start;
-  padding: var(--sp3) var(--sp4);
+  padding: var(--sp2) var(--sp4) var(--sp3);
   border-radius: var(--radius);
   background: var(--plate);
   border-left: 6px solid var(--rule);
@@ -163,10 +164,12 @@ ol { padding: 0; list-style: none; }
 }
 .mark svg { width: 70%; height: 70%; fill: none; stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
 .line-title { font: 700 var(--s2)/1.2 var(--display); }
-.line-msg { grid-column: 2; font-size: var(--s1); line-height: 1.35; color: var(--text); overflow-wrap: anywhere; }
-.line-note { grid-column: 2; font-size: var(--s0); color: var(--leg); }
-.line-fix { grid-column: 2; justify-self: start; margin-top: var(--sp2); }
-.line-detail { grid-column: 2; font-size: var(--s-1); color: var(--muted); }
+.line-title { align-self: center; }
+.line-msg { grid-column: 2 / -1; font-size: var(--s1); line-height: 1.3; color: var(--text); overflow-wrap: anywhere; }
+.line-note { grid-column: 2 / -1; font-size: var(--s0); color: var(--leg); }
+/* the button sits beside the title, so a line with something to press is no taller */
+.line-fix { grid-column: 3; grid-row: 1; padding: var(--sp2) var(--sp4); font-size: var(--s0); }
+.line-detail { grid-column: 2 / -1; font-size: var(--s-1); color: var(--muted); }
 .line-detail summary { cursor: pointer; }
 .line-detail li { padding: 1px 0; overflow-wrap: anywhere; }
 .line-detail li.is-bad { color: var(--alert-text); }
@@ -184,12 +187,12 @@ ol { padding: 0; list-style: none; }
 .line.is-blocked .mark { background: transparent; border: 2px solid var(--rule); color: var(--faint); }
 .line.is-blocked .line-title, .line.is-blocked .line-msg { color: var(--faint); }
 
-/* advice that is fine: one small row */
-.line.is-minor.is-green { padding: var(--sp2) var(--sp4); align-items: center; }
-.line.is-minor.is-green .mark { width: 1.1rem; height: 1.1rem; margin-top: 0; }
-.line.is-minor.is-green .line-title { font: 600 var(--s0)/1.2 var(--font); }
-.line.is-minor.is-green .line-msg { font-size: var(--s0); }
-.line.is-minor.is-green .line-fix { display: none; }
+/* a line that is fine and never interesting while it is: one small row, name then fact */
+.line.is-minor:is(.is-green, .is-none) { grid-template-columns: auto auto minmax(0, 1fr); padding: var(--sp2) var(--sp4); align-items: baseline; }
+.line.is-minor:is(.is-green, .is-none) .mark { width: 1.1rem; height: 1.1rem; margin-top: 0; align-self: center; }
+.line.is-minor:is(.is-green, .is-none) .line-title { font: 600 var(--s0)/1.3 var(--font); }
+.line.is-minor:is(.is-green, .is-none) .line-msg { grid-column: 3; grid-row: 1; font-size: var(--s0); color: var(--muted); }
+.line.is-minor:is(.is-green, .is-none) .line-fix { display: none; }
 
 /* running ------------------------------------------------------------------------------ */
 
