@@ -22,12 +22,12 @@ let skew = 0;            // the keeper's clock minus this browser's, so "running
 let failures = 0;
 const open = new Set();  // lists of files the person has unfolded
 
-async function act(action) {
+async function act(action, more) {
   try {
     const r = await fetch("api/do", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Proprio": "1" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, ...(more || {}) }),
     });
     const got = await r.json();
     if (!got.ok) banner(got.message, false);
@@ -36,6 +36,57 @@ async function act(action) {
   }
   poll();
 }
+
+// The options card: guidance sound, hand tracking, when to say Grab. One click switches the
+// running pipeline and is what it starts with from then on. Redrawn only when something changed,
+// so a button is never replaced under the pointer.
+let choicesShown = "";
+function drawChoices(s) {
+  const families = s.options || [];
+  $("choices").hidden = families.length === 0;
+  if (!families.length) return;
+  const running = s.mode !== "checklist";
+  const key = JSON.stringify([families, running, s.can_control]);
+  if (key === choicesShown) return;
+  choicesShown = key;
+  $("choices-k").textContent = running
+    ? "Click one to switch now. The wearer hears its name. By voice: \"option 3\", \"hand option 5\", \"grab option 2\"."
+    : "Click one to start with it. It can be changed while it runs, here or by voice.";
+  $("choices-reset").hidden = !families.some((f) => f.changed) || !s.can_control;
+  const rows = $("choices-rows");
+  rows.textContent = "";
+  for (const f of families) {
+    const row = document.createElement("div");
+    row.className = "choice";
+    const head = document.createElement("h3");
+    head.textContent = f.heading;
+    const list = document.createElement("div");
+    list.className = "choice-list";
+    for (const o of f.options) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "choice-b";
+      b.title = o.about || o.title;
+      b.disabled = !s.can_control;
+      b.setAttribute("aria-pressed", String(o.n === f.current));
+      const n = document.createElement("span");
+      n.className = "choice-n";
+      n.textContent = o.n;
+      const t = document.createElement("span");
+      t.textContent = o.title + (o.n === f.default ? " (usual)" : "");
+      b.append(n, t);
+      b.addEventListener("click", () => act("option", { family: f.family, n: o.n }));
+      list.append(b);
+    }
+    const now = f.options.find((o) => o.n === f.current);
+    const about = document.createElement("p");
+    about.className = "choice-about";
+    about.textContent = now ? now.about : "";
+    row.append(head, list, about);
+    rows.append(row);
+  }
+}
+$("choices-reset").addEventListener("click", () => act("default_options"));
 
 let bannerUntil = 0;
 function banner(text, info) {
@@ -121,6 +172,7 @@ function draw() {
     if (want.join() !== have.join()) want.forEach((id) => list.appendChild(list.querySelector(`:scope > [data-id="${id}"]`)));
   });
 
+  drawChoices(s);
   const waiting = lines.filter((l) => l.required && l.level !== "green");
   const reds = waiting.filter((l) => l.level === "red" && !l.blocked);
   const head = $("state");

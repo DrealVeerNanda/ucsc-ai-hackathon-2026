@@ -866,7 +866,8 @@ def test_the_page_reports_its_own_failures(quiet, tmp_path, capsys):
 
 def test_listen_for_target_never_raises_and_never_spins(quiet):
     naps = []
-    quiet.setattr(voice.time, "sleep", lambda s: naps.append(s))
+    me = threading.current_thread()         # other tests' leftover threads sleep too: count only this one's naps
+    quiet.setattr(voice.time, "sleep", lambda s: naps.append(s) if threading.current_thread() is me else None)
 
     class Broken:
         def listen(self):

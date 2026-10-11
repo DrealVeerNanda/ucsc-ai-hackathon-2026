@@ -73,6 +73,25 @@ SETTLED_S = 60.0        # a run this long was a good run
 STOP_WAIT_S = 20.0      # after Ctrl-C the pipeline closes its recording; give it time before killing it
 
 
+# The three things the wearer can switch between, and the setting that picks each one when the
+# pipeline starts (guidance.py and perception.py read them).
+OPTION_ENV = {"guidance": "GUIDANCE_MODE", "hand": "HAND_OPTION", "grab": "GUIDANCE_GRAB"}
+# What there is to choose from, asked of the code itself in a short run of its own, so the keeper
+# never loads the detector or the hand models. Each family comes back with the number it starts on.
+LIST_OPTIONS = r"""
+import json, os, dashboard, guidance
+out = []
+for f in dashboard.option_families():
+    keys = [o["key"] for o in f["options"]]
+    want = os.environ.get({"guidance": "GUIDANCE_MODE", "hand": "HAND_OPTION", "grab": "GUIDANCE_GRAB"}[f["family"]], "")
+    if not want:
+        want = {"guidance": "tones", "hand": keys[0], "grab": guidance.GuidanceConfig.grab_option}[f["family"]]
+    f["default"] = int(want) if want.isdigit() else (keys.index(want) + 1 if want in keys else 1)
+    out.append(f)
+print("OPTIONS " + json.dumps(out))
+"""
+
+
 def load_env(root: Path = ROOT, base: dict | None = None) -> dict:
     """The environment for the keeper and everything it starts."""
     env = dict(os.environ if base is None else base)
@@ -258,6 +277,9 @@ class Supervisor:
         self.mode_lost = 0.0               # since when the AirPods have been missing a mode
         self.next_try: dict = {}           # what -> time.time() before which it is not tried again
         self.tries: dict = {}
+        self.families: list = []           # the options there are, each with the number it starts on
+        self.chosen: dict = self.read_choice()    # family -> number picked here or by voice: what a (re)start uses
+        self.options_at = 0.0
         self.stopped = threading.Event()
         self.server = None
 
@@ -427,7 +449,103 @@ class Supervisor:
                 "can_control": can_control, "replay": self.s.source if self.s.replay else None,
                 "settings": {k: self.env.get(k) for k in ("GUIDANCE_MODE", "GUIDANCE_AUDIO", "VOICE_MODE", "STREAM_SOURCE") if self.env.get(k)},
                 "offline": bool(checks.offline_env(self.s, self.proof)),
+                "options": self.options_state(),
                 "log": tail(self.pipeline.log, 14) if self.mode != "checklist" else []}
+
+    # --- the options: guidance sound, hand tracking, when to say Grab -------------------
+
+    def read_choice(self) -> dict:
+        got = checks.read_status(self.status_dir / "options.json") or {}
+        return {k: int(v) for k, v in got.items() if k in OPTION_ENV and str(v).isdigit()}
+
+    def list_options(self):
+        """Ask the code what options exist (a short Python run of its own: a second or two)."""
+        try:                                  # with the keeper's own settings: they say which option it starts on
+            got = subprocess.run([sys.executable, "-c", LIST_OPTIONS], cwd=self.root, env=dict(self.env, TRACE="0"),
+                                 capture_output=True, text=True, timeout=40.0)
+            out = got.stdout + got.stderr
+        except (OSError, subprocess.SubprocessError) as e:
+            out = str(e)
+        line = next((ln for ln in out.splitlines() if ln.startswith("OPTIONS ")), None)
+        if line is None:
+            return self.event(f"Could not list the options ({out.strip().splitlines()[-1][:160] if out.strip() else 'no answer'}).")
+        with self.lock:
+            self.families = json.loads(line[8:])
+
+    def ask_pipeline(self, path: str, body: dict | None = None, timeout_s: float = 1.5):
+        """The running pipeline's own answer on its dashboard port, or None."""
+        import urllib.request
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{self.s.dash_port}{path}",
+                                         json.dumps(body).encode() if body is not None else None, {"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout_s) as r:
+                return json.load(r)
+        except Exception:
+            return None
+
+    def follow_options(self, now: float):
+        """While it runs, keep up with what is in use: an option changed by voice must survive a
+        restart of the pipeline just as one clicked here does."""
+        if not self.families and "list_options" not in self.busy and now - self.options_at > 15.0:
+            self.options_at = now
+            self.do("list_options")
+        if self.mode != "running" or not self.pipeline.alive() or now - self.options_at < 2.0:
+            return
+        self.options_at = now
+        got = self.ask_pipeline("/options", timeout_s=0.5)
+        if not got:
+            return
+        changed = False
+        with self.lock:
+            for f in got.get("families", []):
+                n = f.get("current")
+                if f.get("family") in OPTION_ENV and n and self.chosen.get(f["family"], self.default_of(f["family"])) != n:
+                    self.chosen[f["family"]], changed = int(n), True
+        if changed:
+            self.save_choice()
+
+    def default_of(self, family: str) -> int | None:
+        return next((f.get("default") for f in self.families if f["family"] == family), None)
+
+    def save_choice(self):
+        try:
+            (self.status_dir / "options.json").write_text(json.dumps(self.chosen))
+        except OSError as e:
+            self.event(f"Could not save the chosen options ({e}).")
+
+    def options_state(self) -> list[dict]:
+        return [dict(f, current=self.chosen.get(f["family"], f.get("default")), changed=f["family"] in self.chosen
+                     and self.chosen[f["family"]] != f.get("default")) for f in self.families]
+
+    def choose(self, family: str, n: int) -> tuple[bool, str]:
+        """One option picked on the page: switch the running pipeline to it now, and start with it
+        from here on. Before Start it is simply what the pipeline will start with."""
+        fam = next((f for f in self.families if f["family"] == family), None)
+        if fam is None or not any(o["n"] == n for o in fam["options"]):
+            return False, "There is no such option."
+        title = next(o["title"] for o in fam["options"] if o["n"] == n)
+        if self.mode == "running" and self.pipeline.alive():
+            got = self.ask_pipeline("/option", {"family": family, "n": n}, timeout_s=4.0)
+            if not got or not got.get("ok"):
+                why = (got or {}).get("error", "the pipeline did not answer")
+                if why != "not running yet":         # before its first request it has nothing to switch: the start setting below is enough
+                    return False, f"Could not switch: {why}."
+        with self.lock:
+            self.chosen[family] = n
+            if n == fam.get("default"):
+                self.chosen.pop(family, None)
+        self.save_choice()
+        self.event(f"{fam['heading']}: option {n}, {title}.")
+        return True, f"{fam['heading']}: {title}."
+
+    def default_options(self) -> tuple[bool, str]:
+        for f in list(self.families):
+            if self.chosen.get(f["family"], f.get("default")) != f.get("default"):
+                self.choose(f["family"], f["default"])
+        with self.lock:
+            self.chosen = {}
+        self.save_choice()
+        return True, "Back to the options it starts with."
 
     # --- starting and stopping -----------------------------------------------------------
 
@@ -436,6 +554,8 @@ class Supervisor:
         env.update(OPEN="0", PORT=str(self.s.dash_port), PYTHONUNBUFFERED="1")
         env["PROPRIO_KEEPER"] = "1"      # a keeper is watching: it reconnects the earbuds, so voice.py must not
                                          # also do it (two repairs at once fight each other)
+        for family, n in self.chosen.items():
+            env[OPTION_ENV[family]] = str(n)      # what was picked on the page or by voice, also after a restart
         if self.s.bridge.exists() and not self.s.replay:
             # The bridge holds the phone. With "auto", a pipeline that came up before the bridge had
             # taken its lock would open the phone itself, and the app serves one program only.
@@ -539,6 +659,7 @@ class Supervisor:
                 show_window(self.env, "Proprio, live", f"http://localhost:{self.s.dash_port}/#{self.env.get('VIEW', 'camera')}")
         self.keep_bridge(now)
         self.tell_bridge_to_record()
+        self.follow_options(now)
         self.write_status(now)
 
     def due(self, what: str, now: float, every_s: float, later_s: float | None = None, after: int = 6) -> bool:
@@ -620,13 +741,15 @@ class Supervisor:
 
     def do(self, action: str) -> tuple[bool, str]:
         quick = {"start": self.start, "start_anyway": lambda: self.start(anyway=True), "stop": self.stop,
-                 "toggle_record": self.toggle_record, "show_dashboard": self.show_dashboard, "quit": self.quit}
+                 "toggle_record": self.toggle_record, "show_dashboard": self.show_dashboard, "quit": self.quit,
+                 "default_options": self.default_options}
         slow = {"connect_airpods": self.connect_airpods, "reconnect_airpods": lambda: self.connect_airpods(again=True),
                 "use_airpods_output": self.use_airpods_output, "pair_phone": self.pair_phone,
                 "start_nemotron": lambda: self.start_server("nemotron"), "start_cosmos": lambda: self.start_server("cosmos"),
                 "restart_bridge": self.restart_bridge, "stop_old_run": self.stop_old_run, "recheck_models": self.prove,
                 "quiet_bluetooth": self.quiet_bluetooth, "quiet_desktop": self.quiet_desktop,
-                "sound_check": lambda: self.ear_check("sound_check"), "mic_check": lambda: self.ear_check("mic_check")}
+                "sound_check": lambda: self.ear_check("sound_check"), "mic_check": lambda: self.ear_check("mic_check"),
+                "list_options": self.list_options}
         if action in quick:
             return quick[action]()
         if action not in slow:
@@ -857,10 +980,17 @@ def make_handler(sup: Supervisor):
             if not self.local() or self.headers.get("X-Proprio") != "1":
                 return self.json({"ok": False, "message": "The buttons work on the GX10's own screen."}, 403)
             try:
-                action = str(json.loads(body or b"{}").get("action", ""))
-            except ValueError:
-                action = ""
-            ok, message = sup.do(action)
+                asked = json.loads(body or b"{}")
+                action = str(asked.get("action", ""))
+            except (ValueError, AttributeError):
+                asked, action = {}, ""
+            if action == "option":
+                try:
+                    ok, message = sup.choose(str(asked.get("family")), int(asked.get("n")))
+                except (TypeError, ValueError):
+                    ok, message = False, "There is no such option."
+            else:
+                ok, message = sup.do(action)
             self.json({"ok": ok, "message": message})
 
     return Handler

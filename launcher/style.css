@@ -228,3 +228,27 @@ ol { padding: 0; list-style: none; }
 @media (prefers-reduced-motion: no-preference) {
   .line, .mark { transition: background-color 200ms var(--ease), border-color 200ms var(--ease); }
 }
+
+/* options card -------------------------------------------------------------
+   Guidance sound, hand tracking and the grab rule, switched with one click: before Start it
+   sets what the run starts with, while running it switches at once. */
+.choices { display: grid; gap: var(--sp3); padding: var(--sp4); background: var(--plate); border-radius: var(--radius); border-left: 6px solid var(--leg); }
+.choices-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp2) var(--sp5); }
+.choices-head h2 { margin: 0; font: 700 var(--s2)/1.2 var(--display); }
+.choices-k { margin: 0; color: var(--muted); font-size: var(--s0); flex: 1 1 24ch; }
+.choices-rows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp4) var(--sp5); align-items: start; }
+.choice { display: grid; gap: var(--sp2); min-width: 0; }
+.choice h3 { margin: 0; font: 700 var(--s-1)/1.2 var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.choice-list { display: flex; flex-wrap: wrap; gap: var(--sp2); }
+.choice-b {
+  display: inline-flex; align-items: baseline; gap: var(--sp2); padding: var(--sp2) var(--sp3);
+  border: 1px solid var(--rule); border-radius: var(--radius); background: var(--ground); color: var(--text);
+  font: 600 var(--s0)/1.2 var(--font); cursor: pointer; text-align: left;
+}
+.choice-b:hover { border-color: var(--muted); }
+.choice-b:focus-visible { outline: 2px solid var(--leg); outline-offset: 2px; }
+.choice-b[aria-pressed="true"] { background: var(--leg); border-color: var(--leg); color: var(--on-leg); }
+.choice-b:disabled { cursor: not-allowed; opacity: 0.7; }
+.choice-n { font: 700 var(--s0)/1 var(--display); opacity: 0.75; }
+.choice-about { margin: 0; color: var(--muted); font-size: var(--s-1); line-height: 1.35; }
+@media (max-width: 1100px) { .choices-rows { grid-template-columns: minmax(0, 1fr); } }
