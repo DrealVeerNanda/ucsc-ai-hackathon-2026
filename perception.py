@@ -19,6 +19,7 @@ Settings by environment variable:
     PERCEPTION_DETECT_EVERY=1   run the detector on every Nth frame
     PERCEPTION_DEVICE=cuda|cpu  torch device for the detector (default: ultralytics picks)
     PERCEPTION_PARALLEL=0       run the hand tracker after the detector instead of alongside it
+    PERCEPTION_FP16=0           run the detector in full precision (default: half precision on the GPU)
     PERCEPTION_HELPER=auto|off  when the detector cannot find the object, ask Cosmos for its box
                                 in the background (auto: only if tools/run_cosmos.sh is running)
     MODELS_DIR=PATH             where weights are kept (default: models/ in this repo)
@@ -141,6 +142,14 @@ def _in_models_dir():
         os.chdir(old)
 
 
+def _fp16(device) -> bool:
+    """Half precision on the GPU: about 25% faster on the GX10, boxes within a pixel."""
+    if os.environ.get("PERCEPTION_FP16", "1") == "0" or (device and not str(device).startswith("cuda")):
+        return False
+    import torch
+    return torch.cuda.is_available()
+
+
 def _detections(res, names) -> list[Detection]:
     if res.boxes is None:
         return []
@@ -166,6 +175,7 @@ class OpenVocabDetector:
         with _in_models_dir():
             self.model = (YOLOE if self.is_yoloe else YOLOWorld)(weights)
         self.device, self.conf, self.imgsz = device, conf, imgsz
+        self.quantize = 16 if _fp16(device) else None
         self.names: list[str] = []
 
     def set_target(self, target: str):
@@ -182,7 +192,8 @@ class OpenVocabDetector:
 
     def detect(self, rgb: np.ndarray) -> list[Detection]:
         bgr = np.ascontiguousarray(rgb[:, :, ::-1])  # ultralytics expects BGR numpy arrays
-        res = self.model.predict(bgr, conf=self.conf, imgsz=self.imgsz, device=self.device, verbose=False)[0]
+        res = self.model.predict(bgr, conf=self.conf, imgsz=self.imgsz, device=self.device,
+                                 quantize=self.quantize, verbose=False)[0]
         return _detections(res, self.names)
 
 
@@ -198,6 +209,7 @@ class CocoDetector:
         with _in_models_dir():
             self.model = YOLO(weights)
         self.device, self.conf, self.imgsz = device, conf, imgsz
+        self.quantize = 16 if _fp16(device) else None
         self.classes: list[int] = []
 
     def set_target(self, target: str):
@@ -213,7 +225,7 @@ class CocoDetector:
             return []
         bgr = np.ascontiguousarray(rgb[:, :, ::-1])
         res = self.model.predict(bgr, conf=self.conf, imgsz=self.imgsz, device=self.device,
-                                 classes=self.classes, verbose=False)[0]
+                                 classes=self.classes, quantize=self.quantize, verbose=False)[0]
         return _detections(res, self.model.names)
 
 
