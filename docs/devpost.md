@@ -8,7 +8,8 @@ You wear an iPhone on your chest and say "find my mug." Proprio finds the mug an
 
 ## How we built it
 - **See:** the iPhone streams color and lidar depth to the GX10.
-- **Find:** YOLO-World finds the item by name; MediaPipe tracks the fingertip. Whisper hears the request.
+- **Ask:** Whisper hears the request, and Nemotron 3 Nano (30B) turns it into an item name, so "I'm thirsty" becomes "water bottle".
+- **Find:** YOLO-World finds the item by name; MediaPipe tracks the fingertip.
 - **Measure:** lidar depth turns both into 3D points.
 - **Remember:** the phone's own motion tracking (ARKit pose) keeps the item's place in room coordinates, so it holds steady when the hand covers it or the wearer leans or turns.
 - **Speak:** the axis with the biggest gap becomes one word, decided from the last 0.8 s of frames so one noisy frame can't change it.
