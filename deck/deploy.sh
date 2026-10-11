@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publishes deck/ (and only deck/) to the gh-pages branch, which GitHub Pages serves at
-# https://drealveernanda.github.io/ucsc-ai-hackathon-2026/. The rest of the repo stays private.
+# https://drealveernanda.github.io/ucsc-ai-hackathon-2026/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 tmp=$(mktemp -d)
@@ -9,7 +9,7 @@ cp -R deck/. "$tmp"
 rm -f "$tmp/deploy.sh"
 touch "$tmp/.nojekyll"
 # The README as a page at readme/, rendered by GitHub's own Markdown renderer. Email addresses are
-# left out: the page is public, the repo is not.
+# left out of the page.
 mkdir -p "$tmp/readme"
 body=$(sed -E 's/ \([^()]*@[^()]*\.[a-z]+\)//' README.md | gh api markdown -F mode=gfm -F context=DrealVeerNanda/ucsc-ai-hackathon-2026 -F text=@-)
 cat > "$tmp/readme/index.html" <<HTML
