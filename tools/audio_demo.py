@@ -2,6 +2,7 @@
 
   python tools/audio_demo.py                # writes out/audio_demo.wav (about 20 s): play it with headphones
   python tools/audio_demo.py --words        # the spoken-words fallback instead of tones
+  python tools/audio_demo.py --hybrid       # direction once, progress beeps, chime, next step
   python tools/audio_demo.py --play         # also play it now through the default output
 
 It runs the real guidance.py on a made-up reach: search, find, show the hand, move right,
@@ -39,14 +40,16 @@ def hand_at(t: float):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--words", action="store_true")
+    modes = ap.add_mutually_exclusive_group()
+    modes.add_argument("--words", action="store_true")
+    modes.add_argument("--hybrid", action="store_true")
     ap.add_argument("--play", action="store_true")
     ap.add_argument("--out", default=str(ROOT / "out" / "audio_demo.wav"))
     a = ap.parse_args()
 
-    tone = ToneConfig()
+    tone = ToneConfig(volume=0.16) if a.hybrid else ToneConfig()
     mixer = Mixer(tone, stale_s=1e9)                             # rendered offline, faster than real time
-    g = Guidance(mixer, GuidanceConfig(words=a.words), tone)
+    g = Guidance(mixer, GuidanceConfig(words=a.words, hybrid=a.hybrid), tone)
     blocks, states = [], []
     g.reset("mug", now=0.0)
     for i in range(int(20 * FPS)):

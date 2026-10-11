@@ -177,9 +177,29 @@ On the GX10 it runs at about 35 ms per frame. Not yet checked: real lidar depth 
 python tools/audio_demo.py --play            # hear a made-up reach. Without --play it writes out/audio_demo.wav
 python main.py --guidance real               # tune by ear: move the fake hand with the arrow keys
 GUIDANCE_WORDS=1 python main.py --guidance real   # fallback: spoken left, right, up, down, forward
+GUIDANCE_MODE=hybrid python main.py --guidance real # direction once, progress beeps, chime, next step
+GUIDANCE_MODE=tones python main.py --guidance real  # original spatial beeps, no spoken directions
 ```
 
 - Distances and timings to tune are in `GuidanceConfig` in `guidance.py`; the sound itself is `ToneConfig` in `audio_out.py`.
+- Spoken mode follows one axis until aligned, pauses at least 1 second before a new direction,
+  and repeats an unchanged direction only every 2.5 seconds. It stays silent near the target until "grab".
+  Tune `word_gap_s` and `word_repeat_s` in `GuidanceConfig` after testing with the real hand tracker.
+- Slower, lower Daniel clips in `audio/calm/` override the original clips when present. Generate them
+  on a Mac with `python tools/make_calm_audio.py`; copy the WAVs to the GX10 for offline playback.
+  Use `--voice Samantha --rate 140` to regenerate the earlier voice instead.
+- Hybrid mode guides one hand movement at a time: sideways, then up/down, then forward/back.
+  It says the direction once, then uses fixed-pitch beeps that speed up as that axis gets aligned.
+  Beeps stop and a chime plays once after staying within 2.5 cm on that axis for 0.2 seconds.
+  After a pause it announces the next direction, skipping axes already aligned.
+  If the hand overshoots, it announces the corrective direction once. Completed axes are checked
+  again before choosing the next movement. Tune `step_m`, `step_hold_s`, and `step_pause_s`.
+  `GUIDANCE_MODE` overrides the older `GUIDANCE_WORDS` flag.
+  Preview without a camera: `python tools/audio_demo.py --hybrid --play`.
+- At the target, after 0.3 seconds near it, a soft two-note chime plays once followed by "grab".
+  Hybrid and words modes are quiet during that short confirmation wait; tones mode uses a steady tone.
+  This means the fingertip is near the target; it doesn't detect an actual pickup.
+  The next request waits for the spoken audio to finish.
 - The clips in `audio/` are placeholders made with the macOS voice. Replace them with ElevenLabs clips of the same file names.
 - If the loop stalls for half a second the tone goes quiet, so an old position never keeps steering.
 - `voice.py` asks for a typed target unless a microphone is present. Then it is push-to-talk: Enter, speak, Enter. `VOICE_MODE=type` forces typing.

@@ -17,6 +17,7 @@ Settings by environment variable:
     GUIDANCE_AUDIO=auto|on|off   sound card if there is one (default), required, or print only
     GUIDANCE_DEVICE=NAME         sounddevice output device (earbuds)
     GUIDANCE_WORDS=1             fallback: spoken left/right/up/down/forward instead of tones
+    GUIDANCE_MODE=tones|words|hybrid  explicit mode, overrides GUIDANCE_WORDS
 """
 from __future__ import annotations
 
@@ -48,7 +49,12 @@ class GuidanceConfig:
     remind_s: float = 6.0        # repeat "show me your hand" this often while waiting
     cant_see_s: float = 8.0      # searching for this long: say "I can't see that"
     words: bool = False          # fallback: spoken single words instead of tones
-    word_gap_s: float = 0.5      # at most two words a second
+    hybrid: bool = False         # say one direction, beep along that axis, chime, next axis
+    step_m: float = 0.025        # axis is aligned within 2.5 cm
+    step_hold_s: float = 0.2     # alignment must persist before the step chime
+    step_pause_s: float = 0.6    # leave time for the step chime before the next instruction
+    word_gap_s: float = 1.0      # minimum pause before a different direction
+    word_repeat_s: float = 2.5   # gentle reminder if the direction stays the same
 
 
 def _dead(v: float, dead: float, full: float) -> float:
@@ -98,6 +104,62 @@ class Guidance:
         self._near_t = None
         self._grab_t = None
         self._word_t = -1e9
+        self._last_word = None
+        self._word_axis = None
+        self._step_axis = None
+        self._step_word = None
+        self._step_near_t = None
+        self._step_pause_until = 0.0
+
+    def _guide_step(self, err, now: float):
+        cfg = self.cfg
+        self._tone(self._silent)
+        if now < self._step_pause_until or self.sink.saying():
+            return
+        if self._step_axis is None:
+            # Sideways, then height, then depth. Skip axes already aligned.
+            self._step_axis = next((a for a in (0, 1, 2) if abs(err[a]) > cfg.step_m), None)
+            if self._step_axis is None:
+                return
+        axis = self._step_axis
+        distance = abs(err[axis])
+        if distance <= cfg.step_m:
+            if self._step_near_t is None:
+                self._step_near_t = now
+            if now - self._step_near_t >= cfg.step_hold_s:
+                self.sink.say("aligned", now=True)
+                self._step_axis = None
+                self._step_word = None
+                self._step_near_t = None
+                self._step_pause_until = now + cfg.step_pause_s
+            return
+        self._step_near_t = None
+        word = (("left", "right"), ("up", "down"), ("back", "forward"))[axis][int(err[axis] > 0)]
+        if word != self._step_word:
+            # Announce once; repeat only if overshoot requires the opposite direction.
+            self._step_word = word
+            self.sink.say(word, now=True)
+            return
+        closeness = 1.0 - np.clip((distance - cfg.step_m) / (cfg.far_m - cfg.step_m), 0, 1)
+        rate = self.tone.rate_far + (self.tone.rate_near - self.tone.rate_far) * closeness
+        pan = float(np.sign(err[0])) * 0.7 if axis == 0 else 0.0
+        # Fixed pitch: beep speed now measures progress on this step alone.
+        self._tone((pan, self.tone.base_hz, float(rate), "beep"))
+
+    def _speak_direction(self, err, now: float):
+        # Finish one axis before switching: similar errors must not alternate commands.
+        axis = self._word_axis
+        if axis is None or abs(err[axis]) <= self.cfg.dead_m:
+            axis = int(np.argmax(np.abs(err)))
+        if abs(err[axis]) <= self.cfg.dead_m:
+            return
+        word = (("left", "right"), ("up", "down"), ("back", "forward"))[axis][int(err[axis] > 0)]
+        gap = self.cfg.word_repeat_s if word == self._last_word else self.cfg.word_gap_s
+        if now - self._word_t >= gap and not self.sink.saying():
+            self._word_axis = axis
+            self._last_word = word
+            self._word_t = now
+            self.sink.say(word)
 
     def _tone(self, params):
         self._last_tone = params
@@ -119,7 +181,7 @@ class Guidance:
             return self.state
         if self.state == GRAB:
             self._tone(self._silent)
-            if now - self._grab_t >= cfg.grab_state_s:
+            if now - self._grab_t >= cfg.grab_state_s and not self.sink.saying():
                 self.state = IDLE
             return self.state
 
@@ -139,6 +201,7 @@ class Guidance:
 
         if scene.hand_xyz is None:
             self._near_t = None
+            self._step_near_t = None
             missing = math.inf if self._last_hand_t is None else now - self._last_hand_t
             if self.state == GUIDING and missing < cfg.hold_s:
                 self._tone(self._last_tone)          # a blink: keep the last sound
@@ -149,6 +212,7 @@ class Guidance:
                     self._remind_t = now
                     self.sink.say("show_me_your_hand")
                 self.state = WAITING_HAND
+                self._step_word = None  # re-announce when the hand returns after a loss
                 self._tone(self._silent)
             return self.state
 
@@ -166,15 +230,15 @@ class Guidance:
                 self._tone(self._silent)
                 self.sink.say("grab", now=True)
                 return self.state
-            self._tone((0.0, self.tone.steady_hz, self.tone.rate_near, "steady"))
+            self._tone(self._silent if cfg.words or cfg.hybrid else
+                       (0.0, self.tone.steady_hz, self.tone.rate_near, "steady"))
         else:
             self._near_t = None
-            if cfg.words:
+            if cfg.hybrid:
+                self._guide_step(err, now)
+            elif cfg.words:
                 self._tone(self._silent)
-                word = word_for(err, cfg)
-                if word and now - self._word_t >= cfg.word_gap_s and not self.sink.saying():
-                    self._word_t = now
-                    self.sink.say(word)
+                self._speak_direction(err, now)
             else:
                 self._tone(tone_for(err, cfg, self.tone))
         return self.state
@@ -189,9 +253,14 @@ _default: Guidance | None = None
 def _get() -> Guidance:
     global _default
     if _default is None:
-        tone = ToneConfig()
+        mode = os.environ.get("GUIDANCE_MODE") or (
+            "words" if os.environ.get("GUIDANCE_WORDS", "") not in ("", "0") else "tones")
+        if mode not in ("tones", "words", "hybrid"):
+            raise ValueError("GUIDANCE_MODE must be tones, words, or hybrid")
+        # Hybrid uses quiet beeps to report progress on one movement at a time.
+        tone = ToneConfig(volume=0.16) if mode == "hybrid" else ToneConfig()
         sink = open_sink(os.environ.get("GUIDANCE_AUDIO", "auto"), os.environ.get("GUIDANCE_DEVICE") or None, tone)
-        cfg = GuidanceConfig(words=os.environ.get("GUIDANCE_WORDS", "") not in ("", "0"))
+        cfg = GuidanceConfig(words=mode == "words", hybrid=mode == "hybrid")
         _default = Guidance(sink, cfg, tone)
     return _default
 

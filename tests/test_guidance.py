@@ -154,12 +154,182 @@ def test_losing_the_object_says_so_and_searches_again():
     assert g.update(scene(), now=1.2) == "guiding" and g.sink.spoken[-1] == "found_it"
 
 
-def test_words_mode_speaks_at_most_twice_a_second_and_plays_no_tone():
+def test_words_mode_leaves_space_between_repeated_directions_and_plays_no_tone():
     g = guide(words=True)
     for i in range(11):                                             # 1 s of frames
         g.update(scene(), now=1.0 + 0.1 * i)
     words = [w for w in g.sink.spoken if w in ("left", "right", "up", "down", "forward", "back")]
-    assert words == ["right", "right", "right"] and g.sink.tone[3] == "silent"
+    assert words == ["right"] and g.sink.tone[3] == "silent"
+    g.update(scene(), now=3.6)
+    assert g.sink.spoken[-1] == "right" and g.sink.spoken.count("right") == 2
+
+
+def test_words_finish_current_axis_before_switching_and_allow_correction():
+    g = guide(words=True)
+    g.update(near(dx=0.15, dz=0.14), now=1.0)
+    assert g.sink.spoken[-1] == "right"
+    g.update(near(dx=0.12, dz=0.16), now=3.6)
+    assert g.sink.spoken[-1] == "right"  # depth becoming larger doesn't switch instructions
+    g.update(near(dx=0.02, dz=0.16), now=4.0)
+    assert g.sink.spoken[-1] == "right"  # leave a pause before the next instruction
+    g.update(near(dx=0.02, dz=0.16), now=4.7)
+    assert g.sink.spoken[-1] == "forward"
+    g.update(near(dx=0.02, dz=-0.08), now=5.8)
+    assert g.sink.spoken[-1] == "back"  # overshoot correction doesn't wait 2.5 seconds
+
+
+def test_words_mode_is_quiet_near_target_and_grab_is_immediate():
+    g = guide(words=True)
+    g.update(near(dz=0.2), now=1.0)
+    g.update(near(dz=0.03), now=1.1)
+    assert g.sink.tone[3] == "silent"
+    assert g.update(near(dz=0.03), now=1.5) == "grab"
+    assert g.sink.spoken[-1] == "grab"
+
+
+def test_grab_waits_for_audio_to_finish_before_next_request(monkeypatch):
+    g = guide(words=True)
+    g.update(near(dz=0.03), now=1.0)
+    g.update(near(dz=0.03), now=1.4)
+    monkeypatch.setattr(g.sink, "saying", lambda: True)
+    assert g.update(near(), now=4.0) == "grab"
+    monkeypatch.setattr(g.sink, "saying", lambda: False)
+    assert g.update(near(), now=4.1) == "idle"
+
+
+def test_grab_plays_once_after_chime_and_not_on_brief_pass():
+    tone = ToneConfig()
+    speech = np.full(4800, 0.3, np.float32)
+    m = Mixer(tone, clips={"looking": speech, "found_it": speech, "grab": speech})
+    g = Guidance(m, GuidanceConfig(words=True), tone)
+    g.reset("mug", now=0.0)
+    g.update(near(dz=0.03), now=1.0)
+    g.update(near(dz=0.20), now=1.1)
+    assert "grab" not in m.spoken
+    g.update(near(dz=0.03), now=2.0)
+    assert g.update(near(dz=0.03), now=2.4) == "grab"
+    expected = np.concatenate((audio_out.success_chime(tone.sr), speech)) * tone.clip_volume
+    rendered = m.render(len(expected))
+    np.testing.assert_allclose(rendered[:, 0], expected, atol=1e-7)
+    np.testing.assert_allclose(rendered[:, 1], expected, atol=1e-7)
+    assert g.update(near(), now=3.0) == "grab"
+    assert g.update(near(), now=4.0) == "idle"
+    assert m.spoken.count("grab") == 1
+
+
+def test_grab_audio_can_be_interrupted_by_new_request():
+    m = _mixer(grab=4800, looking=4800)
+    m.say("grab", now=True)
+    m.render(256)
+    m.say("looking", now=True)
+    assert m.spoken == ["grab", "looking"]
+    assert len(m._clip) == 4800
+
+
+def test_hybrid_announces_once_beeps_faster_and_chimes_each_completed_step():
+    g = guide(hybrid=True)
+    g.update(near(dx=0.30, dy=-0.12, dz=0.25), now=1.0)
+    assert g.sink.spoken[-1] == "right" and g.sink.tone[3] == "silent"
+    g.update(near(dx=0.30, dy=-0.12, dz=0.25), now=1.1)
+    slow = g.sink.tone[2]
+    assert g.sink.tone[0] > 0 and g.sink.tone[3] == "beep"
+    g.update(near(dx=0.06, dy=-0.12, dz=0.25), now=1.2)
+    assert g.sink.tone[2] > slow and g.sink.spoken.count("right") == 1
+    g.update(near(dx=0.02, dy=-0.12, dz=0.25), now=2.0)
+    g.update(near(dx=0.02, dy=-0.12, dz=0.25), now=2.3)
+    assert g.sink.spoken[-1] == "aligned" and g.sink.tone[3] == "silent"
+    g.update(near(dx=0.02, dy=-0.12, dz=0.25), now=2.5)
+    assert g.sink.spoken[-1] == "aligned"  # leave time for the chime
+    g.update(near(dx=0.02, dy=-0.12, dz=0.25), now=3.0)
+    assert g.sink.spoken[-1] == "up"
+    g.update(near(dx=0.02, dy=-0.01, dz=0.25), now=4.0)
+    g.update(near(dx=0.02, dy=-0.01, dz=0.25), now=4.3)
+    assert g.sink.spoken.count("aligned") == 2
+    g.update(near(dx=0.02, dy=-0.01, dz=0.25), now=5.0)
+    assert g.sink.spoken[-1] == "forward"
+    g.update(near(dx=0.02, dy=-0.01, dz=0.25), now=5.1)
+    assert g.sink.tone[0] == 0 and g.sink.tone[3] == "beep"
+    g.update(near(dz=0.03), now=6.0)
+    assert g.update(near(dz=0.03), now=6.4) == "grab"
+    assert g.sink.spoken[-1] == "grab"
+    assert g.sink.spoken.count("forward") == 1
+
+
+def test_hybrid_stops_steering_when_hand_stays_missing():
+    g = guide(hybrid=True)
+    g.update(scene(), now=1.0)
+    g.update(scene(), now=1.1)
+    assert g.sink.tone[3] == "beep"
+    g.update(scene(hand=None), now=1.8)
+    assert g.sink.tone[3] == "silent"
+    assert g.update(scene(hand=None), now=2.2) == "waiting_hand"
+    assert g.sink.spoken.count("right") == 1
+    g.update(scene(), now=2.3)
+    assert g.sink.spoken.count("right") == 2  # explain again after tracking was lost
+
+
+def test_hybrid_does_not_chime_for_jitter_and_corrects_overshoot():
+    g = guide(hybrid=True)
+    g.update(near(dx=0.12, dz=0.25), now=1.0)
+    g.update(near(dx=0.02, dz=0.25), now=1.1)
+    g.update(near(dx=0.04, dz=0.25), now=1.2)
+    assert "aligned" not in g.sink.spoken
+    g.update(near(dx=-0.06, dz=0.25), now=1.3)
+    assert g.sink.spoken[-1] == "left"
+    g.update(near(dx=-0.06, dz=0.25), now=1.4)
+    assert g.sink.tone[0] < 0 and g.sink.spoken.count("left") == 1
+    g.reset("mug", now=2.0)
+    g.update(near(dz=0.25), now=2.1)
+    assert g.sink.spoken[-1] == "forward"  # reset clears the previous axis
+
+
+def test_hybrid_waits_for_instruction_audio_before_beeping(monkeypatch):
+    g = guide(hybrid=True)
+    g.update(near(dx=0.15, dz=0.25), now=1.0)
+    monkeypatch.setattr(g.sink, "saying", lambda: True)
+    g.update(near(dx=0.15, dz=0.25), now=1.2)
+    assert g.sink.tone[3] == "silent" and g.sink.spoken.count("right") == 1
+    monkeypatch.setattr(g.sink, "saying", lambda: False)
+    g.update(near(dx=0.15, dz=0.25), now=1.8)
+    assert g.sink.tone[3] == "beep"
+
+
+@pytest.mark.parametrize("mode, words, hybrid", [
+    ("tones", False, False), ("words", True, False), ("hybrid", False, True),
+])
+def test_explicit_mode_overrides_old_words_flag(monkeypatch, mode, words, hybrid):
+    monkeypatch.setenv("GUIDANCE_MODE", mode)
+    monkeypatch.setenv("GUIDANCE_WORDS", "1")
+    monkeypatch.setenv("GUIDANCE_AUDIO", "off")
+    monkeypatch.setattr(guidance, "_default", None)
+    g = guidance._get()
+    assert (g.cfg.words, g.cfg.hybrid) == (words, hybrid)
+    if hybrid:
+        assert g.cfg.step_m == 0.025 and g.tone.volume == 0.16
+
+
+def test_hybrid_beeps_get_quieter_during_speech():
+    tone = ToneConfig(volume=0.16)
+    m = Mixer(tone, clips={"right": np.zeros(96000, np.float32)})
+    m.set_tone(0, 500, 5, "steady")
+    for _ in range(100):
+        m.render(256)
+    before = np.abs(m.render(256)).max()
+    m.say("right")
+    for _ in range(10):
+        m.render(256)
+    during = np.abs(m.render(256)).max()
+    assert during == pytest.approx(before * tone.duck, rel=0.02)
+
+
+def test_words_do_not_repeat_when_hand_is_missing_and_reset_clears_direction():
+    g = guide(words=True)
+    g.update(near(dx=0.2), now=1.0)
+    g.update(scene(hand=None), now=4.0)
+    assert g.sink.spoken.count("right") == 1
+    g.reset("bottle", now=5.0)
+    g.update(near(dz=0.2), now=5.1)
+    assert g.sink.spoken[-1] == "forward"
 
 
 def test_reset_starts_a_fresh_search():

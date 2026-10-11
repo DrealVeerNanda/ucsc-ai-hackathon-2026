@@ -167,8 +167,13 @@ def synthesize(text: str, sr: int) -> np.ndarray | None:
     return None
 
 
-def load_clips(folder: str | Path = CLIPS_DIR, sr: int = 48000) -> dict:
+def load_clips(folder: str | Path | None = None, sr: int = 48000) -> dict:
     """Every WAV in the folder, keyed by file name without .wav (grab.wav -> "grab")."""
+    if folder is None:
+        # Original clips remain the fallback if the optional calm set is incomplete.
+        clips = load_clips(CLIPS_DIR, sr)
+        clips.update(load_clips(CLIPS_DIR / "calm", sr))
+        return clips
     clips = {}
     for p in sorted(Path(folder).glob("*.wav")):
         try:
@@ -178,13 +183,30 @@ def load_clips(folder: str | Path = CLIPS_DIR, sr: int = 48000) -> dict:
     return clips
 
 
+def success_chime(sr: int) -> np.ndarray:
+    """Quiet two-note confirmation with soft edges and a pause before 'grab'."""
+    out = np.zeros(round(0.48 * sr), dtype=np.float32)
+    for start_s, freq, gain in ((0.0, 659.25, 0.16), (0.15, 880.0, 0.14)):
+        t = np.arange(round(0.30 * sr)) / sr
+        envelope = np.minimum(t / 0.018, 1.0) * np.exp(-t / 0.085)
+        envelope *= np.clip((0.30 - t) / 0.035, 0.0, 1.0)
+        note = gain * envelope * (np.sin(2 * np.pi * freq * t) +
+                                  0.15 * np.sin(4 * np.pi * freq * t))
+        start = round(start_s * sr)
+        out[start:start + len(note)] += note.astype(np.float32)
+    return np.concatenate((out, np.zeros(round(0.12 * sr), dtype=np.float32)))
+
+
 class Mixer:
     """Tone plus clips, rendered block by block. Holds no sound device."""
 
     def __init__(self, cfg: ToneConfig | None = None, clips: dict | None = None, stale_s: float = 0.5):
         self.cfg = cfg or ToneConfig()
         self.synth = ToneSynth(self.cfg)
-        self.clips = clips if clips is not None else load_clips(sr=self.cfg.sr)
+        self.clips = dict(clips) if clips is not None else load_clips(sr=self.cfg.sr)
+        self.clips["aligned"] = success_chime(self.cfg.sr)
+        self._grab_clip = (np.concatenate((success_chime(self.cfg.sr), self.clips["grab"]))
+                           if "grab" in self.clips else None)
         self.stale_s = stale_s
         self.spoken: list[str] = []          # names actually started, for tests and logs
         self.log: list[str] = []             # the words of everything said, for the dashboard
@@ -216,7 +238,7 @@ class Mixer:
         else:
             text = CLIP_TEXT.get(name, name.replace("_", " "))
             self.spoken.append(name)
-            clip = self.clips.get(name)
+            clip = self._grab_clip if name == "grab" else self.clips.get(name)
             if clip is None:
                 print(f"[audio] no clip audio/{name}.wav", file=sys.stderr)
         self.log.append(text)
