@@ -41,6 +41,7 @@ def quiet(monkeypatch, tmp_path):
                         ("_mode", None), ("_failures", 0), ("_no_keyboard", False), ("_status_thread", object()), ("_left_open", [])):
         monkeypatch.setattr(voice, name, value)
     monkeypatch.setattr(voice, "_status", dict(voice._status, state="starting", heard="", meant="", error="", error_t=None))
+    monkeypatch.real_poke = voice._poke_main
     monkeypatch.setattr(voice, "_poke_main", lambda: None)
     monkeypatch.setattr(voice, "_beep", lambda: beeps.append(len(guidance._get().sink.log)))
     monkeypatch.setattr(voice, "FIND_EARBUDS_S", 0.05)
@@ -1147,3 +1148,52 @@ def test_the_tail_of_talk_that_ran_on_is_not_taken_for_a_short_sentence(quiet):
     assert buds.record() is None and not buds._ran_on                       # three more seconds of the same talk: not a request
     quiet.setitem(sys.modules, "sounddevice", FakeSound(_noise((1.0, 0.0005), (1.0, 0.07), (2.0, 0.0005), seed=5)))
     assert buds.record() is not None                                        # after a pause, a voice is a voice again
+
+
+# --- listening during a reach (only with the earbuds kept in headset mode) ---------------------
+
+def test_stop_is_heard_during_a_reach_when_the_earbuds_stay_in_headset_mode(quiet, tmp_path):
+    quiet.setenv("VOICE_HEADSET_MODE", "stay")
+    quiet.setenv("VOICE_REACH_LISTEN", "1")
+    quiet.setenv("VOICE_AUTO_LIST", "0")
+    quiet.setattr(voice.atexit, "register", lambda f: None)
+    poked = []
+    quiet.setattr(voice, "_poke_main", lambda: poked.append(1))
+    buds = Buds(("the mug",),                                           # the request; then, during the reach:
+                ("down and left", 0.05, 1.5),                           # the guidance itself, heard back
+                ("please stop the car now we are done", 0.05, 2.9),     # a sentence with "stop" in it
+                ("stop", 0.008, 1.6),                                   # "stop" from somebody further off
+                ("stop stop stop wait a moment everyone", 0.05, 4.5),   # too long to be a command
+                ("Stop.", 0.03, 1.6),                                   # the wearer
+                ("the phone",))
+    mic = web_mic(tmp_path, buds)
+    assert mic.listen() == "mug"
+    guidance.reset("mug")                                               # main.py starts the reach
+    assert until(lambda: poked == [1])                                  # ...and is told to ask again, once
+    assert mic.status["heard"] == "Stop." and len(buds.script) == 1
+    guidance.pop_phrases()
+    assert mic.listen() == "phone"                                      # the wait that follows answers the "stop" first
+    assert guidance.pop_phrases()[0] == "Stopped. What do you want to grab?"
+    mic._reach[1].set()
+
+
+def test_without_that_setting_nothing_listens_during_a_reach(quiet, tmp_path):
+    quiet.setenv("VOICE_AUTO_LIST", "0")
+    buds = Buds(("the mug",), ("Stop.", 0.05, 1.6))
+    mic = web_mic(tmp_path, buds)
+    assert mic.listen() == "mug" and mic._reach is None
+    time.sleep(0.2)
+    assert len(buds.script) == 1 and buds.modes == ["headset", "stereo"]
+
+
+def test_the_new_target_key_goes_to_the_dashboard_main_was_started_with(quiet):
+    asked = []
+    def urlopen(req, timeout=None):
+        asked.append(req.full_url)
+        raise OSError("nobody there")
+    quiet.setattr(voice.urllib.request, "urlopen", urlopen)
+    quiet.setattr(voice.sys, "argv", ["main.py", "--all-real", "--port", "8655"])
+    quiet.real_poke()
+    quiet.setenv("DASHBOARD_PORT", "8700")
+    quiet.real_poke()
+    assert asked == ["http://127.0.0.1:8655/key", "http://127.0.0.1:8700/key"]

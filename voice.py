@@ -37,6 +37,10 @@ Other things that can be said: "stop" / "cancel" / "never mind", "again" / "repe
                          heard in mono at telephone quality, so left and right tones mean nothing (default: switch)
     VOICE_HEADSET_VOLUME=0.6  how loud the earbuds are in headset mode (wpctl's scale); "match" (default)
                          copies the stereo volume, "keep" leaves it alone
+    VOICE_REACH_LISTEN=1 with VOICE_HEADSET_MODE=stay: keep listening during a reach too, for "stop", "again",
+                         "help" and the options, said by the wearer and nothing else. Without it those
+                         words work during a reach only from the page or the keyboard: in stereo mode the
+                         earbuds have no microphone.
     VOICE_DOWNLOAD=1     let Whisper be fetched from the internet; otherwise only what is on this machine is used
     VOICE_WEARER_LEVEL=0.015   how loud the wearer's own voice is in the earbuds (0 trusts every voice)
     VOICE_REQUEST_S=6    anything longer than this is a conversation, not a request
@@ -102,6 +106,7 @@ COVERED_SHARE = 0.10        # (in recordings/live_2025 a clear view of the table
 FIND_EARBUDS_S = 3.0        # without earbuds, look for them this often; twice as long after each failure, up to...
 FIND_EARBUDS_MAX_S = 30.0
 CHECK_EARBUDS_S = 10.0      # while listening, make sure they are still there and still in headset mode
+REACH_WORDS_S = 3.0         # during a reach only a word or two is listened for ("stop" came to 1.6 s with its pauses)
 SWITCH_GAP_S = 3.0          # never two changes of the earbuds' mode closer than this: one started while the last was
                             # still coming up left them without stereo for minutes, three times on 10 October
 SWITCH_WAIT_S = 6.0         # a mode that is not up after this has failed
@@ -536,6 +541,11 @@ def switch_option(text: str) -> str | None:
     return _carry_on()
 
 
+def switch_option_asked(clean: str) -> bool:
+    """Is this (already without punctuation) about the options?"""
+    return bool(_OPTION_STEP.match(clean) or _OPTION_HEARD.match(clean) or _OPTION.search(clean) or _OPTION_WHICH.match(clean))
+
+
 def respond(text: str) -> str:
     """What to do with what was said: the target to look for, or "" after answering a question
     (main.py then asks again, and the wearer names their pick)."""
@@ -637,7 +647,7 @@ def load_whisper(model: str | None = None):
     try:
         whisper = WhisperModel(model or "small.en", device="cpu", compute_type="int8", local_files_only=_offline())
     except Exception as e:
-        raise _not_here(f"Whisper {model or 'small.en'} for the CPU", e) from e
+        raise _not_here(f"Whisper {model or 'small.en'} for the CPU" + (f" (and the GPU one failed: {why})" if why else ""), e) from e
     _now(whisper=f"{model or 'small.en'} on the CPU")
     if why is not None:
         # Not the same thing more slowly: the small model hears a soft "blue cup" as "look up". Say so loudly.
@@ -747,7 +757,7 @@ PAGE = ROOT / "voice_page.html"
 def _poke_main():
     """A request arrived while a reach was in progress: press main.py's "new target" key through
     the dashboard, so the wearer can change their mind without waiting for a grab."""
-    port = os.environ.get("DASHBOARD_PORT", "8642")
+    port = os.environ.get("DASHBOARD_PORT") or (sys.argv[sys.argv.index("--port") + 1] if "--port" in sys.argv[:-1] else "8642")
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{port}/key", json.dumps({"key": "t"}).encode(),
                                      {"Content-Type": "application/json"})
@@ -1255,6 +1265,7 @@ class WebMic:
         self._find_headset = transcribe is None           # keep looking: earbuds may connect after the start
         self._find_t, self._find_gap, self._check_t, self._sorry_t = 0.0, FIND_EARBUDS_S, 0.0, -1e9
         self.last_recording = {}                          # what the page last sent, for the page's own log
+        self._reach = None                                # the thread listening during a reach, and what ends it
         if transcribe is None:
             try:
                 with tracing.timed("load.whisper", model=model):
@@ -1363,8 +1374,35 @@ class WebMic:
         finally:
             self.status.update(option_families())         # the page shows which options are on
 
+    def _hear_commands(self, buds, over: threading.Event):
+        """During a reach, with the earbuds kept in headset mode: listen for the few words that
+        make sense then, and hand them over as if they had been typed. Only a word or two, only as
+        loud as the wearer, and only if it is exactly a command: the hall says "stop" too."""
+        while not over.is_set():
+            try:
+                audio = buds.record(should_stop=over.is_set, abandon=over.is_set)
+                if audio is None or audio.size / SR > REACH_WORDS_S:
+                    continue
+                if loudness(audio) < float(os.environ.get("VOICE_WEARER_LEVEL", WEARER_LEVEL)):
+                    continue
+                text = self._hear(audio)
+            except Exception as e:
+                _problem("earbuds", f"stopped listening during the reach ({e.__class__.__name__}: {e})")
+                return
+            clean = _plain(text)
+            if over.is_set() or not (_STOP.match(clean) or _AGAIN.match(clean) or _HELP.match(clean)
+                                     or (len(clean.split()) <= 5 and switch_option_asked(clean))):
+                continue
+            tracing.event("voice.reach_command", text=text, level=round(loudness(audio), 4))
+            self.submit(text)
+            return                                        # main.py now asks; the next wait takes it from here
+
     def listen(self) -> str:
         global _ask_next
+        if self._reach is not None:                       # the reach is over: one listener at a time
+            self._reach[1].set()
+            self._reach[0].join(3)
+            self._reach = None
         wait = _Wait()
         text, target = "", ""
         buds = None
@@ -1400,6 +1438,11 @@ class WebMic:
                     _problem("earbuds", e)
         self.status["target"] = target or self.status["target"]
         self.status.update(option_families())
+        if target and self.headset is not None and _stays() and os.environ.get("VOICE_REACH_LISTEN", "0") == "1":
+            over = threading.Event()
+            thread = threading.Thread(target=self._hear_commands, args=(self.headset, over), daemon=True, name="voice-reach")
+            self._reach = (thread, over)
+            thread.start()
         _now("reaching", message=f"Guiding to {target}.")
         print(f"[voice] heard {text!r} -> target {target!r}")
         return target
