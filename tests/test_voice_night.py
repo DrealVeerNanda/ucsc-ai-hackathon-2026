@@ -1034,17 +1034,14 @@ def test_two_switches_are_never_close_together(pipewire):
     assert (to1, to2) == (261, 5) and t2 - t1 >= 0.4
 
 
-def test_stereo_that_does_not_come_back_is_repaired_by_reconnecting(pipewire):
+def test_stereo_that_does_not_come_back_is_repaired_by_reconnecting(pipewire, quiet):
     found = voice.Headset(62, 261, 5, "AirPods Pro")
     pipewire.takes_s = 0.0
     buds = voice.Headset(61, 261, 5, "AirPods Pro")
     buds.open()
     pipewire.stuck = True
-    voice.Headset.find = staticmethod(lambda: found)
-    try:
-        buds.close()
-    finally:
-        del voice.Headset.find
+    quiet.setattr(voice.Headset, "find", staticmethod(lambda: found))
+    buds.close()
     blue = [cmd for t, cmd in pipewire.commands if cmd[0] == "bluetoothctl"]
     assert blue == [["bluetoothctl", "disconnect", "18:3F:70:53:BD:95"], ["bluetoothctl", "connect", "18:3F:70:53:BD:95"]]
     assert buds.device == 62 and pipewire.profile == 5 and voice.status()["ok"] is True

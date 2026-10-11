@@ -39,7 +39,7 @@ Other things that can be said: "stop" / "cancel" / "never mind", "again" / "repe
                          copies the stereo volume, "keep" leaves it alone
     VOICE_DOWNLOAD=1     let Whisper be fetched from the internet; otherwise only what is on this machine is used
     VOICE_WEARER_LEVEL=0.015   how loud the wearer's own voice is in the earbuds (0 trusts every voice)
-    VOICE_REQUEST_S=6.5  anything longer than this is a conversation, not a request
+    VOICE_REQUEST_S=6    anything longer than this is a conversation, not a request
 
 Bluetooth earbuds (AirPods) are used as the microphone by themselves when they are connected. They
 cannot play stereo and record at once, so they are switched to headset mode only while it is
@@ -93,7 +93,7 @@ SILENCE_REMINDERS_S = (20.0, 60.0, 180.0)   # gaps before "I'm listening"; the l
 # Telling the wearer from the room, measured through AirPods in the hall on 10 October: the wearer's
 # requests came in at 0.03 to 0.09 (RMS of the cut-out recording) and lasted 2 to 4 s; people standing
 # further off 0.006 to 0.012; a conversation next to the wearer was as loud as a request but 5 to 14 s long.
-REQUEST_MAX_S = 6.5         # longer than this is not a request: it is dropped before Whisper hears it
+REQUEST_MAX_S = 6.0         # longer than this is not a request: it is dropped before Whisper hears it
 CLIP_MAX_S = 8.0            # no recording runs longer than this, however long the hall goes on
 LOUD_ROOM = 0.025           # a voice has to be 2.5 times the room; in a loud room, no more than this (or 1.5 times the room)
 WEARER_LEVEL = 0.015        # quieter than this is trusted only when it names something that was just listed
@@ -839,7 +839,7 @@ def voice_level(history, min_level: float = 0.005) -> float:
 
 
 def cut_speech(blocks, sr: int = SR, block_s: float = 0.03, start_wait_s: float = 6.0, max_s: float = CLIP_MAX_S,
-               quiet_s: float = 0.9, should_stop=None, min_level: float = 0.005, own_share: float = 0.3,
+               quiet_s: float = 0.9, should_stop=None, min_level: float = 0.005, own_share: float = 0.5,
                history=None, abandon=None, info: dict | None = None) -> np.ndarray | None:
     """Take audio blocks as they arrive and return the stretch that holds speech: from a little
     before the voice starts until it has been quiet for `quiet_s`, or `max_s` after it started.
@@ -848,7 +848,7 @@ def cut_speech(blocks, sr: int = SR, block_s: float = 0.03, start_wait_s: float 
     the room's own level (see voice_level; `history` carries it from one call to the next), and
     is never below `min_level`: earbuds silence the room, and a soft voice measured 0.006 to
     0.010 through them. Once somebody speaks, "quiet" is measured against that voice: anything
-    under `own_share` of its loudest moment is the room again. So the wearer's request ends when
+    under `own_share` of the loudest level it held is the room again. So the wearer's request ends when
     the wearer stops, though people further off go on talking, and what they said before the
     wearer started is cut off the front. `info` is filled with how it ended."""
     history = deque(maxlen=333) if history is None else history      # ten seconds of block levels
@@ -876,7 +876,8 @@ def cut_speech(blocks, sr: int = SR, block_s: float = 0.03, start_wait_s: float 
             continue
         kept.append(block)
         levels.append(level)
-        top = max(top, float(np.mean(levels[-5:])))       # the loudest 150 ms so far: a voice, not a click
+        top = max(top, float(np.median(levels[-10:])))    # the loudest level held for a third of a second: a voice,
+                                                          # not a click or a hand brushing the earbud
         quiet = quiet + block_s if level <= max(threshold, own_share * top) else 0.0
         if quiet >= quiet_s:
             info.update(ended="quiet")
