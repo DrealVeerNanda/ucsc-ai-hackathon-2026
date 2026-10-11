@@ -4,6 +4,12 @@
 #
 #   bash tools/stop_live.sh          # waits up to two minutes
 set -uo pipefail
+cd "$(dirname "$0")/.."
+# Started from the Proprio icon? Then its keeper would start the pipeline again a second later:
+# ask the keeper to stop it instead.
+if [ -x .venv/bin/python ] && .venv/bin/python launcher.py status >/dev/null 2>&1; then
+    exec .venv/bin/python launcher.py stop
+fi
 pid=$(pgrep -f "[m]ain.py --stream" | head -1)
 [ -z "$pid" ] && { echo "no live run"; exit 0; }
 kill -INT "$pid"

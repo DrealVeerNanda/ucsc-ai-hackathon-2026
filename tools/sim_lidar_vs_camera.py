@@ -288,6 +288,7 @@ def run_trial(seed: int, sensor: str, cam: CameraErrors | None = None, lidar: Li
     det, hands = SimDetector(sens_rng), SimHands(sens_rng)
     perc = perception.Perception(det, hands, perception.PerceptionConfig())
     guide = guidance.Guidance(PrintSink(quiet=True))
+    guide.set_grab_option("fingertip")      # the 5 cm rule this study was run with; the live default is now "over"
     guide.reset("mug", now=0.0)
     cam_depth = CameraDepth(cam, sens_rng) if sensor == "camera" else None
     lidar = lidar or LidarModel()

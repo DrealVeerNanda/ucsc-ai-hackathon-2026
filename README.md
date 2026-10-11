@@ -171,7 +171,7 @@ On the GX10 it runs at about 35 ms per frame. Not yet checked: real lidar depth 
 | Tone in the right or left ear | Move the hand that way |
 | Pitch higher or lower | Move up or down |
 | Faster beeps | Closer |
-| Steady tone, then "grab" | Within 5 cm |
+| Steady tone, then "grab" | Within grabbing distance (the rule is switchable: `guidance.GRAB_OPTIONS`) |
 
 ```bash
 python tools/audio_demo.py --play            # hear a made-up reach. Without --play it writes out/audio_demo.wav

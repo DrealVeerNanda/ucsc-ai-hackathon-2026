@@ -433,6 +433,8 @@ class Supervisor:
     def pipeline_env(self) -> dict:
         env = dict(self.env)
         env.update(OPEN="0", PORT=str(self.s.dash_port), PYTHONUNBUFFERED="1")
+        env["PROPRIO_KEEPER"] = "1"      # a keeper is watching: it reconnects the earbuds, so voice.py must not
+                                         # also do it (two repairs at once fight each other)
         env.update(checks.offline_env(self.s, self.proof))
         self.record_dir = None
         if self.record and not self.s.replay and "STREAM_RECORD" not in self.env and not self.s.bridge.exists():
