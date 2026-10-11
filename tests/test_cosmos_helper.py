@@ -347,3 +347,65 @@ def test_the_first_question_opens_the_camera_itself(quiet_voice):
     voice.respond("what's on the table?")
     assert opened == [1] and guidance.pop_phrases()[-1] == "I can see mug and phone. Which one?"
     quiet_voice.setattr(stream, "_default", None)
+
+
+# --- a phone or laptop as the microphone ----------------------------------------
+
+import ssl
+import urllib.request
+
+
+def _https(url, data=None, kind=None):
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE                              # the page's certificate is made on the spot
+    req = urllib.request.Request(url, data, {"Content-Type": kind} if kind else {})
+    with urllib.request.urlopen(req, timeout=5, context=ctx) as r:
+        return r.status, r.read()
+
+
+@pytest.fixture
+def mic(quiet_voice, tmp_path):
+    poked = []
+    quiet_voice.setattr(voice, "_poke_main", lambda: poked.append(1))
+    heard = {b"RECORDING-1": "find my mug", b"RECORDING-2": "", b"BROKEN": None}
+
+    def transcribe(data):
+        if heard[data] is None:
+            raise ValueError("not audio")
+        return heard[data]
+    m = voice.WebMic(port=0, transcribe=transcribe, cert_dir=tmp_path / "cert", typed=False)
+    m.base = f"https://127.0.0.1:{m.port}"
+    m.poked = poked
+    yield m
+    m.close()
+
+
+def test_microphone_page_is_served_over_https(mic):
+    status, body = _https(mic.base + "/")
+    assert status == 200 and b"Hold to talk" in body and b"getUserMedia" in body
+    assert json.loads(_https(mic.base + "/status")[1]) == {"heard": "", "target": ""}
+
+
+def test_a_recording_from_the_page_becomes_the_target(mic):
+    out = {}
+    t = __import__("threading").Thread(target=lambda: out.setdefault("target", mic.listen()))
+    t.start()
+    time.sleep(0.1)                                              # main.py is waiting for a request
+    status, body = _https(mic.base + "/say", b"RECORDING-1", "audio/webm")
+    t.join(3)
+    assert status == 200 and json.loads(body) == {"heard": "find my mug"}
+    assert out["target"] == "mug" and mic.poked == []            # it was waiting: nothing to interrupt
+    assert json.loads(_https(mic.base + "/status")[1]) == {"heard": "find my mug", "target": "mug"}
+
+
+def test_a_request_during_a_reach_interrupts_it(mic):
+    _https(mic.base + "/text", json.dumps({"text": "the phone"}).encode(), "application/json")
+    assert mic.poked == [1]                                      # main.py is told to ask again...
+    assert mic.listen() == "phone"                               # ...and gets the request that was waiting
+
+
+def test_silence_or_a_bad_recording_asks_for_nothing(mic):
+    assert json.loads(_https(mic.base + "/say", b"RECORDING-2", "audio/webm")[1]) == {"heard": ""}
+    assert json.loads(_https(mic.base + "/say", b"BROKEN", "audio/webm")[1]) == {"heard": ""}
+    assert mic._requests.empty() and mic.poked == []

@@ -221,6 +221,12 @@ bash tools/fetch_models.sh piper   # once: the voice that speaks sentences
 | "What's on the table?" | Cosmos looks through the camera and lists what could be picked up; it is spoken, and the wearer answers "the mug" or "the second one" |
 | A name the detector cannot find | After one second of searching, Cosmos is asked for the object's box in the background (0.6 to 2 s) and its answer positions the object until the detector takes over |
 
+### Talking to it
+
+The GX10 has no microphone, so any phone or laptop can be one. Start the run without a target (`bash tools/live.sh`); it prints an address like `https://GX10_IP:8644`. Open it on a device on the same network, accept the certificate warning once, then hold the button (or the space bar) and speak. Whisper transcribes on the GX10. A new request at any time replaces the target, even in the middle of a reach. You can also type in the box on that page or in the terminal.
+
+With a real microphone on the GX10 (earbuds with a mic, a USB headset) it uses that instead: Enter, speak, Enter.
+
 If a server is not running, the pipeline carries on without it: a simple rule reads plain requests, and the detector works alone. `python tools/ask_cosmos.py photo.jpg --list` tries the listing on any picture.
 
 ## Where the time goes

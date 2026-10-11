@@ -485,10 +485,11 @@ def _nemotron(monkeypatch, answers, calls):
 
 def test_nemotron_reads_indirect_requests(monkeypatch):
     calls = []
-    _nemotron(monkeypatch, {"I am really thirsty": "Water bottle.", "what time is it": ""}, calls)
+    _nemotron(monkeypatch, {"I am really thirsty": "Water bottle.", "I'm thirsty": "water bottle", "what time is it": ""}, calls)
     assert voice.understand("I am really thirsty") == "water bottle"
-    assert voice.understand("mug") == "mug" and voice.understand("the can") == "can"      # short: no model call
-    assert calls == ["I am really thirsty"]
+    assert voice.understand("I'm thirsty") == "water bottle"       # two words can still be indirect
+    assert voice.understand("mug") == "mug"                         # one word is already a name: no model call
+    assert calls == ["I am really thirsty", "I'm thirsty"]
     assert voice.understand("what time is it") == ""       # no object asked for: main.py asks again
 
 

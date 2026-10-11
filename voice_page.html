@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blindfold pickup microphone</title>
+<style>
+  :root { color-scheme: dark; --bg: #0f1113; --ink: #f2f1ee; --dim: #9a9892; --line: #2a2d31; --go: #2a78d6; --rec: #d03b3b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 17px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 28px 20px 40px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; }
+  p { margin: 0; color: var(--dim); text-align: center; max-width: 34ch; }
+  #talk { width: min(64vw, 260px); aspect-ratio: 1; border-radius: 50%; border: 0; background: var(--go); color: #fff;
+          font: 600 22px/1.2 inherit; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+  #talk.rec { background: var(--rec); transform: scale(1.04); }
+  #talk:disabled { opacity: 0.5; }
+  #talk:focus-visible, input:focus-visible, #send:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  dl { width: min(100%, 420px); margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; border-top: 1px solid var(--line); padding-top: 16px; }
+  dt { color: var(--dim); } dd { margin: 0; min-height: 1.4em; overflow-wrap: anywhere; }
+  form { width: min(100%, 420px); display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: #181b1e; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  #send { font: inherit; color: var(--ink); background: #23272b; border: 1px solid var(--line); border-radius: 8px; padding: 10px 16px; cursor: pointer; }
+</style></head><body>
+<h1>Blindfold pickup</h1>
+<button id="talk" type="button">Hold to talk</button>
+<p id="hint">Hold the button, or the space bar, and say what you want: "find my mug", "what's on the table?"</p>
+<dl><dt>Heard</dt><dd id="heard"></dd><dt>Looking for</dt><dd id="target"></dd></dl>
+<form id="typed"><input id="text" autocomplete="off" placeholder="or type it" aria-label="Type a request"><button id="send" type="submit">Send</button></form>
+<script>
+const talk = document.getElementById("talk"), hint = document.getElementById("hint");
+let stream = null, rec = null, chunks = [], down = false;
+function say(t) { hint.textContent = t; }
+async function start() {
+  if (down) return; down = true;
+  try {
+    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) { down = false; say("The microphone is blocked. Allow it for this page and try again."); return; }
+  if (!down) return;                                   // released while the permission prompt was up
+  chunks = [];
+  rec = new MediaRecorder(stream);
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = send;
+  rec.start();
+  talk.classList.add("rec"); talk.textContent = "Listening";
+}
+function stop() {
+  if (!down) return; down = false;
+  talk.classList.remove("rec"); talk.textContent = "Hold to talk";
+  if (rec && rec.state !== "inactive") rec.stop();
+}
+async function send() {
+  const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+  if (blob.size < 2000) { say("That was too short. Hold the button while you speak."); return; }
+  say("Working it out...");
+  try {
+    const r = await fetch("say", { method: "POST", body: blob, headers: { "Content-Type": blob.type } });
+    const d = await r.json();
+    document.getElementById("heard").textContent = d.heard || "(nothing)";
+    say(d.heard ? "Hold the button to say something else." : "I did not catch that. Try again, a little closer.");
+  } catch (e) { say("Could not reach the GX10."); }
+}
+talk.addEventListener("pointerdown", e => { e.preventDefault(); talk.setPointerCapture(e.pointerId); start(); });
+talk.addEventListener("pointerup", stop);
+talk.addEventListener("pointercancel", stop);
+document.addEventListener("keydown", e => { if (e.code === "Space" && e.target.tagName !== "INPUT" && !e.repeat) { e.preventDefault(); start(); } });
+document.addEventListener("keyup", e => { if (e.code === "Space" && e.target.tagName !== "INPUT") { e.preventDefault(); stop(); } });
+document.getElementById("typed").addEventListener("submit", async e => {
+  e.preventDefault();
+  const box = document.getElementById("text"), text = box.value.trim();
+  if (!text) return;
+  box.value = "";
+  document.getElementById("heard").textContent = text;
+  try { await fetch("text", { method: "POST", body: JSON.stringify({ text }), headers: { "Content-Type": "application/json" } }); }
+  catch (e) { say("Could not reach the GX10."); }
+});
+setInterval(async () => {
+  try { const d = await (await fetch("status")).json(); document.getElementById("target").textContent = d.target || ""; if (d.heard) document.getElementById("heard").textContent = d.heard; }
+  catch (e) {}
+}, 1000);
+</script></body></html>

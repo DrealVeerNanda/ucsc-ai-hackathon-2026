@@ -11,9 +11,12 @@ Asking "what's on the table?" (or "what can I pick up?") makes Cosmos look at th
 and say what it sees; the wearer then names one, or says "the second one". That needs the Cosmos
 server (bash tools/run_cosmos.sh) and the real stream.
 
-    VOICE_MODE=auto      speech if a microphone and faster-whisper are there, else typed (default)
+    VOICE_MODE=auto      a microphone on this machine if there is one; otherwise the web page below
+                         if faster-whisper is installed; otherwise typed (default)
+    VOICE_MODE=web       any phone or laptop is the microphone: it opens https://THIS_MACHINE:8644,
+                         and you hold the button and speak. Typing in the terminal still works too.
     VOICE_MODE=type      always typed
-    VOICE_MODE=speech    always speech
+    VOICE_MODE=speech    always the microphone on this machine
     VOICE_MODEL=base.en  Whisper model size (tiny.en is faster, small.en is more accurate)
     VOICE_DEVICE=NAME    sounddevice input device (the earbuds' microphone)
     VOICE_LLM_URL=URL    Nemotron's address (default http://127.0.0.1:8000/v1); "off" uses the rule only
@@ -23,13 +26,20 @@ Enter works as the button.
 """
 from __future__ import annotations
 
+import io
 import json
 import os
+import queue
 import re
+import socket
+import ssl
+import subprocess
 import sys
 import threading
 import time
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import numpy as np
 
@@ -111,7 +121,7 @@ def interpret(text: str) -> tuple[str, str]:
             return "pick", last_objects[i]
     by_rule = ("list", "") if _LIST.search(clean) else ("pick", extract_target(text))
     url = os.environ.get("VOICE_LLM_URL", "http://127.0.0.1:8000/v1")
-    if url == "off" or _llm_ok is False or len(clean.split()) < 3:
+    if url == "off" or _llm_ok is False or len(clean.split()) < 2:     # one word is already a name
         return by_rule
     t = time.perf_counter()
     try:
@@ -258,7 +268,156 @@ class Listener:
         return target
 
 
-_listener: Listener | None = None
+PAGE = Path(__file__).resolve().parent / "voice_page.html"
+
+
+def _poke_main():
+    """A request arrived while a reach was in progress: press main.py's "new target" key through
+    the dashboard, so the wearer can change their mind without waiting for a grab."""
+    port = os.environ.get("DASHBOARD_PORT", "8642")
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/key", json.dumps({"key": "t"}).encode(),
+                                     {"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=0.5).close()
+    except Exception:
+        pass                             # no dashboard: the request is picked up after the grab
+
+
+def _my_address() -> str:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))   # sends nothing; just asks which interface would be used
+            return s.getsockname()[0]
+    except OSError:
+        return socket.gethostname()
+
+
+class WebMic:
+    """Lets any phone or laptop be the microphone and the push-to-talk button. It opens a page
+    served from here, records while the button is held, and sends the recording to this machine,
+    where Whisper transcribes it. Browsers only allow the microphone over HTTPS, so the page is
+    served with a certificate made on the spot; the browser asks once whether to trust it."""
+
+    def __init__(self, port: int = 8644, transcribe=None, model: str = "base.en", cert_dir: str | Path = "out/voice_cert",
+                 typed: bool = True):
+        self.port = port
+        self.status = {"heard": "", "target": ""}
+        self._requests: queue.Queue = queue.Queue()
+        self._waiting = False
+        if transcribe is None:
+            from faster_whisper import WhisperModel
+            from faster_whisper.audio import decode_audio
+            with tracing.timed("load.whisper", model=model):
+                whisper = WhisperModel(model, device="cpu", compute_type="int8")
+
+            def transcribe(data: bytes) -> str:
+                audio = decode_audio(io.BytesIO(data), sampling_rate=SR)     # webm, mp4 or wav: whatever the browser sent
+                if audio.size < SR // 4:
+                    return ""
+                t = time.perf_counter()
+                segments, _ = whisper.transcribe(audio, language="en", beam_size=1, vad_filter=True)
+                text = " ".join(s.text for s in segments).strip()
+                tracing.event("whisper", (time.perf_counter() - t) * 1000, audio_s=round(audio.size / SR, 2), text=text)
+                return text
+        self._transcribe = transcribe
+        self._server = self._serve(Path(cert_dir))
+        self.url = f"https://{_my_address()}:{self.port}/"
+        print(f"[voice] Microphone page: open {self.url} on a phone or laptop on the same network, accept the "
+              "certificate warning once, then hold the button and speak. You can also type here.")
+        if typed and sys.stdin is not None and sys.stdin.isatty():
+            threading.Thread(target=self._read_typed, daemon=True, name="voice-typed").start()
+
+    def _read_typed(self):
+        while True:
+            try:
+                line = input()
+            except (EOFError, OSError):
+                return
+            if line.strip():
+                self.submit(line.strip())
+
+    def submit(self, text: str):
+        """A request has arrived, spoken or typed."""
+        self.status["heard"] = text
+        self._requests.put(text)
+        if not self._waiting:
+            _poke_main()
+
+    def listen(self) -> str:
+        self._waiting = True
+        try:
+            text = self._requests.get()
+        finally:
+            self._waiting = False
+        target = respond(text)
+        self.status["target"] = target or self.status["target"]
+        print(f"[voice] heard {text!r} -> target {target!r}")
+        return target
+
+    def _serve(self, cert_dir: Path):
+        mic = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def _send(self, code: int, body: bytes, kind: str):
+                self.send_response(code)
+                self.send_header("Content-Type", kind)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                path = self.path.split("?")[0]
+                if path == "/":
+                    self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
+                elif path == "/status":
+                    self._send(200, json.dumps(mic.status).encode(), "application/json")
+                else:
+                    self._send(404, b"not found", "text/plain")
+
+            def do_POST(self):
+                data = self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 20_000_000))
+                path = self.path.split("?")[0]
+                if path == "/say":
+                    try:
+                        text = mic._transcribe(data)
+                    except Exception as e:
+                        print(f"[voice] could not read that recording ({e})", file=sys.stderr)
+                        text = ""
+                elif path == "/text":
+                    try:
+                        text = str(json.loads(data or b"{}").get("text", "")).strip()[:200]
+                    except ValueError:
+                        text = ""
+                else:
+                    self._send(404, b"not found", "text/plain")
+                    return
+                if text:
+                    mic.submit(text)
+                self._send(200, json.dumps({"heard": text}).encode(), "application/json")
+
+        cert_dir.mkdir(parents=True, exist_ok=True)
+        crt, key = cert_dir / "cert.pem", cert_dir / "key.pem"
+        if not crt.exists() or not key.exists():
+            subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key), "-out", str(crt),
+                            "-days", "30", "-subj", "/CN=blindfold-pickup"], check=True, capture_output=True)
+        server = ThreadingHTTPServer(("0.0.0.0", self.port), Handler)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(crt), str(key))
+        server.socket = ctx.wrap_socket(server.socket, server_side=True)
+        self.port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True, name="voice-web").start()
+        return server
+
+    def close(self):
+        self._server.shutdown()
+        self._server.server_close()
+
+
+_listener = None                # Listener (local microphone) or WebMic (a phone or laptop as the microphone)
 _mode: str | None = None
 
 
@@ -266,14 +425,24 @@ def listen_for_target() -> str:
     """Blocks until the wearer has named something. May return "" (main.py asks again)."""
     global _listener, _mode
     if _mode is None:
-        _mode = os.environ.get("VOICE_MODE", "auto")
-        if _mode != "type":
+        want = os.environ.get("VOICE_MODE", "auto")
+        model = os.environ.get("VOICE_MODEL", "base.en")
+        _mode = "type"
+        if want in ("auto", "speech"):
             try:
-                _listener = Listener(os.environ.get("VOICE_MODEL", "base.en"), os.environ.get("VOICE_DEVICE") or None)
+                _listener = Listener(model, os.environ.get("VOICE_DEVICE") or None)
                 _mode = "speech"
             except Exception as e:
-                if _mode == "speech":
+                if want == "speech":
                     raise
-                print(f"[voice] speech input not available ({e}); type the target instead", file=sys.stderr)
-                _mode = "type"
-    return _listener.listen() if _mode == "speech" else typed()
+                why = e
+        if _mode == "type" and want in ("auto", "web"):
+            try:
+                _listener = WebMic(int(os.environ.get("VOICE_PORT", "8644")), model=model)
+                _mode = "web"
+            except Exception as e:
+                if want == "web":
+                    raise
+                print(f"[voice] no microphone here ({why}) and no microphone page ({e}); type the target instead",
+                      file=sys.stderr)
+    return _listener.listen() if _mode in ("speech", "web") else typed()

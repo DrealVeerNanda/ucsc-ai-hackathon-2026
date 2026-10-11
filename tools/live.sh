@@ -3,7 +3,9 @@
 # fingertip and distance on the left; state, distance, which way to move and timings on the right.
 #
 #   bash tools/live.sh mug        # look for a mug
-#   bash tools/live.sh            # type the target in this terminal; press t in the window to change it
+#   bash tools/live.sh            # ask by voice or by typing in this terminal; a new request any time
+#                                 # replaces the target. With no microphone on the GX10 it prints the
+#                                 # address of a page that turns a phone or laptop into the microphone.
 #
 #   UI=web bash tools/live.sh mug # fastest: no window, only the browser dashboard (it opens in
 #                                 # Firefox on the GX10's screen). The window costs about 9 ms a frame.
@@ -18,8 +20,7 @@ export DISPLAY="${DISPLAY:-:1}" XAUTHORITY="${XAUTHORITY:-/run/user/$(id -u)/gdm
 if [ $# -ge 1 ]; then
     args=(--target "$1")
 else
-    args=(--voice real)
-    export VOICE_MODE="${VOICE_MODE:-type}"
+    args=(--voice real)     # asks by voice: a microphone here, else the microphone page, else typed
 fi
 
 # The window opens tiny: give it its full size on the left monitor once it exists.
