@@ -304,6 +304,7 @@ class PerceptionConfig:
     stick_s: float = 0.5         # stay with the hand that was followed this recently: another one, elsewhere
     hand_speed_px_s: float = 2500.0   # in the picture, is not it. Elsewhere = farther than its own size plus
                                  # this speed (a fast reach at 30 cm crosses the picture in a third of a second)
+    lidar_from_m: float = 0.20   # lidar reads a surface as broad as a palm from this distance out
 
 
 # Settings that go with each of HAND_OPTIONS: (tracker in hands.make, config).
@@ -567,6 +568,15 @@ class Perception:
             return z_lidar, z_shape, pts, z_sized <= cfg.max_hand_m
         return z_lidar, z_shape, pts, True               # nothing to judge by: may be ours, held too close
 
+    @staticmethod
+    def _palm_is_hole(hand: Hand, depth: np.ndarray) -> bool:
+        h, w = depth.shape[:2]
+        palm = np.round(hand.kp[list(trackers.PALM)]).astype(int)
+        palm = palm[(palm[:, 0] >= 0) & (palm[:, 0] < w) & (palm[:, 1] >= 0) & (palm[:, 1] < h)]
+        if len(palm) < 2 or not np.any(depth[::16, ::16] > DEPTH_MIN):
+            return False
+        return bool(np.all(depth[palm[:, 1], palm[:, 0]] <= DEPTH_MIN))
+
     def _fused_hand(self, hands: list, frame: Frame):
         """hand_depth="fused": (the wearer's hand, its guided point in metres before smoothing,
         that point in the picture, where the depth came from, its 21 points in metres).
@@ -585,8 +595,16 @@ class Perception:
             # Stay with the hand that was being followed. A second hand coming nearer the object
             # (someone handing it over) must not take the guidance away, and if the wearer's own
             # hand is missed for a frame, the hand that is found somewhere else is not it.
-            reach_px = last[3] + cfg.hand_speed_px_s * (frame.t - last[0])
-            cands = [c for c in cands if math.hypot(c[0].tip[0] - last[1], c[0].tip[1] - last[2]) <= reach_px]
+            dt = frame.t - last[0]
+            reach_px, reach_m = last[3] + cfg.hand_speed_px_s * dt, 0.15 + 1.5 * dt
+
+            def same(c) -> bool:
+                k, (z_lidar, z_shape, _, _) = c
+                z = z_lidar if hd.agrees(z_lidar, hd.sized(z_shape)) or z_shape is None else hd.sized(z_shape)
+                return (math.hypot(k.tip[0] - last[1], k.tip[1] - last[2]) <= reach_px
+                        and (z is None or last[4] is None or abs(z - last[4]) <= reach_m))
+
+            cands = [c for c in cands if same(c)]
             if not cands:
                 return None, None, None, "none", None
             hand, m = min(cands, key=lambda c: (c[0].tip[0] - last[1]) ** 2 + (c[0].tip[1] - last[2]) ** 2)
@@ -597,7 +615,11 @@ class Perception:
             hand, m = max(cands, key=lambda c: c[0].score)
         z_lidar, z_shape, pts, _ = m
         hd.learn(z_lidar, z_shape)
-        z, lidar_share = hd.fuse(z_lidar, z_shape, frame.t)
+        # Lidar reads a palm from 20 cm out. No reading on it while there are readings elsewhere
+        # means it is nearer than that, whatever its size suggests: a hand that close is cut by
+        # the edge of the picture and looks smaller than it is.
+        near = z_lidar is None and hand.kp is not None and self._palm_is_hole(hand, frame.depth)
+        z, lidar_share = hd.fuse(z_lidar, z_shape, frame.t, at_most=cfg.lidar_from_m if near else None)
         tracing.put(hand_z=None if z is None else round(z, 3), hand_lidar_share=round(lidar_share, 2),
                     hand_z_lidar=None if z_lidar is None else round(z_lidar, 3),
                     hand_z_size=None if z_shape is None else round(hd.sized(z_shape), 3))
@@ -717,7 +739,7 @@ class Perception:
         if hand is not None:
             tracing.put(hand_depth=src)
             size = 150.0 if hand.box is None else max(hand.box[2] - hand.box[0], hand.box[3] - hand.box[1])
-            self._hand_last = (frame.t, hand.tip[0], hand.tip[1], size)
+            self._hand_last = (frame.t, hand.tip[0], hand.tip[1], size, None if hand_raw is None else float(hand_raw[2]))
         if hasattr(self.hands, "chosen"):
             self.hands.chosen(hand, int(frame.t * 1000), None if hand_raw is None else float(hand_raw[2]))
 

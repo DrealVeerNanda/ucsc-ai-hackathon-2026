@@ -277,28 +277,80 @@ class DepthArm:
     over the bottom or a side edge, and the hand is its far end. Works for any hand shape,
     glove or grip, and when the hand is too close or too blurred for a keypoint model.
 
+    The table top is found first (the flat surface most of the near readings lie on) and
+    only what stands clear above it counts, which removes the table and the knees under it.
     A hand closer than the lidar can range (about 20 cm) is a hole in the depth, as is
     anything far and dark; the hole counts as arm only where the colour could be skin.
     What it cannot tell apart from an arm: anything else near that crosses the bottom or a
-    side edge with a free end, such as the wearer's knee when sitting. So on its own it is
-    an option to try, not one to rely on."""
+    side edge with a free end, and with no table in view a knee is exactly that."""
 
     name = "Depth arm"
     uses_depth = True                # perception.py hands detect() the depth picture as well
     STEP = 4                         # the lidar picture is 256 x 192; the frame is 3.75x that
 
     def __init__(self, near_m: float = 0.75, enter_m: float = 0.45, edge_m: float = 0.04, min_frac: float = 0.006,
-                 too_near_m: float = 0.17):
+                 too_near_m: float = 0.17, clear_m: float = 0.025):
         self.near_m, self.enter_m, self.edge_m = near_m, enter_m, edge_m
-        self.min_frac, self.too_near_m = min_frac, too_near_m
+        self.min_frac, self.too_near_m, self.clear_m = min_frac, too_near_m, clear_m
+        self._rng = np.random.default_rng(0)
+        self._plane = None           # the table found in the last frame
 
-    def blobs(self, rgb: np.ndarray, depth: np.ndarray):
-        """(labels, [blob]) at 1/STEP size. A blob is a dict: label, area, where it enters."""
+    def table(self, d: np.ndarray, K: np.ndarray):
+        """The table top as a plane (unit normal toward the camera, offset), or None: the flat
+        surface below the camera that most of the near lidar readings lie on. Found afresh
+        each frame from 60 random triples of points."""
+        s = self.STEP
+        vv, uu = np.nonzero((d > DEPTH_MIN) & (d < 1.2))
+        if len(vv) < 300:
+            return None
+        pick = self._rng.choice(len(vv), min(len(vv), 2500), replace=False)
+        z = d[vv[pick], uu[pick]].astype(np.float64)
+        pts = np.column_stack([(uu[pick] * s + s / 2 - K[0, 2]) * z / K[0, 0],
+                               (vv[pick] * s + s / 2 - K[1, 2]) * z / K[1, 1], z])
+        tri = pts[self._rng.integers(0, len(pts), (150, 3))]
+        normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+        length = np.linalg.norm(normals, axis=1)
+        ok = length > 1e-6
+        normals, tri = normals[ok] / length[ok, None], tri[ok]
+        offsets = -np.einsum("ij,ij->i", normals, tri[:, 0])
+        flip = offsets < 0                                # make every normal point at the camera
+        normals[flip], offsets[flip] = -normals[flip], -offsets[flip]
+        if self._plane is not None:                       # last frame's table is a candidate too
+            normals, offsets = np.vstack([normals, self._plane[0]]), np.append(offsets, self._plane[1])
+        # A table is below the lens and seen from above: its normal points up (camera y is
+        # down), and it lies 10 to 80 cm from the lens. That leaves out walls and the floor.
+        ok = (normals[:, 1] < -0.5) & (offsets > 0.10) & (offsets < 0.80)
+        self._plane = None
+        if not ok.any():
+            return None
+        normals, offsets = normals[ok], offsets[ok]
+        count = (np.abs(pts @ normals.T + offsets) < 0.015).sum(0)
+        best = len(count) - 1 if count[-1] >= 0.9 * count.max() else int(np.argmax(count))   # stay with last frame's if it still fits
+        if count[best] < 0.2 * len(pts):
+            return None
+        on = pts[np.abs(pts @ normals[best] + offsets[best]) < 0.015]
+        centre = on.mean(0)                               # least squares through the points on it
+        n = np.linalg.svd(on - centre, full_matrices=False)[2][2]
+        n = -n if n @ centre > 0 else n
+        self._plane = (n, float(-n @ centre))
+        return self._plane
+
+    def blobs(self, rgb: np.ndarray, depth: np.ndarray, K: np.ndarray | None = None):
+        """(labels, depth, [blob]) at 1/STEP size. A blob is a dict: its mask, area, where it enters."""
         s = self.STEP
         d = depth[s // 2::s, s // 2::s]
         valid = (d > DEPTH_MIN) & (d < DEPTH_MAX)
         hole = (d <= DEPTH_MIN) & skin(rgb[s // 2::s, s // 2::s])     # too close to range, and skin-coloured
-        near = (valid & (d < self.near_m)) | hole
+        near = valid & (d < self.near_m)
+        plane = None if K is None else self.table(d, K)
+        if plane is not None:
+            # Keep what stands clear above the table top. The arm does; the table itself does
+            # not, and nor does anything under it, such as the wearer's knees.
+            n, off = plane
+            vv, uu = np.mgrid[0:d.shape[0], 0:d.shape[1]]
+            x, y = (uu * s + s / 2 - K[0, 2]) * d / K[0, 0], (vv * s + s / 2 - K[1, 2]) * d / K[1, 1]
+            near &= (n[0] * x + n[1] * y + n[2] * d + off) > self.clear_m
+        near |= hole
         # Cut the near region wherever the depth steps: an arm over a table is nearer than the
         # table by more than a few centimetres all the way round, and that step is its outline.
         dz = np.where(valid, d, 0.0).astype(np.float32)
@@ -330,6 +382,10 @@ class DepthArm:
             # Where it comes in it is forearm or elbow, close to the body. A table edge or the
             # floor crossing the border further away is not an arm.
             if de.size and float(np.median(de)) > self.enter_m:
+                continue
+            # A hand too close to range fills a good part of the picture. A small hole in the
+            # depth at the edge is a knee or a sleeve, not that.
+            if float(np.mean(d[m] > DEPTH_MIN)) < 0.3 and area < 0.08 * h * w:
                 continue
             out.append({"label": i, "area": area, "enter": (float(eu.mean()), float(ev.mean())), "mask": m,
                         "enter_z": float(np.median(de)) if de.size else self.too_near_m})
@@ -373,10 +429,8 @@ class DepthArm:
     def detect(self, rgb: np.ndarray, t_ms: int = 0, depth=None, K=None) -> list[Hand]:
         if depth is None or not np.any(depth > DEPTH_MIN):
             return []                                    # no lidar at all: nothing to go by
-        _, d, blobs = self.blobs(rgb, depth)
-        # Of several, the one that comes in nearest: the forearm is closer to the chest than a
-        # table edge or a knee.
-        hands = [self._hand(b, d, rgb.shape) for b in sorted(blobs, key=lambda b: b["enter_z"])]
+        _, d, blobs = self.blobs(rgb, depth, K)
+        hands = [self._hand(b, d, rgb.shape) for b in sorted(blobs, key=lambda b: -b["area"])]
         return [k for k in hands if k is not None][:1]
 
 
@@ -422,11 +476,16 @@ class DepthFollow:
         hole = (d <= DEPTH_MIN) if z < 0.30 else np.zeros_like(at_depth)
         m = (at_depth | hole) & like_skin
         hand_px = (2 * half / s) ** 2
-        if m.sum() < self.min_share * hand_px:
+        # Too little of it: the hand has gone. Far more than a hand: this is a thigh, a table
+        # top or a shirt that happens to be skin-coloured and at the same depth.
+        if not self.min_share * hand_px <= m.sum() <= 1.6 * hand_px:
             self.state = None
             return None
         vv, uu = np.nonzero(m)
         c = np.array([x1 + uu.mean() * s, y1 + vv.mean() * s])
+        if np.hypot(c[0] - u, c[1] - v) > half:          # a hand does not jump its own width in a frame
+            self.state = None
+            return None
         zs = d[m & at_depth]
         z_new = float(np.median(zs)) if zs.size >= 5 else z
         self.state = (c[0], c[1], z_new, half, off)
@@ -595,9 +654,12 @@ class HandDepth:
             return False
         return z_sized is None or abs(z_lidar - z_sized) <= max(0.08, 0.3 * z_sized)
 
-    def fuse(self, z_lidar: float | None, z_shape: float | None, t: float):
-        """(depth or None, how much of it is lidar 0..1). Call once a frame for the chosen hand."""
+    def fuse(self, z_lidar: float | None, z_shape: float | None, t: float, at_most: float | None = None):
+        """(depth or None, how much of it is lidar 0..1). Call once a frame for the chosen hand.
+        at_most: the hand is known to be no farther than this (see perception.py)."""
         z_sized = self.sized(z_shape)
+        if z_sized is not None and at_most is not None:
+            z_sized = min(z_sized, at_most)
         ok = self.agrees(z_lidar, z_sized)
         if z_sized is None:
             self.reset()
