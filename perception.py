@@ -14,6 +14,11 @@ Settings by environment variable:
     PERCEPTION_DETECTOR=yoloworld|yoloe|coco|none   open-vocabulary (default) or fixed COCO classes
     PERCEPTION_HAND=mediapipe|sticker|none          hand model (default) or a coloured sticker
     PERCEPTION_STICKER_HSV=35,80,80,85,255,255      sticker colour range (default: green)
+    HAND_OPTION=1..7 or a name  which of HAND_OPTIONS below finds the hand (default 1, the one the
+                                demo was built on). It can be changed while running: say "hand option 3".
+    HAND_POINT=index_tip|palm|knuckles|nearest      which point of the hand is guided to the object
+                                (default: whatever the hand option says). Options 2 and up only.
+    HAND_FILTER=average|one_euro|kalman             smoothing of that point (default: the option's)
     PERCEPTION_USE_POSE=1       remember the object in world coordinates. Only switch this on
                                 after tools/check_pose.py says the pose is usable.
     PERCEPTION_DETECT_EVERY=1   run the detector on every Nth frame
@@ -29,27 +34,45 @@ The detector and tracker wrappers are adapted from the RTHACK handguide target a
 """
 from __future__ import annotations
 
+import math
 import os
 import sys
 import threading
 import time
-import urllib.request
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
 
 import cv2
 import numpy as np
 
+import hands as trackers
 import tracing
+from hands import (DEPTH_MAX, DEPTH_MIN, MODELS_DIR, Hand, MediaPipeHand, StickerHand,  # noqa: F401
+                   back_project, fast_cores)
+from hands import fp16 as _fp16
 from interfaces import Frame, Scene
 
-MODELS_DIR = Path(os.environ.get("MODELS_DIR") or Path(__file__).resolve().parent / "models")
-HAND_MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/"
-                  "float16/latest/hand_landmarker.task")
-DEPTH_MIN, DEPTH_MAX = 0.15, 4.0     # lidar readings outside this are not trusted
+# Ways of finding the wearer's hand, to try against each other. (key, name said aloud, what it is)
+# Each is a tracker from hands.py plus the settings in _HAND_SETUPS that go with it.
+HAND_OPTIONS = [
+    ("mediapipe", "MediaPipe", "The tracker the demo was built on, unchanged: MediaPipe on the CPU, depth "
+                               "from lidar at the fingertip or else from the hand's size."),
+    ("mediapipe_steady", "MediaPipe, steady", "The same model looking a little wider and letting go later, with one "
+                                              "continuous depth for the hand, a filter that does not lag, and "
+                                              "bystanders' hands rejected by the way their arm comes in."),
+    ("yolo", "YOLO hand", "A keypoint model on the GPU that looks at every frame afresh, 3 ms instead of 15. "
+                          "Trained on hands seen from behind."),
+    ("yolo_medium", "YOLO hand, large", "The larger version of the same model: a little slower, holds on to "
+                                        "hands that are partly out of the picture."),
+    ("hybrid", "YOLO hand with depth", "YOLO hand, and when it loses the hand the lidar picture of the arm carries "
+                                       "on from where it was: for the hand too close, blurred or round the object."),
+    ("arm", "depth only", "No hand model at all: the arm is the near thing that comes in over the edge of the "
+                          "lidar picture, the hand is its far end. Works with gloves; fooled by a knee."),
+    ("hybrid_palm", "YOLO hand with depth, palm", "Option 5 guiding the middle of the palm instead of the index "
+                                                  "fingertip: steadier, and the hand arrives ready to close."),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -73,32 +96,58 @@ def to_xyz(u: float, v: float, depth: np.ndarray, K: np.ndarray, r: int = 4, nea
     return back_project(u, v, d, K)
 
 
-def back_project(u: float, v: float, d: float, K: np.ndarray) -> np.ndarray:
-    return np.array([(u - K[0, 2]) * d / K[0, 0], (v - K[1, 2]) * d / K[1, 1], d])
+def surface_depth(vals: np.ndarray, share: float = 0.12, least: int = 5) -> float:
+    """The depth of the nearest surface of some size among these lidar readings.
+
+    Readings of one surface lie within a few centimetres of each other. Going from the
+    nearest reading outward, the first such group that holds `share` of all the readings is
+    the object's front; its median is the answer. A solid object filling the patch gives the
+    plain median. A clear bottle gives the label and the water, not the table and wall seen
+    through it; a few stray near readings (a finger, lidar noise at an edge) are passed over."""
+    v = np.sort(np.asarray(vals, np.float64))
+    end = np.searchsorted(v, v + np.maximum(0.03, 0.06 * v), side="right")
+    count = end - np.arange(len(v))
+    big = np.nonzero(count >= max(float(least), share * len(v)))[0]
+    i = int(big[0]) if len(big) else int(np.argmax(count))
+    return float(np.median(v[i:end[i]]))
 
 
-def box_xyz(box, depth: np.ndarray, K: np.ndarray, exclude: np.ndarray | None = None):
-    """3D point of an object: its box centre, at the median depth of the box's centre third.
-    With `exclude` (a mask of pixels that are hand, not object) the whole box is used minus
-    those pixels, leaning to the near side so the background behind the object does not win."""
+def box_xyz(box, depth: np.ndarray, K: np.ndarray, exclude: np.ndarray | None = None, loose: bool = True):
+    """3D point of an object: its box centre, at the depth of its front surface.
+
+    The surface is looked for in the box's centre third, where a solid object is all there
+    is to see. Lidar goes through clear plastic and glass, so a water bottle can have no
+    reading at all there: then (unless loose=False) the whole box is used, where the label,
+    the water or the foot of the bottle still give one. That reading is less sure: now and
+    then it is the table seen through the bottle. With `exclude` (a mask of pixels that are
+    hand, not object) the whole box minus those pixels is used from the start."""
     x1, y1, x2, y2 = box
     cx, cy = 0.5 * (x1 + x2), 0.5 * (y1 + y2)
-    part = 2.0 if exclude is not None else 6.0
-    hw, hh = max(2.0, (x2 - x1) / part), max(2.0, (y2 - y1) / part)
     h, w = depth.shape[:2]
-    xa, xb = int(max(0, cx - hw)), int(min(w, cx + hw + 1))
-    ya, yb = int(max(0, cy - hh)), int(min(h, cy + hh + 1))
-    if xb <= xa or yb <= ya:
+
+    def readings(part: float):
+        hw, hh = max(2.0, (x2 - x1) / part), max(2.0, (y2 - y1) / part)
+        xa, xb = int(max(0, cx - hw)), int(min(w, cx + hw + 1))
+        ya, yb = int(max(0, cy - hh)), int(min(h, cy + hh + 1))
+        if xb <= xa or yb <= ya:
+            return np.empty(0), 1
+        vals = depth[ya:yb, xa:xb]
+        ok = (vals > DEPTH_MIN) & (vals < DEPTH_MAX)
+        if exclude is not None:
+            ok &= ~exclude[ya:yb, xa:xb].astype(bool)
+        return vals[ok], vals.size
+
+    if exclude is None:
+        vals, area = readings(6.0)
+        if vals.size >= max(5, 0.3 * area):      # the middle is mostly there: a solid object
+            return back_project(cx, cy, surface_depth(vals, share=0.12), K)
+        if not loose:
+            return None
+    vals, area = readings(2.2)                   # a little inside the box: its edge is background
+    if vals.size < 30:
         return None
-    vals = depth[ya:yb, xa:xb]
-    ok = (vals > DEPTH_MIN) & (vals < DEPTH_MAX)
-    if exclude is not None:
-        ok &= ~exclude[ya:yb, xa:xb].astype(bool)
-    vals = vals[ok]
-    if vals.size < (30 if exclude is not None else 5):
-        return None
-    d = np.percentile(vals, 40) if exclude is not None else np.median(vals)
-    return back_project(cx, cy, float(d), K)
+    # One lidar reading is a dozen pixels here, so 40 pixels are three readings that agree.
+    return back_project(cx, cy, surface_depth(vals, share=0.10, least=40), K)
 
 
 def hand_mask(shape, points: np.ndarray, grow: float = 0.25, min_px: int = 41) -> np.ndarray:
@@ -141,14 +190,6 @@ def _in_models_dir():
         yield
     finally:
         os.chdir(old)
-
-
-def _fp16(device) -> bool:
-    """Half precision on the GPU: about 25% faster on the GX10, boxes within a pixel."""
-    if os.environ.get("PERCEPTION_FP16", "1") == "0" or (device and not str(device).startswith("cuda")):
-        return False
-    import torch
-    return torch.cuda.is_available()
 
 
 def _detections(res, names) -> list[Detection]:
@@ -233,112 +274,6 @@ class CocoDetector:
 
 
 # ---------------------------------------------------------------------------
-# Hand trackers. Each has detect(rgb, t_ms) -> [Hand].
-
-def fast_cores() -> set[int] | None:
-    """The CPU's fast cores, if it has two kinds. The GX10 has 10 Cortex-X925 at 3.9 GHz and
-    10 Cortex-A725 at 2.8 GHz; MediaPipe takes 2.5x as long on the slow ones (24 ms instead of
-    9.5 ms a frame with no hand, 41 instead of 15 with two), and Linux moves it between them."""
-    if os.environ.get("PERCEPTION_FAST_CORES", "1") == "0" or not hasattr(os, "sched_setaffinity"):
-        return None
-    freq = {}
-    for c in os.sched_getaffinity(0):
-        try:
-            freq[c] = int(Path(f"/sys/devices/system/cpu/cpu{c}/cpufreq/cpuinfo_max_freq").read_text())
-        except (OSError, ValueError):
-            return None
-    top = max(freq.values(), default=0)
-    fast = {c for c, f in freq.items() if f == top}
-    return fast if 0 < len(fast) < len(freq) else None
-
-
-@contextmanager
-def _on_cores(cores: set[int] | None):
-    """Run the block on these cores; threads it starts keep them. Linux sets this per thread."""
-    if not cores:
-        yield
-        return
-    old = os.sched_getaffinity(0)
-    os.sched_setaffinity(0, cores)
-    try:
-        yield
-    finally:
-        os.sched_setaffinity(0, old)
-
-
-@dataclass
-class Hand:
-    tip: tuple                 # (u, v) of the point to guide: the index fingertip
-    points: np.ndarray         # N x 2 px, everything known to be hand (for "is it covering the object")
-    samples: list              # (u, v) pixels to read depth at, best first
-    score: float = 1.0
-    px_per_m: float | None = None   # how big the hand looks: pixels per metre of real hand, if known
-
-
-class MediaPipeHand:
-    """MediaPipe hand landmarker. The guided point is the index fingertip (landmark 8); depth is
-    read there first, then further down the finger if the tip has no valid lidar reading."""
-
-    def __init__(self, model_path: str | Path | None = None, num_hands: int = 2, min_conf: float = 0.5):
-        import mediapipe as mp
-        from mediapipe.tasks.python import BaseOptions, vision
-
-        path = Path(model_path) if model_path else MODELS_DIR / "hand_landmarker.task"
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"[perception] downloading the hand model to {path}", file=sys.stderr)
-            urllib.request.urlretrieve(HAND_MODEL_URL, path)
-        self._mp = mp
-        opts = vision.HandLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=str(path), delegate=BaseOptions.Delegate.CPU),
-            running_mode=vision.RunningMode.VIDEO, num_hands=num_hands,
-            min_hand_detection_confidence=min_conf, min_hand_presence_confidence=min_conf,
-            min_tracking_confidence=min_conf)
-        with _on_cores(fast_cores()):   # MediaPipe's own threads start here and keep these cores
-            self.landmarker = vision.HandLandmarker.create_from_options(opts)
-        self.name = "MediaPipe"
-        self._last_ts = -1
-
-    def detect(self, rgb: np.ndarray, t_ms: int) -> list[Hand]:
-        h, w = rgb.shape[:2]
-        ts = max(int(t_ms), self._last_ts + 1)   # video mode needs strictly increasing timestamps
-        self._last_ts = ts
-        img = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-        res = self.landmarker.detect_for_video(img, ts)
-        hands = []
-        for lms, hd in zip(res.hand_landmarks, res.handedness):
-            pts = np.array([[p.x * w, p.y * h] for p in lms], dtype=np.float32)
-            # Wrist to middle knuckle is about 9.5 cm and the knuckle row about 8 cm. One of the two
-            # faces the camera whichever way the hand points, so the larger gives the scale.
-            scale = max(np.linalg.norm(pts[0] - pts[9]) / 0.095, np.linalg.norm(pts[5] - pts[17]) / 0.08)
-            hands.append(Hand(tip=tuple(pts[8]), points=pts, samples=[tuple(pts[i]) for i in (8, 7, 6, 5)],
-                              score=float(hd[0].score) if hd else 0.0, px_per_m=float(scale)))
-        return hands
-
-
-class StickerHand:
-    """Fallback: a bright sticker or glove on the reaching hand, found by colour. Installs
-    nowhere and runs at any frame rate. Default range is green; set PERCEPTION_STICKER_HSV."""
-
-    name = "Sticker"
-
-    def __init__(self, lo=(35, 80, 80), hi=(85, 255, 255), min_area: int = 120):
-        self.lo, self.hi, self.min_area = np.array(lo, np.uint8), np.array(hi, np.uint8), min_area
-
-    def detect(self, rgb: np.ndarray, t_ms: int = 0) -> list[Hand]:
-        mask = cv2.inRange(cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV), self.lo, self.hi)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-        n, _, stats, cents = cv2.connectedComponentsWithStats(mask)
-        if n < 2:
-            return []
-        i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        if stats[i, cv2.CC_STAT_AREA] < self.min_area:
-            return []
-        c = (float(cents[i][0]), float(cents[i][1]))
-        return [Hand(tip=c, points=np.array([c], np.float32), samples=[c])]
-
-
-# ---------------------------------------------------------------------------
 @dataclass
 class PerceptionConfig:
     detect_every: int = 1        # run the detector on every Nth frame, reuse its box in between
@@ -351,6 +286,11 @@ class PerceptionConfig:
     box_margin: float = 0.10     # hand inside the box grown by this fraction: the box shows the hand
     hand_patch: int = 6          # half-size in px of the depth patch at the fingertip
     max_hand_m: float = 0.90     # a hand farther from the camera than this is somebody else's
+    shadow_s: float = 0.5        # the hand tracker lost the hand less than this ago: it is still over the object
+    leap_m: float = 0.10         # the object's depth coming nearer by more than this in one frame, to where the
+                                 # hand is, is the hand being read
+    pick_reach_m: float = 1.1    # of several things the detector takes for the target, one nearer than this wins
+    reach_m: float = 0.75        # farther from the camera than this, a seated wearer cannot reach it
     aim_inner: float = 0.7       # the hand is guided to the nearest point of the middle 70% of the
                                  # object, so any part of it counts, not only its centre. 0 = centre only
     helper_after_s: float = 1.0  # detector has found nothing for this long: ask the helper (Cosmos)
@@ -359,6 +299,52 @@ class PerceptionConfig:
     helper_hold_s: float = 5.0   # trust a position from the helper this long without a newer one
     size_depth: bool = True      # no lidar on the hand (closer than about 20 cm): estimate its depth from its size
     parallel: bool = True        # hand tracker (CPU) runs while the detector (GPU) does, not after it
+    # The hand, for hand options 2 and up. The defaults below are option 1: what the demo was built on.
+    hand_depth: str = "switch"   # "switch": lidar at the fingertip, or else the hand's size. "fused": one
+                                 # continuous depth from lidar over the palm and the hand's shape
+    hand_point: str = "index_tip"  # which point of the hand is guided: index_tip, palm, knuckles, nearest
+    hand_filter: str = "average"   # smoothing of that point: average (of `smooth` frames), one_euro, kalman
+    own_arm: bool = False        # a hand whose forearm leaves by the top of the picture is somebody else's
+    hand_coast_s: float = 0.0    # hand not found for less than this: carry on along its path (not with "average")
+    stick_s: float = 0.5         # stay with the hand that was followed this recently: another one, elsewhere
+    hand_speed_px_s: float = 2500.0   # in the picture, is not it. Elsewhere = farther than its own size plus
+                                 # this speed (a fast reach at 30 cm crosses the picture in a third of a second)
+    lidar_from_m: float = 0.20   # lidar reads a surface as broad as a palm from this distance out
+
+
+# Settings that go with each of HAND_OPTIONS: (tracker in hands.make, config).
+_FUSED = dict(hand_depth="fused", hand_filter="one_euro", own_arm=True)
+_HAND_SETUPS = {
+    "mediapipe": ("mediapipe", {}),
+    "mediapipe_steady": ("mediapipe_wide", _FUSED),
+    "yolo": ("yolo", _FUSED),
+    "yolo_medium": ("yolo_medium", _FUSED),
+    "hybrid": ("hybrid", dict(_FUSED, hand_coast_s=0.25)),
+    "arm": ("arm", dict(_FUSED, hand_filter="kalman")),
+    "hybrid_palm": ("hybrid", dict(_FUSED, hand_coast_s=0.25, hand_point="palm")),
+    "sticker": ("sticker", {}),
+}
+_HAND_DEFAULTS = dict(hand_depth="switch", hand_point="index_tip", hand_filter="average", own_arm=False,
+                      hand_coast_s=0.0)
+
+
+@dataclass
+class HandDetails:
+    """Everything known about the wearer's hand in one frame, for whoever decides "grab".
+    Positions are metres in the camera frame; None where the tracker cannot tell."""
+    xyz: np.ndarray | None        # the guided point, smoothed: the same as Scene.hand_xyz
+    px: tuple                     # ...and where it is in the picture
+    point: str                    # which point that is: index_tip, palm, knuckles, nearest
+    confidence: float             # 0..1, the tracker's own
+    tracker: str                  # which tracker found it, e.g. "YOLO hand (small)" or "Depth arm"
+    depth_from: str               # lidar, size, blend, or none
+    box: tuple | None             # x1, y1, x2, y2 px
+    keypoints_px: np.ndarray | None = None    # 21 x 2
+    keypoints_xyz: np.ndarray | None = None   # 21 x 3, this frame, not smoothed
+    palm_xyz: np.ndarray | None = None        # middle of the palm
+    index_tip_xyz: np.ndarray | None = None
+    nearest_m: float | None = None            # from the nearest fingertip or knuckle to the object's nearest point
+    coasting: bool = False                    # not seen in this frame: carried on along its path
 
 
 class _Average:
@@ -428,12 +414,33 @@ class Perception:
         self._obj_avg = _Average(self.cfg.smooth, self.cfg.jump_m)
         self._hand_avg = _Average(self.cfg.smooth, self.cfg.jump_m)
         self._hand_scale = deque(maxlen=90)   # lidar depth / size-based depth, to fit the size estimate to this hand
-        # One worker, so the hand tracker still sees frames one at a time and in order.
-        cores = fast_cores()
-        self._hand_pool = (ThreadPoolExecutor(1, thread_name_prefix="hand",
-                                              initializer=lambda: cores and os.sched_setaffinity(0, cores))
-                           if self.cfg.parallel and hands else None)
+        self._hand_depth = trackers.HandDepth()     # the same for hand_depth="fused"; it outlives a change of target
+        self._hand_filter = None
+        self._hand_last = None       # (t, u, v) of the hand last taken as the wearer's
+        self._next_hands = None      # (tracker, settings) waiting to be swapped in between two frames
+        self._hand_pool = None
+        self.hand = None             # HandDetails for the last frame, or None
+        self._set_hands(hands, {})
         self._forget()
+
+    def use_hands(self, tracker, **settings):
+        """Change the hand tracker and the settings that go with it. Safe from any thread and in
+        the middle of a reach: the swap happens between two frames."""
+        self._next_hands = (tracker, settings)
+
+    def _set_hands(self, tracker, settings: dict):
+        self.hands = tracker
+        for name, value in settings.items():
+            setattr(self.cfg, name, value)
+        self._hand_filter = None if self.cfg.hand_filter == "average" else trackers.make_filter(self.cfg.hand_filter)
+        self._hand_avg.clear()
+        self._hand_depth.reset()
+        self._hand_last = None
+        if self._hand_pool is None and self.cfg.parallel and tracker is not None:
+            # One worker, so the hand tracker still sees frames one at a time and in order.
+            cores = fast_cores()
+            self._hand_pool = ThreadPoolExecutor(1, thread_name_prefix="hand",
+                                                 initializer=lambda: cores and os.sched_setaffinity(0, cores))
 
     def _forget(self):
         self._box = None
@@ -443,6 +450,10 @@ class Perception:
         self._anchored = False       # is _anchor in world coordinates?
         self._from_helper = False    # did _anchor come from the helper rather than the detector?
         self._unseen_t = None        # since when the detector has found nothing
+        self._blocked_t = None       # since when something nearer has stood in front of the object
+        self._shadow = None          # (the wearer's hand, when) the last time the tracker had it
+        self._other = False          # the detector has moved to a different thing than the one remembered
+        self._hand_z = None          # (when, depth) of the wearer's hand, the last time it had one
         self._helper_t = -1e9        # when the helper was last asked
         self._helper_gap = self.cfg.helper_every_s
         self._score = 0.0
@@ -450,20 +461,41 @@ class Perception:
         self._said_hand = None       # so it reports changes, not every frame
         self._said_t = -1e9
         self._i = 0
+        self._goal = None            # where the hand was last being sent, for hand_point="nearest"
         self._obj_avg.clear()
         self._hand_avg.clear()
 
     def _track_hands(self, frame: Frame):
         t = time.perf_counter()
-        hands = self.hands.detect(frame.rgb, int(frame.t * 1000))
+        if getattr(self.hands, "uses_depth", False):
+            hands = self.hands.detect(frame.rgb, int(frame.t * 1000), depth=frame.depth, K=frame.K)
+        else:
+            hands = self.hands.detect(frame.rgb, int(frame.t * 1000))
         return hands, (time.perf_counter() - t) * 1000
 
-    def _pick(self, dets: list[Detection]):
+    def _pick(self, dets: list[Detection], frame: Frame | None = None):
+        """The detection to follow. One the wearer can reach always wins over one they cannot:
+        there may be another bottle on a desk across the room, and the detector likes that one
+        just as much. Among those, the one already being followed, then the best score."""
         if not dets:
             return None
-        if self._box is not None:    # prefer the one we were already following
-            return max(dets, key=lambda d: d.score + 0.5 * iou(d.box, self._box))
-        return dets[0]
+
+        def within_reach(d: Detection) -> int:
+            if frame is None:
+                return 1
+            p = box_xyz(d.box, frame.depth, frame.K)
+            return 1 if p is None else (2 if p[2] <= self.cfg.pick_reach_m else 0)     # no reading: cannot rule it out
+
+        def rank(d: Detection):
+            return within_reach(d), d.score + (0.5 * iou(d.box, self._box) if self._box is not None else 0.0)
+
+        best = max(dets[:6], key=rank)
+        # While an object within reach is remembered, a different one out of reach is not "it":
+        # the near one is only missed for a moment (a clear bottle often is).
+        near = self._anchor is not None and not self._anchored and self._anchor[2] <= self.cfg.pick_reach_m
+        if near and within_reach(best) == 0 and iou(best.box, self._box) == 0.0:
+            return None
+        return best
 
     def _covered(self, box, hand: Hand | None) -> bool:
         """Is any part of the hand over the object's box? Then the box's depth is the hand's."""
@@ -473,6 +505,29 @@ class Perception:
         p = hand.points
         return bool(np.any((p[:, 0] >= box[0] - mx) & (p[:, 0] <= box[2] + mx) &
                            (p[:, 1] >= box[1] - my) & (p[:, 1] <= box[3] + my)))
+
+    def _blocked(self, box, z: float, depth: np.ndarray) -> bool:
+        """Is something nearer than the object standing in front of its box? An arm reaching
+        for it, whether or not the hand tracker has found the hand. Then what lidar reads there
+        is the arm, and the detector not seeing the object means hidden, not gone."""
+        if box is None:
+            return False
+        h, w = depth.shape[:2]
+
+        def part(grow: float):
+            gx, gy = grow * (box[2] - box[0]), grow * (box[3] - box[1])
+            xa, xb = int(max(0, box[0] - gx)), int(min(w, box[2] + gx + 1))
+            ya, yb = int(max(0, box[1] - gy)), int(min(h, box[3] + gy + 1))
+            return depth[ya:yb:2, xa:xb:2]
+
+        vals = part(0.0)
+        if vals.size == 0:
+            return False
+        if float(np.mean((vals > DEPTH_MIN) & (vals < z - 0.06))) >= 0.3:
+            return True
+        # A hand closer than lidar ranges leaves a hole, and a wide one: over the box and well
+        # past it. (A clear bottle is a hole too, but only as big as itself.)
+        return float(np.mean(part(0.5) <= DEPTH_MIN)) >= 0.8
 
     def _hand_xyz(self, hand: Hand, frame: Frame):
         """(fingertip position or None, where its depth came from, in reach?).
@@ -510,6 +565,108 @@ class Perception:
         xyz = None if z is None else back_project(hand.tip[0], hand.tip[1], z, frame.K)
         return xyz, src, reach
 
+    def _measure(self, hand: Hand, frame: Frame):
+        """hand_depth="fused", one candidate hand: (lidar depth or None, depth from its shape for
+        an average hand or None, its 21 points from the shape or None, could it be the wearer's?)."""
+        cfg, hd = self.cfg, self._hand_depth
+        pts = trackers.hand_points_3d(hand, frame.K)
+        z_shape = None if pts is None else float(np.mean(pts[list(trackers.PALM), 2]))
+        if hand.z is not None:
+            z_lidar = hand.z
+        elif hand.kp is not None:
+            z_lidar, _ = trackers.palm_depth(hand, frame.depth)
+        elif hand.box is not None:
+            z_lidar = trackers.box_depth(hand.box, frame.depth)
+        else:
+            z_lidar = next((float(p[2]) for p in (to_xyz(u, v, frame.depth, frame.K, r=cfg.hand_patch, nearest=True)
+                                                  for u, v in hand.samples) if p is not None), None)
+        z_sized = hd.sized(z_shape)
+        if hand.ours is not None:
+            return z_lidar, z_shape, pts, hand.ours
+        if cfg.own_arm and hand.kp is not None and (hand.sure is None or hand.sure[0]) and trackers.arm_from_above(hand.kp):
+            return z_lidar, z_shape, pts, False
+        # Lidar far beyond what the hand's size allows is reading past the hand, not the hand.
+        past = z_lidar is not None and z_sized is not None and z_lidar > 1.5 * z_sized + 0.05
+        if z_lidar is not None and not past:
+            return z_lidar, z_shape, pts, z_lidar <= cfg.max_hand_m
+        if z_sized is not None:
+            return z_lidar, z_shape, pts, z_sized <= cfg.max_hand_m
+        return z_lidar, z_shape, pts, True               # nothing to judge by: may be ours, held too close
+
+    @staticmethod
+    def _palm_is_hole(hand: Hand, depth: np.ndarray) -> bool:
+        h, w = depth.shape[:2]
+        palm = np.round(hand.kp[list(trackers.PALM)]).astype(int)
+        palm = palm[(palm[:, 0] >= 0) & (palm[:, 0] < w) & (palm[:, 1] >= 0) & (palm[:, 1] < h)]
+        if len(palm) < 2 or not np.any(depth[::16, ::16] > DEPTH_MIN):
+            return False
+        return bool(np.all(depth[palm[:, 1], palm[:, 0]] <= DEPTH_MIN))
+
+    def _fused_hand(self, hands: list, frame: Frame):
+        """hand_depth="fused": (the wearer's hand, its guided point in metres before smoothing,
+        that point in the picture, where the depth came from, its 21 points in metres).
+
+        The depth is one estimate from lidar over the palm and the hand's shape (see
+        hands.HandDepth). Each keypoint is then placed on its own pixel's ray, at that depth
+        plus how much nearer or farther the shape says the keypoint is than the palm."""
+        cfg, hd = self.cfg, self._hand_depth
+        cands = [(k, m) for k, m in ((k, self._measure(k, frame)) for k in hands) if m[3]]
+        # A hand the model sees beats one that is only being followed in the depth picture.
+        cands = [c for c in cands if c[0].kp is not None] or cands
+        if not cands:
+            return None, None, None, "none", None
+        last = self._hand_last
+        if last is not None and 0 <= frame.t - last[0] <= cfg.stick_s:
+            # Stay with the hand that was being followed. A second hand coming nearer the object
+            # (someone handing it over) must not take the guidance away, and if the wearer's own
+            # hand is missed for a frame, the hand that is found somewhere else is not it.
+            dt = frame.t - last[0]
+            reach_px, reach_m = last[3] + cfg.hand_speed_px_s * dt, 0.15 + 1.5 * dt
+
+            def same(c) -> bool:
+                k, (z_lidar, z_shape, _, _) = c
+                z = z_lidar if hd.agrees(z_lidar, hd.sized(z_shape)) or z_shape is None else hd.sized(z_shape)
+                return (math.hypot(k.tip[0] - last[1], k.tip[1] - last[2]) <= reach_px
+                        and (z is None or last[4] is None or abs(z - last[4]) <= reach_m))
+
+            cands = [c for c in cands if same(c)]
+            if not cands:
+                return None, None, None, "none", None
+            hand, m = min(cands, key=lambda c: (c[0].tip[0] - last[1]) ** 2 + (c[0].tip[1] - last[2]) ** 2)
+        elif self._box is not None:
+            cx, cy = 0.5 * (self._box[0] + self._box[2]), 0.5 * (self._box[1] + self._box[3])
+            hand, m = min(cands, key=lambda c: (c[0].tip[0] - cx) ** 2 + (c[0].tip[1] - cy) ** 2)
+        else:
+            hand, m = max(cands, key=lambda c: c[0].score)
+        z_lidar, z_shape, pts, _ = m
+        hd.learn(z_lidar, z_shape)
+        # Lidar reads a palm from 20 cm out. No reading on it while there are readings elsewhere
+        # means it is nearer than that, whatever its size suggests: a hand that close is cut by
+        # the edge of the picture and looks smaller than it is.
+        near = z_lidar is None and hand.kp is not None and self._palm_is_hole(hand, frame.depth)
+        z, lidar_share = hd.fuse(z_lidar, z_shape, frame.t, at_most=cfg.lidar_from_m if near else None)
+        tracing.put(hand_z=None if z is None else round(z, 3), hand_lidar_share=round(lidar_share, 2),
+                    hand_z_lidar=None if z_lidar is None else round(z_lidar, 3),
+                    hand_z_size=None if z_shape is None else round(hd.sized(z_shape), 3))
+        if z is None:
+            return hand, None, hand.tip, "none", None
+        src = "lidar" if lidar_share > 0.7 or z_shape is None else ("size" if lidar_share < 0.3 else "blend")
+        if pts is None:
+            return hand, back_project(hand.tip[0], hand.tip[1], z, frame.K), hand.tip, src, None
+        K, kp = frame.K, np.asarray(hand.kp, float)
+        zs = pts[:, 2] * (z / z_shape)
+        xyz = np.column_stack([(kp[:, 0] - K[0, 2]) * zs / K[0, 0], (kp[:, 1] - K[1, 2]) * zs / K[1, 1], zs])
+        uv, which = trackers.guided_point(cfg.hand_point, kp, xyz, self._goal)
+        return hand, xyz[which].mean(0), (float(uv[0]), float(uv[1])), src, xyz
+
+    def _aim(self, point: np.ndarray, object_xyz: np.ndarray, K: np.ndarray) -> np.ndarray:
+        """Where to send a point of the hand: the nearest point of the object's middle region,
+        at the object's depth. Reaching any part of the object is a success, not only its centre."""
+        b, z = self._box, object_xyz[2]
+        half = self.cfg.aim_inner * 0.5 * np.array([(b[2] - b[0]) * z / K[0, 0], (b[3] - b[1]) * z / K[1, 1]])
+        off = np.clip(point[:2] - object_xyz[:2], -half, half)
+        return np.array([object_xyz[0] + off[0], object_xyz[1] + off[1], z])
+
     def _ask_helper(self, frame: Frame, target: str, seen: bool, pose):
         """Take in an answer from the helper if one has arrived, and ask again if the detector
         is still blind. The answer is about an older frame: the position is read from that
@@ -546,6 +703,9 @@ class Perception:
         tracing.begin_frame(frame.t)
         t_start = time.perf_counter()
         t_models = 0.0               # time inside the models, the rest of locate() is our own maths
+        if self._next_hands is not None:
+            (tracker, settings), self._next_hands = self._next_hands, None
+            self._set_hands(tracker, settings)
         if target != self.target:
             self.target = target
             self._forget()
@@ -570,8 +730,11 @@ class Perception:
                 if hand_job is None:
                     t_models += time.perf_counter() - t
                 tracing.add("perception.detector", (time.perf_counter() - t) * 1000)
-                det = self._pick(dets)
+                det = self._pick(dets, frame)
                 if det is not None:
+                    # A box that shares nothing with the last one is another thing altogether (the
+                    # bottle on this desk instead of the one across the room): start afresh on it.
+                    self._other = self._box is not None and iou(det.box, self._box) == 0.0
                     self._box = det.box
                     self._score = det.score
                 self._seen = det is not None
@@ -589,15 +752,26 @@ class Perception:
             hands, ms = self._track_hands(frame)
             t_models += time.perf_counter() - t
             tracing.add("perception.hand", ms)
-        hand, hand_raw = None, None
-        reach = [(k, p, src) for k, (p, src, ok) in ((k, self._hand_xyz(k, frame)) for k in hands) if ok]
-        if reach:
-            if self._box is not None:
-                cx, cy = 0.5 * (self._box[0] + self._box[2]), 0.5 * (self._box[1] + self._box[3])
-                hand, hand_raw, src = min(reach, key=lambda kp: (kp[0].tip[0] - cx) ** 2 + (kp[0].tip[1] - cy) ** 2)
-            else:
-                hand, hand_raw, src = max(reach, key=lambda kp: kp[0].score)
+        hand, hand_raw, hand_uv, src, hand_points = None, None, None, "none", None
+        if cfg.hand_depth == "fused":
+            hand, hand_raw, hand_uv, src, hand_points = self._fused_hand(hands, frame)
+        else:
+            reach = [(k, p, src) for k, (p, src, ok) in ((k, self._hand_xyz(k, frame)) for k in hands) if ok]
+            if reach:
+                if self._box is not None:
+                    cx, cy = 0.5 * (self._box[0] + self._box[2]), 0.5 * (self._box[1] + self._box[3])
+                    hand, hand_raw, src = min(reach, key=lambda kp: (kp[0].tip[0] - cx) ** 2 + (kp[0].tip[1] - cy) ** 2)
+                else:
+                    hand, hand_raw, src = max(reach, key=lambda kp: kp[0].score)
+                hand_uv = hand.tip
+        if hand_raw is not None:
+            self._hand_z = (frame.t, float(hand_raw[2]))
+        if hand is not None:
             tracing.put(hand_depth=src)
+            size = 150.0 if hand.box is None else max(hand.box[2] - hand.box[0], hand.box[3] - hand.box[1])
+            self._hand_last = (frame.t, hand.tip[0], hand.tip[1], size, None if hand_raw is None else float(hand_raw[2]))
+        if hasattr(self.hands, "chosen"):
+            self.hands.chosen(hand, int(frame.t * 1000), None if hand_raw is None else float(hand_raw[2]))
 
         # Object position. Measured only when the detector sees it and the hand is not over it.
         pose = frame.pose if (cfg.use_pose and frame.pose is not None) else None
@@ -607,21 +781,55 @@ class Perception:
         self._anchored = pose is not None
         if self.helper is not None:
             self._ask_helper(frame, target, seen, pose)
-        covered = self._covered(self._box, hand)
-        measured = box_xyz(self._box, frame.depth, frame.K) if seen and not covered else None
-        if measured is None and seen and covered and self._anchor is None:
+        # The hand tracker blinks, a frame or two at a time, just when the hand is on the object.
+        # A hand seen a moment ago is still there for the question "whose depth is in this box".
+        if hand is not None:
+            self._shadow = (hand, frame.t)
+        shadow = hand if hand is not None else (
+            self._shadow[0] if self._shadow is not None and 0 <= frame.t - self._shadow[1] < cfg.shadow_s else None)
+        covered = self._covered(self._box, shadow)
+        z_was = None if self._anchor is None or self._other else float(
+            self._anchor[2] if pose is None else (pose[:3, :3].T @ (self._anchor - pose[:3, 3]))[2])
+        # Something in front of the object is believed for hold_covered_s at most. Past that it
+        # is not an arm passing: the object itself has come nearer, and is read again.
+        believe = self._blocked_t is None or frame.t - self._blocked_t <= cfg.hold_covered_s
+        measured, in_front = None, False
+        if seen and not covered:
+            measured = box_xyz(self._box, frame.depth, frame.K, loose=False)
+            if measured is None:
+                # Nothing to read in the middle of the box (a clear bottle). The reading from the
+                # whole box is good enough to start from, or to confirm what is remembered, but
+                # not to move the object somewhere else.
+                measured = box_xyz(self._box, frame.depth, frame.K)
+                if measured is not None and z_was is not None and abs(measured[2] - z_was) > max(0.05, 0.10 * z_was):
+                    measured = None
+            hand_z = self._hand_z[1] if self._hand_z is not None and 0 <= frame.t - self._hand_z[0] < 1.5 else None
+            if (measured is not None and z_was is not None and hand_z is not None and believe
+                    and measured[2] < z_was - cfg.leap_m and abs(measured[2] - hand_z) < 0.08):
+                # The object has leapt toward the camera, to where the hand is: what was read is
+                # the hand, in a frame where the tracker did not place it over the box.
+                in_front, measured = True, None
+        elif not seen and not covered and z_was is not None:
+            in_front = self._blocked(self._box, z_was, frame.depth)      # hidden behind an arm, not gone
+        self._blocked_t = (self._blocked_t if self._blocked_t is not None else frame.t) if in_front else None
+        covered = covered or (in_front and believe)
+        if measured is None and seen and covered and (self._anchor is None or self._other) and shadow is not None:
             # First sight of the object with the hand already on it: nothing is remembered yet,
             # so read the depth from the part of the box the hand does not cover.
-            measured = box_xyz(self._box, frame.depth, frame.K, exclude=hand_mask(frame.depth.shape, hand.points))
+            measured = box_xyz(self._box, frame.depth, frame.K, exclude=hand_mask(frame.depth.shape, shadow.points))
         visible = measured is not None
         if measured is not None:
             p = measured if pose is None else pose[:3, :3] @ measured + pose[:3, 3]
+            if self._other:
+                self._obj_avg.clear()
+                self._other = False
             self._anchor = self._obj_avg.add(p)
             self._anchor_t = frame.t
             self._from_helper = False
-        elif self._anchor is not None and seen and covered:
-            # Still detected under the hand, but the depth there is the hand's: keep the
-            # remembered depth and only follow the box sideways.
+        elif self._anchor is not None and seen and not self._other:
+            # Still detected, but its depth cannot be read: the hand is over it and the depth
+            # there is the hand's, or it is a clear bottle and lidar goes through it. Keep the
+            # remembered depth and only follow the box sideways. It is not lost: it is in view.
             if not self._anchored:
                 b = self._box
                 self._anchor = self._obj_avg.add(
@@ -644,27 +852,55 @@ class Perception:
         if self._anchor is not None:
             object_xyz = self._anchor if pose is None else pose[:3, :3].T @ (self._anchor - pose[:3, 3])
 
-        hand_xyz = None if hand_raw is None else self._hand_avg.add(hand_raw)
-        if hand_xyz is None:
+        coasting = False
+        if hand_raw is None:
+            hand_xyz = None
             self._hand_avg.clear()
+            if hand is None and cfg.hand_coast_s > 0 and self._hand_filter is not None:
+                # The tracker blinked. For a few frames the hand is where its path was taking it.
+                hand_xyz = self._hand_filter.ahead(frame.t, cfg.hand_coast_s)
+                coasting = hand_xyz is not None
+        elif self._hand_filter is None:
+            hand_xyz = self._hand_avg.add(hand_raw)
+        else:
+            hand_xyz = self._hand_filter.add(hand_raw, frame.t)
 
-        # Where to send the fingertip: the nearest point of the object's middle region, at the
-        # object's depth. Reaching any part of the object is a success, not only its centre.
+        # Where to send the hand: the nearest point of the object's middle region.
         aim = None
-        if object_xyz is not None and hand_xyz is not None and self._box is not None and cfg.aim_inner > 0:
-            b, z = self._box, object_xyz[2]
-            half = cfg.aim_inner * 0.5 * np.array([(b[2] - b[0]) * z / frame.K[0, 0], (b[3] - b[1]) * z / frame.K[1, 1]])
-            off = np.clip(hand_xyz[:2] - object_xyz[:2], -half, half)
-            aim = np.array([object_xyz[0] + off[0], object_xyz[1] + off[1], z])
+        can_aim = object_xyz is not None and self._box is not None and cfg.aim_inner > 0
+        if can_aim and hand_xyz is not None:
+            aim = self._aim(hand_xyz, object_xyz, frame.K)
+        self._goal = aim if aim is not None else object_xyz
+
+        self.hand = None
+        if hand is not None or coasting:
+            nearest = None
+            if hand_points is not None and can_aim:
+                ends = hand_points[list(trackers.TIPS + trackers.KNUCKLES)]
+                nearest = min(float(np.linalg.norm(self._aim(p, object_xyz, frame.K) - p)) for p in ends)
+            self.hand = HandDetails(
+                xyz=hand_xyz, px=None if hand_uv is None else (float(hand_uv[0]), float(hand_uv[1])),
+                point=cfg.hand_point if hand_points is not None else "index_tip",
+                confidence=0.0 if hand is None else float(hand.score),
+                tracker=getattr(self.hands, "name", "") if hand is None else (hand.source or getattr(self.hands, "name", "")),
+                depth_from=src, box=None if hand is None else hand.box,
+                keypoints_px=None if hand is None else hand.kp, keypoints_xyz=hand_points,
+                palm_xyz=None if hand_points is None else hand_points[list(trackers.PALM)].mean(0),
+                index_tip_xyz=None if hand_points is None else hand_points[trackers.INDEX_TIP],
+                nearest_m=nearest, coasting=coasting)
 
         self._log_changes(frame.t, target, seen, hand is not None)
         tracing.add("perception.depth", (time.perf_counter() - t_start - t_models) * 1000)
-        return Scene(
+        scene = Scene(
             object_xyz=object_xyz, hand_xyz=hand_xyz,
             object_visible=visible, hand_visible=hand is not None,
             object_box=None if self._box is None else tuple(int(round(v)) for v in self._box),
-            hand_px=None if hand is None else (int(round(hand.tip[0])), int(round(hand.tip[1]))),
+            hand_px=None if hand is None else (int(round(hand_uv[0])), int(round(hand_uv[1]))),
             t=frame.t, aim_xyz=aim)
+        # Not in the agreed Scene yet: read these with getattr(scene, name, None).
+        scene.hand = self.hand
+        scene.object_out_of_reach = object_xyz is not None and float(np.linalg.norm(object_xyz)) > cfg.reach_m
+        return scene
 
     def _log_changes(self, t: float, target: str, seen: bool, hand: bool):
         """One log line when the detector finds or loses the object, or the hand tracker the hand."""
@@ -683,14 +919,127 @@ class Perception:
 # The interface main.py uses.
 
 _default: Perception | None = None
+_hand_lock = threading.Lock()
+_hand_loading = threading.Lock()     # one model loads at a time
+_hand_number: int | None = None      # the hand option in use or on its way in; None until someone asks
+_hand_request = 0                    # counts the requests, so a slow load that was overtaken is dropped
+_hand_trackers: dict = {}            # loaded trackers by their hands.make name: switching back is instant
+
+
+def _hand_index(which) -> int | None:
+    """A number from 1 or a key from HAND_OPTIONS -> its index, or None."""
+    which = str(which).strip().lower()
+    keys = [k for k, _, _ in HAND_OPTIONS]
+    if which.isdigit() and 1 <= int(which) <= len(keys):
+        return int(which) - 1
+    return keys.index(which) if which in keys else None
+
+
+def _hand_settings(key: str) -> dict:
+    settings = dict(_HAND_DEFAULTS, **_HAND_SETUPS[key][1])
+    if settings["hand_depth"] == "fused":            # option 1 stays exactly as it was
+        point, smoothing = os.environ.get("HAND_POINT"), os.environ.get("HAND_FILTER")
+        if point in trackers.POINTS:
+            settings["hand_point"] = point
+        if smoothing in ("average", "one_euro", "kalman"):
+            settings["hand_filter"] = smoothing
+    return settings
+
+
+def _hand_tracker(kind: str):
+    """The tracker of that name, loaded and warmed up once."""
+    with _hand_loading:
+        if kind not in _hand_trackers:
+            device = os.environ.get("PERCEPTION_DEVICE") or None
+            fetch = _default is None     # weights are only ever downloaded before the run, not during it
+            if kind == "hybrid":         # shares its model with the plain YOLO option
+                yolo = _hand_trackers.get("yolo") or trackers.make("yolo", device, fetch)
+                _hand_trackers["yolo"] = yolo
+                tracker = trackers.Hybrid(yolo)
+            else:
+                tracker = trackers.make(kind, device, fetch)
+            # The first frame through a GPU model takes a second or more. Spend it here, not in the loop.
+            tracker.detect(np.zeros((960, 720, 3), np.uint8), 0)
+            _hand_trackers[kind] = tracker
+        return _hand_trackers[kind]
+
+
+def _load_hand_option(number: int):
+    """(option number that loaded, tracker, settings). An option whose model cannot be loaded
+    (weights missing and no network, no GPU) gives way to option 1, and says why."""
+    key = HAND_OPTIONS[number - 1][0]
+    try:
+        return number, _hand_tracker(_HAND_SETUPS[key][0]), _hand_settings(key)
+    except Exception as e:
+        if number == 1:
+            raise
+        print(f"[perception] hand option {number} ({key}) could not load: {e}. Staying with option 1.", file=sys.stderr)
+        tracing.event("hand_option.failed", option=key, number=number, reason=str(e)[:200])
+        return 1, _hand_tracker(_HAND_SETUPS[HAND_OPTIONS[0][0]][0]), _hand_settings(HAND_OPTIONS[0][0])
+
+
+def _switch_hands(number: int, request: int):
+    global _hand_number
+    loaded, tracker, settings = _load_hand_option(number)
+    with _hand_lock:
+        if request != _hand_request:
+            return                       # another option was asked for while this one loaded
+        _hand_number = loaded
+    if _default is not None:
+        _default.use_hands(tracker, **settings)
+        tracing.event("hand_option.ready", option=HAND_OPTIONS[loaded - 1][0], number=loaded)
+
+
+def set_hand_option(which) -> str:
+    """Switch the way the hand is found while running. Returns its spoken name at once. The
+    model loads on a helper thread (a second or two the first time) while the old tracker
+    carries on, and takes over between two frames. If it cannot load, option 1 is used and
+    the reason is logged."""
+    global _hand_number, _hand_request
+    i = _hand_index(which)
+    if i is None:
+        raise ValueError(f"no hand option {which!r}")
+    with _hand_lock:
+        _hand_number = i + 1
+        _hand_request += 1
+        request = _hand_request
+    key, title, _ = HAND_OPTIONS[i]
+    tracing.event("hand_option", option=key, number=i + 1, title=title)
+    if _default is not None:             # before the first frame, build() picks the choice up
+        threading.Thread(target=_switch_hands, args=(i + 1, request), daemon=True, name="hand-option").start()
+    return title
+
+
+def hand_option() -> tuple[int, str, str]:
+    """(number, key, name) of the hand option in use, or on its way in."""
+    number = _hand_number or (_hand_index(os.environ.get("HAND_OPTION", "1")) or 0) + 1
+    key, title, _ = HAND_OPTIONS[number - 1]
+    return number, key, title
+
+
+def set_hand_point(kind: str) -> str:
+    """Which point of the hand is guided to the object: index_tip, palm, knuckles or nearest.
+    Takes effect on the next frame, for hand options 2 and up."""
+    if kind not in trackers.POINTS:
+        raise ValueError(f"no hand point {kind!r}; one of: " + ", ".join(trackers.POINTS))
+    os.environ["HAND_POINT"] = kind      # so the next option switched to keeps it
+    if _default is not None and _default.cfg.hand_depth == "fused":
+        _default.cfg.hand_point = kind
+    tracing.event("hand_point", point=kind)
+    return kind
+
+
+def hand_details() -> HandDetails | None:
+    """Everything known about the wearer's hand in the last frame (also on the Scene as .hand)."""
+    return None if _default is None else _default.hand
 
 
 def build(detector: str | None = None, hand: str | None = None) -> Perception:
     """Perception from the environment variables in the module docstring."""
+    global _hand_number
     detector = detector or os.environ.get("PERCEPTION_DETECTOR", "yoloworld")
     hand = hand or os.environ.get("PERCEPTION_HAND", "mediapipe")
     device = os.environ.get("PERCEPTION_DEVICE") or None
-    tracing.meta(detector=detector, hand=hand)
     with tracing.timed("load.detector", kind=detector):
         if detector == "none":
             det = None
@@ -698,18 +1047,24 @@ def build(detector: str | None = None, hand: str | None = None) -> Perception:
             det = CocoDetector(device=device)
         else:
             det = OpenVocabDetector(detector, device=device)
+    settings = {}
     with tracing.timed("load.hand", kind=hand):
         if hand == "none":
             hands = None
         elif hand == "sticker":
-            hsv = os.environ.get("PERCEPTION_STICKER_HSV")
-            v = [int(x) for x in hsv.split(",")] if hsv else [35, 80, 80, 85, 255, 255]
-            hands = StickerHand(v[:3], v[3:])
+            hands = trackers.make("sticker")
         else:
-            hands = MediaPipeHand()
+            if _hand_index(os.environ.get("HAND_OPTION", "1")) is None:
+                print(f"[perception] HAND_OPTION={os.environ['HAND_OPTION']!r} is not one of the hand options; "
+                      "using option 1", file=sys.stderr)
+            number, hands, settings = _load_hand_option(hand_option()[0])
+            with _hand_lock:
+                _hand_number = number
+            hand = HAND_OPTIONS[number - 1][0]
+    tracing.meta(detector=detector, hand=hand)
     cfg = PerceptionConfig(use_pose=os.environ.get("PERCEPTION_USE_POSE", "") not in ("", "0"),
                            detect_every=int(os.environ.get("PERCEPTION_DETECT_EVERY", "1")),
-                           parallel=os.environ.get("PERCEPTION_PARALLEL", "1") != "0")
+                           parallel=os.environ.get("PERCEPTION_PARALLEL", "1") != "0", **settings)
     helper = None
     if os.environ.get("PERCEPTION_HELPER", "auto") != "off":
         import cosmos
