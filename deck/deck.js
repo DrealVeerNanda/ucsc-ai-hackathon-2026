@@ -127,7 +127,9 @@ async function loadLive() {
     f.replaceWith(v);
     note.hidden = true;
   } else {
-    note.textContent = "Live demo runs here. Start main.py, or add media/demo-run.mp4 for the recorded run.";
+    note.textContent = location.hostname.endsWith("github.io")
+      ? "The live demo runs on the GX10, shown in person."
+      : "Live demo runs here. Start main.py, or add media/demo-run.mp4 for the recorded run.";
   }
 }
 
