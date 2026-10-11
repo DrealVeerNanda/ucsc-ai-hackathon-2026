@@ -16,6 +16,13 @@ from stream import RawFrame, Recorder, SourceError, Stream, prepare
 K0 = np.array([[500.0, 0, 170.0], [0, 510.0, 110.0], [0, 0, 1]])
 
 
+@pytest.fixture(autouse=True)
+def _no_phone_bridge(tmp_path, monkeypatch):
+    """A phone bridge running on this machine must not be picked up by these tests."""
+    monkeypatch.setenv("PHONE_BRIDGE_DIR", str(tmp_path / "no_bridge"))
+    monkeypatch.setattr(stream, "_bridge_used", False)
+
+
 def _pose(tx=0.1, ty=-0.2, tz=0.3, yaw=0.3):
     c, s = np.cos(yaw), np.sin(yaw)
     T = np.eye(4)
@@ -433,6 +440,44 @@ def test_a_live_session_can_be_saved_while_it_is_used(tmp_path, monkeypatch):
     got = list(stream._replay_frames(tmp_path / "session", loop=False, paced=False))
     assert 5 <= len(got) <= 12                                  # about 10 a second for 0.8 s
     assert got[0].depth.shape == (48, 64) and got[0].kind == "pathon"
+
+
+def test_finishing_a_recording_never_holds_up_the_frames(tmp_path, monkeypatch):
+    """Packing a long recording takes many seconds. It used to happen in the reader, with the
+    lock held, so the loop got no frame until it was done."""
+    def frames(self):
+        def gen():
+            for i in range(120):
+                yield _raw(i)
+                time.sleep(0.02)
+        return gen()
+    real_pack, packing = stream.pack, threading.Event()
+
+    def slow_pack(folder):
+        packing.set()
+        time.sleep(1.5)
+        return real_pack(folder)
+    monkeypatch.setattr(Stream, "_frames", frames)
+    monkeypatch.setattr(stream, "pack", slow_pack)
+    monkeypatch.setenv("STREAM_RECORD", str(tmp_path / "session"))
+    monkeypatch.setenv("STREAM_RECORD_SECONDS", "0.3")
+    monkeypatch.setenv("STREAM_PACK_WAIT_S", "0.1")
+    s = Stream("pathon", reconnect=False).start()
+    try:
+        assert packing.wait(2.0), "the recording should have ended by itself"
+        gaps, last = [], time.perf_counter()
+        while time.perf_counter() - last < 0.5 and len(gaps) < 25:        # while it is being packed
+            if s.get_frame(wait=0.2) is not None:
+                gaps.append(time.perf_counter() - last)
+                last = time.perf_counter()
+        assert len(gaps) == 25 and max(gaps) < 0.2, gaps
+    finally:
+        t = time.perf_counter()
+        s.close()
+    assert time.perf_counter() - t < 1.0                    # closing does not sit through the packing either
+    assert (tmp_path / "session" / "meta.part").exists()    # abandoned half way, and nothing is lost:
+    time.sleep(1.6)
+    assert len(list(stream._replay_frames(tmp_path / "session", loop=False, paced=False))) >= 2
 
 
 def test_replaying_a_recording_is_never_recorded_again(tmp_path, monkeypatch):
