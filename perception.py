@@ -305,7 +305,8 @@ class PerceptionConfig:
     hand_point: str = "index_tip"  # which point of the hand is guided: index_tip, palm, knuckles, nearest
     hand_filter: str = "average"   # smoothing of that point: average (of `smooth` frames), one_euro, kalman
     own_arm: bool = False        # a hand whose forearm leaves by the top of the picture is somebody else's
-    hand_coast_s: float = 0.0    # hand not found for less than this: carry on along its path (kalman only)
+    hand_coast_s: float = 0.0    # hand not found for less than this: carry on along its path (kalman only;
+                                 # no option uses it: guidance already rides out half a second itself)
     stick_s: float = 0.5         # stay with the hand that was followed this recently: another one, elsewhere
     hand_speed_px_s: float = 2500.0   # in the picture, is not it. Elsewhere = farther than its own size plus
                                  # this speed (a fast reach at 30 cm crosses the picture in a third of a second)
@@ -319,9 +320,9 @@ _HAND_SETUPS = {
     "mediapipe_steady": ("mediapipe_wide", _FUSED),
     "yolo": ("yolo", _FUSED),
     "yolo_medium": ("yolo_medium", _FUSED),
-    "hybrid": ("hybrid", dict(_FUSED, hand_filter="kalman", hand_coast_s=0.25)),
+    "hybrid": ("hybrid", _FUSED),
     "arm": ("arm", dict(_FUSED, hand_filter="kalman")),
-    "hybrid_palm": ("hybrid", dict(_FUSED, hand_filter="kalman", hand_coast_s=0.25, hand_point="palm")),
+    "hybrid_palm": ("hybrid", dict(_FUSED, hand_point="palm")),
     "sticker": ("sticker", {}),
 }
 _HAND_DEFAULTS = dict(hand_depth="switch", hand_point="index_tip", hand_filter="average", own_arm=False,
