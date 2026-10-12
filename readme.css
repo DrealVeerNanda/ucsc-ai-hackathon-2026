@@ -1,0 +1,47 @@
+/* The README page on GitHub Pages (built by deploy.sh). Same ground, type and accents as the deck. */
+@font-face { font-family: "Barlow"; font-weight: 400; font-display: swap; src: url("fonts/barlow-400.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: swap; src: url("fonts/barlow-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; font-display: swap; src: url("fonts/barlow-semi-condensed-700.woff2") format("woff2"); }
+
+:root {
+  color-scheme: dark;
+  --ground: oklch(0.165 0.022 255);
+  --plate: oklch(0.215 0.026 255);
+  --rule: oklch(0.33 0.03 255);
+  --text: oklch(0.965 0.005 255);
+  --muted: oklch(0.76 0.02 255);
+  --leg: oklch(0.88 0.165 96);
+  --font: "Barlow", Arial, sans-serif;
+  --display: "Barlow Semi Condensed", "Arial Narrow", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--ground); color: var(--text); font: 400 18px/1.6 var(--font); }
+
+.top { max-width: 72ch; margin: 0 auto; padding: 20px 16px 0; display: flex; justify-content: space-between; gap: 16px; }
+.top a { color: var(--muted); text-decoration: none; font-weight: 600; }
+.top a:hover { color: var(--text); }
+.top a:focus-visible, .doc a:focus-visible { outline: 2px solid var(--leg); outline-offset: 2px; border-radius: 2px; }
+
+.doc { max-width: 72ch; margin: 0 auto; padding: 8px 16px 96px; overflow-wrap: break-word; }
+.doc h1, .doc h2, .doc h3 { font-family: var(--display); font-weight: 700; line-height: 1.1; text-wrap: balance; }
+.doc h1 { font-size: clamp(2.4rem, 7vw, 4rem); margin: 32px 0 16px; }
+.doc h2 { font-size: clamp(1.6rem, 4.4vw, 2.2rem); margin: 56px 0 12px; padding-top: 24px; border-top: 1px solid var(--rule); }
+.doc h3 { font-size: 1.35rem; margin: 36px 0 8px; }
+.doc .markdown-heading { position: relative; }
+.doc .anchor { display: none; }
+.doc p, .doc ul, .doc ol { margin: 0 0 16px; }
+.doc li { margin: 4px 0; }
+.doc a { color: var(--leg); text-underline-offset: 3px; }
+.doc strong { font-weight: 600; }
+.doc code { font-family: var(--mono); font-size: 0.86em; background: var(--plate); padding: 2px 5px; border-radius: 3px; }
+.doc pre { background: var(--plate); border: 1px solid var(--rule); border-radius: 3px; padding: 14px 16px; overflow-x: auto; line-height: 1.5; }
+.doc pre code { background: none; padding: 0; font-size: 0.84rem; }
+.doc table { display: block; overflow-x: auto; border-collapse: collapse; margin: 0 0 20px; font-size: 0.94rem; }
+.doc th, .doc td { border-bottom: 1px solid var(--rule); padding: 8px 14px 8px 0; text-align: left; vertical-align: top; }
+.doc th { color: var(--muted); font-weight: 600; }
+.doc .lede { font-size: 1.2rem; color: var(--muted); }
+.doc .math { margin: 16px 0; overflow-x: auto; overflow-y: hidden; }
+.doc .pitch { font: 700 clamp(1.5rem, 4vw, 2rem)/1.2 var(--display); text-wrap: balance; margin: 0 0 8px; }

@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0f17">
+  <title>Proprio README</title>
+  <meta name="description" content="How Proprio is built and run: the pipeline, the GX10 setup, and the options.">
+  <link rel="icon" href="../icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../readme.css">
+</head>
+<body>
+  <nav class="top" aria-label="Site"><a href="../">Presentation</a><span><a href="../script/">Script</a> &nbsp; <a href="../writeup/">Write-up</a> &nbsp; <a href="../readme/">README</a></span></nav>
+  <main class="doc">
+<h1 dir="auto">UCSC AI Hackathon 2026</h1>
+<p dir="auto">Our team's project for the UCSC AI Hackathon, October 10–11, 2026, at UC Santa Cruz Silicon Valley (Santa Clara).</p>
+<h2 dir="auto">Team</h2>
+<ul dir="auto">
+<li>Veer Nanda (<a class="user-mention notranslate" data-hovercard-type="user" data-hovercard-url="/users/DrealVeerNanda/hovercard" data-octo-click="hovercard-link-click" data-octo-dimensions="link_type:self" href="https://github.com/DrealVeerNanda">@DrealVeerNanda</a>)</li>
+<li>Gavin Wang</li>
+<li>Jake Pong</li>
+<li>Sasha (<a class="user-mention notranslate" data-hovercard-type="user" data-hovercard-url="/users/SashaSkind/hovercard" data-octo-click="hovercard-link-click" data-octo-dimensions="link_type:self" href="https://github.com/SashaSkind">@SashaSkind</a>)</li>
+</ul>
+<h2 dir="auto">Project: Proprio (ASUS Local AI track)</h2>
+<p dir="auto">A person wears an iPhone on their chest, says "find my mug," and picks it up blindfolded.<br>
+Spoken directions and tones in their earbuds steer the hand to the object. Every model runs on the<br>
+ASUS Ascent GX10; nothing goes to the cloud.</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>File</th>
+<th>Lane</th>
+<th>What</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">interfaces.py</code></td>
+<td>all</td>
+<td><code class="notranslate">Frame</code> and <code class="notranslate">Scene</code>, the two agreed interfaces. Import them, don't redefine them.</td>
+</tr>
+<tr>
+<td><code class="notranslate">stream.py</code></td>
+<td>1</td>
+<td><code class="notranslate">get_frame() -&gt; Frame | None</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">perception.py</code>, <code class="notranslate">hands.py</code></td>
+<td>2</td>
+<td><code class="notranslate">locate(frame, target) -&gt; Scene</code>; the hand trackers to choose from</td>
+</tr>
+<tr>
+<td><code class="notranslate">cosmos.py</code></td>
+<td>2</td>
+<td>the slow helper: lists what is on the table, gives a box when the detector fails</td>
+</tr>
+<tr>
+<td><code class="notranslate">guidance.py</code>, <code class="notranslate">audio_out.py</code></td>
+<td>3</td>
+<td><code class="notranslate">update(scene) -&gt; str</code> (state), optional <code class="notranslate">reset(target)</code>; the sound</td>
+</tr>
+<tr>
+<td><code class="notranslate">voice.py</code></td>
+<td>3</td>
+<td><code class="notranslate">listen_for_target() -&gt; str</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">main.py</code></td>
+<td>4</td>
+<td>the loop; every module can be fake or real</td>
+</tr>
+<tr>
+<td><code class="notranslate">launcher.py</code>, <code class="notranslate">launcher/</code></td>
+<td>4</td>
+<td>the one-button start: checklist page, and a keeper that restarts what dies</td>
+</tr>
+<tr>
+<td><code class="notranslate">tools/phone_bridge.py</code></td>
+<td>1</td>
+<td>holds the phone's connection so restarting the pipeline never drops it</td>
+</tr>
+<tr>
+<td><code class="notranslate">tracing.py</code></td>
+<td>all</td>
+<td>per-frame timings and events into <code class="notranslate">logs/trace_*.jsonl</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">fakes.py</code></td>
+<td>4</td>
+<td>fake versions of all of the above</td>
+</tr>
+<tr>
+<td><code class="notranslate">dashboard.py</code>, <code class="notranslate">dashboard/</code></td>
+<td>4</td>
+<td>the judge dashboard in the browser, served by <code class="notranslate">main.py</code> (offline, no CDN)</td>
+</tr>
+<tr>
+<td><code class="notranslate">debug_view.py</code></td>
+<td>4</td>
+<td>OpenCV debug window (<code class="notranslate">--ui cv</code>)</td>
+</tr>
+<tr>
+<td><code class="notranslate">trials.py</code></td>
+<td>4</td>
+<td>timed baseline / guided trials into <code class="notranslate">trials.csv</code></td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h3 dir="auto">Start the demo (on the GX10)</h3>
+<p dir="auto">Double-click <strong>Proprio</strong> on the GX10's desktop (<code class="notranslate">bash tools/install_launcher.sh</code> puts it there). A page<br>
+opens at <a href="http://localhost:8640" rel="nofollow">http://localhost:8640</a> with one line per thing that has to be true (phone on the cable and<br>
+streaming, AirPods connected, model servers up, models on disk), green or red, each saying what to do.<br>
+When it is green press <strong>Start</strong>; <strong>Start anyway</strong> is there for when you decide to go regardless.</p>
+<p dir="auto">From then on a keeper keeps it running: it restarts the pipeline if it crashes or hangs (a reach in<br>
+progress carries on), holds the phone connection in its own process so PathOn does not need another tap,<br>
+reconnects the AirPods, and records every session into <code class="notranslate">recordings/demo_*/</code>. <strong>Stop</strong> on the page ends<br>
+the pipeline; <code class="notranslate">python launcher.py quit</code> ends everything. Settings are in <code class="notranslate">launcher.DEFAULTS</code>, and<br>
+<code class="notranslate">.env.launcher</code> (KEY=VALUE lines, not in git) overrides them, e.g. <code class="notranslate">HOST=0.0.0.0</code> to watch the<br>
+dashboard from a laptop: by default it answers on the GX10 only.</p>
+<p dir="auto">The <strong>Options to try</strong> card at the top of that page switches, with one click, between the ways of<br>
+guiding (<code class="notranslate">guidance.OPTIONS</code>, 12 of them), of tracking the hand (<code class="notranslate">perception.HAND_OPTIONS</code>, 7), of<br>
+deciding "Grab" (<code class="notranslate">guidance.GRAB_OPTIONS</code>, 5) and of keeping track of the object<br>
+(<code class="notranslate">perception.OBJECT_OPTIONS</code>, 3). Before Start a click sets what the run starts with;<br>
+while it runs it switches at once and the wearer hears the name. The choice is remembered (also<br>
+across a restart of the pipeline); <strong>Back to the usual ones</strong> undoes it. The same switches work by<br>
+voice ("option 3", "hand option 5", "grab option 2", "object option 3") and from the live dashboard's <strong>Options</strong><br>
+button. Hear every option without the rig: <code class="notranslate">python tools/audio_demo.py --all</code>, then open<br>
+<code class="notranslate">out/options/index.html</code>.</p>
+<p dir="auto">If the new parts and the real hardware do not get on, <code class="notranslate">.env.launcher</code> has a way back for each:<br>
+<code class="notranslate">PROPRIO_BRIDGE=0</code> (the pipeline reads the phone itself), <code class="notranslate">VOICE_HEADSET_MODE=stay</code> (the earbuds<br>
+never switch mode: mono sound), <code class="notranslate">VOICE_WEARER_LEVEL=0</code> and <code class="notranslate">VOICE_REQUEST_S=12</code> (hear everything).<br>
+The code of the first live run that worked is the tag <code class="notranslate">worked-live-2026-10-10</code>.</p>
+<h3 dir="auto">Run it by hand</h3>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">pip install -r requirements.txt
+python main.py                                   <span class="pl-c"><span class="pl-c">#</span> everything fake</span>
+python main.py --guidance real                   <span class="pl-c"><span class="pl-c">#</span> lane 3: tune audio against fake scenes</span>
+python main.py --stream real --perception real   <span class="pl-c"><span class="pl-c">#</span> lanes 1 + 2 live</span>
+python main.py --all-real                        <span class="pl-c"><span class="pl-c">#</span> the demo</span></pre></div>
+<p dir="auto"><code class="notranslate">main.py</code> serves the judge dashboard at <a href="http://localhost:8642" rel="nofollow">http://localhost:8642</a> and opens it. From another<br>
+machine on the same network use <code class="notranslate">http://&lt;gx10-ip&gt;:8642</code>. <code class="notranslate">--ui cv</code> shows the OpenCV window<br>
+instead, <code class="notranslate">--ui both</code> shows both, <code class="notranslate">--no-open</code> skips opening the browser.</p>
+<p dir="auto"><code class="notranslate">bash tools/live.sh</code> is the real pipeline with the settings of the run that worked (guidance<br>
+option 3, the dashboard in the browser, earbuds as the microphone). It and the launcher bind the<br>
+dashboard to the GX10 only; <code class="notranslate">HOST=0.0.0.0 bash tools/live.sh</code> opens it to the network.<br>
+<code class="notranslate">bash tools/stop_live.sh</code> stops a run and waits until its recording is saved.</p>
+<p dir="auto">What modules can report to the dashboard (all optional, picked up if present):</p>
+<ul dir="auto">
+<li><code class="notranslate">guidance.last_audio</code>: <code class="notranslate">{"tone": bool, "pan": -1..1, "pitch": -1..1, "beep_hz": float, "steady": bool}</code>.<br>
+Without it the dashboard shows the plan's mapping and says it is estimated.</li>
+<li><code class="notranslate">guidance.pop_phrases()</code>: list of phrases spoken since the last call, for the captions.</li>
+<li><code class="notranslate">voice.last_transcript</code>: what the wearer said, shown as a quote.</li>
+<li><code class="notranslate">perception.MODEL_NAMES</code>: <code class="notranslate">{"object": "YOLO-World", "hand": "MediaPipe"}</code>, shown in the pipeline steps.</li>
+</ul>
+<p dir="auto">Fake perception keys (dashboard or debug window focused): arrows and <code class="notranslate">w</code>/<code class="notranslate">s</code> move the hand 1 cm,<br>
+<code class="notranslate">o</code> occludes the object, <code class="notranslate">h</code> hides the hand, <code class="notranslate">n</code> adds jitter, <code class="notranslate">r</code> resets. <code class="notranslate">t</code> asks for a<br>
+new target, <code class="notranslate">q</code> quits. Each run writes a per-frame CSV to <code class="notranslate">logs/</code> and prints p50/p95<br>
+latency per stage on exit.</p>
+<h3 dir="auto">Interface notes</h3>
+<ul dir="auto">
+<li><code class="notranslate">guidance.update(scene)</code> returns its state as a string (<code class="notranslate">idle</code>, <code class="notranslate">searching</code>,<br>
+<code class="notranslate">waiting_hand</code>, <code class="notranslate">guiding</code>, <code class="notranslate">grab</code>). The debug view shows it, and when it goes back to<br>
+<code class="notranslate">idle</code> main calls <code class="notranslate">listen_for_target()</code> again. If <code class="notranslate">guidance.reset(target)</code> exists, main<br>
+calls it after every new target. It goes <code class="notranslate">idle</code> after "Grab", and also when it gives up:<br>
+20 s without ever seeing the object, 30 s with no hand shown, or 2 minutes without a "Grab".</li>
+<li><code class="notranslate">Scene</code> has two optional extras from lane 2: <code class="notranslate">hand</code> (keypoints, palm, confidence, which<br>
+tracker) and <code class="notranslate">object_out_of_reach</code> (farther than 0.75 m: guidance says "too far, move closer").</li>
+<li><code class="notranslate">Frame.t_recv</code> is <code class="notranslate">time.monotonic()</code> on the GX10 when the frame arrived. Without it the<br>
+latency number only covers processing, not the trip from the phone.</li>
+</ul>
+<h2 dir="auto">Recreate it with your own iPhone</h2>
+<p dir="auto">Everything below was run end to end on one setup only: an iPhone 15 Pro Max and the ASUS Ascent GX10<br>
+(Ubuntu 24.04, ARM, NVIDIA GPU). Other machines should work with the same steps but have not been tried<br>
+with the phone, except that a Mac can read the phone and replay recordings.</p>
+<p dir="auto"><strong>What you need</strong></p>
+<ul dir="auto">
+<li>An iPhone or iPad with lidar: a Pro model, iPhone 12 Pro or later. Without lidar there is no depth.</li>
+<li>The free app <strong>Record3DStream - PathOn</strong> from the App Store, and a USB data cable.</li>
+<li>A computer with Python 3.12. An NVIDIA GPU keeps it at about 20 ms a frame; the two language models<br>
+(optional) need much more GPU memory: Nemotron alone takes about 23 GB.</li>
+<li>Headphones. Bluetooth ones double as the microphone on Linux with PipeWire; anything else plays the<br>
+guidance and you ask from a web page or the keyboard.</li>
+<li>Something to wear the phone on your chest, camera facing forward and slightly down at the table.</li>
+</ul>
+<p dir="auto"><strong>1. Install</strong></p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">git clone https://github.com/DrealVeerNanda/ucsc-ai-hackathon-2026.git
+<span class="pl-c1">cd</span> ucsc-ai-hackathon-2026
+python3.12 -m venv .venv <span class="pl-k">&amp;&amp;</span> <span class="pl-c1">source</span> .venv/bin/activate
+pip install torch torchvision        <span class="pl-c"><span class="pl-c">#</span> the build for your GPU; on the GX10: --index-url https://download.pytorch.org/whl/cu130</span>
+pip install -r requirements.txt
+pip install <span class="pl-s"><span class="pl-pds">'</span>git+https://github.com/YoshiRi/Record3DStream#subdirectory=sdk<span class="pl-pds">'</span></span>   <span class="pl-c"><span class="pl-c">#</span> reads PathOn; personal use only, see requirements.txt</span>
+sudo apt install libimobiledevice-utils libusbmuxd-tools libportaudio2         <span class="pl-c"><span class="pl-c">#</span> macOS: brew install libimobiledevice</span>
+bash tools/fetch_models.sh piper     <span class="pl-c"><span class="pl-c">#</span> the voice that speaks sentences, 63 MB</span>
+python main.py                       <span class="pl-c"><span class="pl-c">#</span> everything fake: checks the install, opens the dashboard</span></pre></div>
+<p dir="auto"><strong>2. Phone</strong></p>
+<p dir="auto">Unlock it, plug it into a data port and tap <strong>Trust</strong>. Set Auto-Lock to Never and Low Power Mode off.<br>
+Open PathOn, set its WiFi | USB switch to <strong>USB</strong> and tap <strong>Start Streaming</strong>. Then:</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">python tools/probe_stream.py pathon --show    <span class="pl-c"><span class="pl-c">#</span> colour and depth side by side. q quits</span></pre></div>
+<p dir="auto">Two things stop PathOn's stream: the program reading it going away, and a touch on its screen. Once the<br>
+phone is on your chest, iOS Guided Access with Touch off keeps stray touches out.</p>
+<p dir="auto"><strong>3. First reach, no voice</strong></p>
+<p dir="auto">Put a mug on a table, wear the phone and the headphones, and run:</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">STREAM_SOURCE=pathon GUIDANCE_MODE=3 python main.py --stream real --perception real --guidance real --target mug</pre></div>
+<p dir="auto">The first run downloads the detector and hand-tracker weights. The dashboard opens at<br>
+<a href="http://localhost:8642" rel="nofollow">http://localhost:8642</a> with the camera, the object's box and the fingertip. Show your hand to the camera<br>
+and follow the words; "Grab" means close your hand. Any object name works in place of <code class="notranslate">mug</code>.</p>
+<p dir="auto"><strong>4. Ask by voice</strong></p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">STREAM_SOURCE=pathon GUIDANCE_MODE=3 VOICE_MODE=web python main.py --all-real</pre></div>
+<p dir="auto">With Bluetooth headphones on Linux it listens through them after a beep. Otherwise open the page it<br>
+prints (<code class="notranslate">https://YOUR_IP:8644</code>) on any phone or laptop on the same network and hold the button to<br>
+speak, or type. <code class="notranslate">VOICE_MODE=type</code> asks in the terminal. Whisper runs on the GPU if there is one.</p>
+<p dir="auto"><strong>5. The language models (optional)</strong></p>
+<p dir="auto">Without them a simple rule reads plain requests ("find my mug") and the detector works alone. With them<br>
+it understands "I'm thirsty", answers "what's on the table?", and finds things the detector misses.<br>
+Both are served by <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> built for your GPU; the scripts<br>
+expect <code class="notranslate">~/llama.cpp/llama-server</code> (or set <code class="notranslate">LLAMA_SERVER</code>).</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">bash tools/fetch_models.sh 8b    <span class="pl-c"><span class="pl-c">#</span> Cosmos Reason 2, into ~/models</span>
+bash tools/run_cosmos.sh         <span class="pl-c"><span class="pl-c">#</span> port 8001, leave it running</span>
+NEMOTRON_MODEL=/path/to/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-UD-Q4_K_XL.gguf bash tools/run_nemotron.sh   <span class="pl-c"><span class="pl-c">#</span> port 8000</span></pre></div>
+<p dir="auto">There is no fetch script for Nemotron: download that GGUF yourself and point <code class="notranslate">NEMOTRON_MODEL</code> at it.</p>
+<p dir="auto"><strong>6. One button (Linux desktop)</strong></p>
+<p dir="auto"><code class="notranslate">bash tools/install_launcher.sh</code> puts the Proprio icon on the desktop: the checklist page, Start, and<br>
+the keeper described under <a href="#start-the-demo-on-the-gx10">Start the demo</a>. It was written for the GX10's<br>
+GNOME desktop with PipeWire and is not expected to work elsewhere without changes.</p>
+<p dir="auto">No phone at hand? <code class="notranslate">STREAM_SOURCE=recordings/NAME python main.py --stream real --perception real</code> replays<br>
+a recording made with <code class="notranslate">python tools/record.py NAME --source pathon</code>. Recordings are not in the repository (they show<br>
+bystanders' faces), so make your own.</p>
+<h2 dir="auto">Stream (lane 1)</h2>
+<p dir="auto"><code class="notranslate">stream.py</code> gives everyone the iPhone's colour and lidar depth:</p>
+<div class="highlight highlight-source-python" dir="auto"><pre class="notranslate"><span class="pl-k">import</span> <span class="pl-s1">stream</span>
+<span class="pl-s1">frame</span> <span class="pl-c1">=</span> <span class="pl-s1">stream</span>.<span class="pl-c1">get_frame</span>()   <span class="pl-c"># newest Frame, or None if nothing new since the last call</span></pre></div>
+<p dir="auto"><code class="notranslate">Frame</code> has <code class="notranslate">rgb</code>, <code class="notranslate">depth</code>, <code class="notranslate">K</code>, <code class="notranslate">pose</code>, <code class="notranslate">t</code>, as agreed. What you can rely on:</p>
+<ul dir="auto">
+<li><code class="notranslate">rgb</code> and <code class="notranslate">depth</code> are upright and the same size. <code class="notranslate">K</code> matches that size.</li>
+<li><code class="notranslate">depth</code> is in meters. <code class="notranslate">0</code> means no lidar reading at that pixel.</li>
+<li><code class="notranslate">pose</code> is camera-to-world, or <code class="notranslate">None</code>. Do not build on it until lane 1 says it passed <code class="notranslate">tools/check_pose.py</code>.</li>
+<li><code class="notranslate">t_recv</code> is <code class="notranslate">time.monotonic()</code> when the frame arrived, so <code class="notranslate">time.monotonic() - frame.t_recv</code> is the frame age. Record3D sends no capture timestamp, so <code class="notranslate">t</code> is the same value: fine for durations, not a phone clock.</li>
+<li><code class="notranslate">get_frame()</code> never blocks. <code class="notranslate">get_frame(wait=0.1)</code> waits up to 0.1 s for a new frame, so a loop does not spin.</li>
+<li><code class="notranslate">stream.status()</code> gives <code class="notranslate">state</code>, <code class="notranslate">fps</code> and <code class="notranslate">age_s</code> for the debug view. After a cable bump the stream reconnects by itself.</li>
+</ul>
+<h3 dir="auto">Work without the phone</h3>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">python -m venv .venv <span class="pl-k">&amp;&amp;</span> <span class="pl-c1">source</span> .venv/bin/activate <span class="pl-k">&amp;&amp;</span> pip install -r requirements.txt
+STREAM_SOURCE=recordings/NAME python main.py              <span class="pl-c"><span class="pl-c">#</span> replays a recording, looped, at real speed</span>
+python tools/probe_stream.py recordings/NAME --show       <span class="pl-c"><span class="pl-c">#</span> look at it</span></pre></div>
+<h3 dir="auto">Pick the source</h3>
+<p dir="auto">Set <code class="notranslate">STREAM_SOURCE</code>, or call <code class="notranslate">stream.start(SOURCE)</code> once before the loop.</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th><code class="notranslate">STREAM_SOURCE</code></th>
+<th>Frames come from</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">auto</code> (default)</td>
+<td>A running phone bridge if there is one; otherwise whichever phone app is streaming: PathOn over USB, PathOn over Wi-Fi if <code class="notranslate">STREAM_PHONE_IP</code> is set, then Record3D</td>
+</tr>
+<tr>
+<td><code class="notranslate">bridge</code></td>
+<td><code class="notranslate">tools/phone_bridge.py</code>, which holds the phone and hands frames on through shared memory. The launcher uses this.</td>
+</tr>
+<tr>
+<td><code class="notranslate">pathon</code></td>
+<td>Free "Record3DStream - PathOn" app over USB. This is what we use. See <code class="notranslate">requirements.txt</code>.</td>
+</tr>
+<tr>
+<td><code class="notranslate">record3d</code></td>
+<td>Paid Record3D app over USB</td>
+</tr>
+<tr>
+<td><code class="notranslate">relay</code></td>
+<td>A Mac running <code class="notranslate">tools/relay_send.py</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">recordings/NAME</code></td>
+<td>A saved recording</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p dir="auto"><code class="notranslate">STREAM_ROTATE=0|90|180|270</code> turns the image clockwise if it is not upright.</p>
+<h3 dir="auto">Phone on the GX10</h3>
+<p dir="auto">This is already set up on our GX10 in <code class="notranslate">~/ucsc-ai-hackathon-2026</code> (<code class="notranslate">source .venv/bin/activate</code>). To redo it:</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate"><span class="pl-c"><span class="pl-c">#</span> The GX10 has no Python headers. Either `sudo apt install python3-dev`, or make the venv</span>
+<span class="pl-c"><span class="pl-c">#</span> from a uv Python, which brings its own and needs no sudo:</span>
+pip install uv <span class="pl-k">&amp;&amp;</span> uv venv --seed --managed-python --python 3.12 .venv <span class="pl-k">&amp;&amp;</span> <span class="pl-c1">source</span> .venv/bin/activate
+pip install -r requirements.txt
+<span class="pl-c"><span class="pl-c">#</span> record3d has no ARM wheel and its source misses an include that GCC 13 insists on:</span>
+CXXFLAGS=<span class="pl-s"><span class="pl-pds">"</span>-include string -include cstdint<span class="pl-pds">"</span></span> pip install record3d</pre></div>
+<p dir="auto">In PathOn (the app we use): set its WiFi | USB switch to <strong>USB</strong>, then tap Start Streaming. Unlock the<br>
+phone before plugging it into a data port, and tap Trust. On the phone: Auto-Lock Never, Low Power Mode<br>
+off. (In Record3D instead: turn on USB Streaming mode in Settings, select the rear lidar camera, press<br>
+the red button.)</p>
+<p dir="auto">PathOn stops streaming when the program reading it goes away, and someone then has to tap Start again.<br>
+<code class="notranslate">python tools/phone_bridge.py start</code> holds the connection in a process of its own so the pipeline can be<br>
+restarted freely (<code class="notranslate">status</code>, <code class="notranslate">stop</code>, <code class="notranslate">record on|off</code>; <code class="notranslate">probe</code> measures, with the real phone, how long a gap<br>
+the app forgives). <code class="notranslate">python tools/fake_phone.py recordings/NAME --port 9888</code> stands in for the app when<br>
+there is no phone. Then:</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">python tools/probe_stream.py            <span class="pl-c"><span class="pl-c">#</span> frame rate, sizes, K, depth range, pose yes or no</span>
+python tools/probe_stream.py --show     <span class="pl-c"><span class="pl-c">#</span> live rgb and depth. r rotates, s saves, q quits</span>
+python tools/check_pose.py              <span class="pl-c"><span class="pl-c">#</span> move the phone for 10 s. Says if lane 2 can use the pose</span>
+python tools/record.py object_on_table  <span class="pl-c"><span class="pl-c">#</span> 30 s into recordings/object_on_table</span></pre></div>
+<h3 dir="auto">If record3d will not build on the GX10</h3>
+<p dir="auto">Read the phone on a Mac and forward frames over Ethernet. Models still run on the GX10.</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">STREAM_SOURCE=relay python main.py              <span class="pl-c"><span class="pl-c">#</span> on the GX10</span>
+python tools/relay_send.py GX10_IP              <span class="pl-c"><span class="pl-c">#</span> on the Mac</span></pre></div>
+<p dir="auto">Tests: <code class="notranslate">python -m pytest -q</code></p>
+<p dir="auto">Without the phone or the earbuds the whole pipeline can still be exercised on the GX10:</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">python tools/fault_drill.py --quick     <span class="pl-c"><span class="pl-c">#</span> 10 min: break one thing at a time (camera, model servers, earbuds) and see it recover</span>
+python tools/fault_drill.py             <span class="pl-c"><span class="pl-c">#</span> all 46 drills, about 37 min</span>
+python tools/soak.py run --minutes 100  <span class="pl-c"><span class="pl-c">#</span> run it like a demo from recordings and report what grows, drifts or stops</span></pre></div>
+<h2 dir="auto">Perception (lane 2)</h2>
+<p dir="auto"><code class="notranslate">perception.py</code> is a working first version, ported from an earlier project so lane 2 does not start from zero. Change anything.</p>
+<p dir="auto">It finds the object's box (YOLO-World, any name you type) and the index fingertip (MediaPipe Hands by default), reads lidar depth at both, and returns their positions in meters. When the hand covers the object it keeps the object's remembered depth; a clear bottle, which the lidar sees through, takes its depth from the nearest surface in its box; of two matching objects the one within reach wins.</p>
+<p dir="auto">Seven hand trackers can be switched while it runs (<code class="notranslate">HAND_OPTION=1..7</code>, <code class="notranslate">perception.HAND_OPTIONS</code>): 1 is MediaPipe as the demo was built on; 3 and 4 are a YOLO hand-keypoint model on the GPU; 5 adds a depth-and-skin follower that carries on when the model loses the hand (found on 94% of frames of a recorded reach against 81% for option 1); 7 guides the palm, not the fingertip. Compare them on a recording with <code class="notranslate">python tools/eval_hands.py</code>.</p>
+<p dir="auto">The object can be kept track of in three ways (<code class="notranslate">OBJECT_OPTION=1..3</code>, <code class="notranslate">perception.OBJECT_OPTIONS</code>), switched while it runs:</p>
+<ol dir="auto">
+<li><strong>watched</strong> (default, as it always was): the detector finds it in every frame; behind the hand it is remembered for 2 to 4 s where it was in the picture.</li>
+<li><strong>remembered in the room</strong>: the detector still looks in every frame, but the place is kept in room coordinates from the phone's own motion tracking (ARKit's pose), so a hidden object stays put for 15 s, also when the wearer leans or turns.</li>
+<li><strong>found once</strong>: after ten clear looks that agree to 3 cm (about a third of a second live), the place is fixed and the detector is not run again for that reach. Only the hand and the camera's motion are followed, so an arm in front of the object cannot move it or lend it its depth. The place is let go when the object is asked for again, the target changes, or the phone's tracking starts afresh. If the object itself is moved during a reach, it is not noticed: ask for it again, or click the option again on the Options card, and it is looked for afresh.</li>
+</ol>
+<p dir="auto">Options 2 and 3 depend on the pose. On the reaches recorded on 11 October it carried lidar points from one frame to one a second later to within 0.4 cm (<code class="notranslate">python tools/check_pose.py recordings/NAME --seconds 100</code>), against 2.5 cm with the motion ignored. Played back over those reaches, "found once" kept the box on the bottle while the camera moved, read 0.68 m where "watched" read the arm in front of it at 0.48 m, and took 17 ms a frame against 28.</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">python tools/check_perception.py recordings/NAME mug    <span class="pl-c"><span class="pl-c">#</span> no window: prints fps, hit rates, distance. Saves out/perception.jpg</span>
+python main.py --stream real --perception real          <span class="pl-c"><span class="pl-c">#</span> with the debug view</span></pre></div>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Setting</th>
+<th>Values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">PERCEPTION_DETECTOR</code></td>
+<td><code class="notranslate">yoloworld</code> (default), <code class="notranslate">yoloe</code>, <code class="notranslate">coco</code> (fixed classes: cup, bottle, banana...), <code class="notranslate">none</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">PERCEPTION_HAND</code></td>
+<td><code class="notranslate">mediapipe</code> (default), <code class="notranslate">sticker</code> (a green sticker on the hand), <code class="notranslate">none</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">HAND_OPTION</code></td>
+<td><code class="notranslate">1</code> (default) to <code class="notranslate">7</code>, or a key from <code class="notranslate">perception.HAND_OPTIONS</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">OBJECT_OPTION</code></td>
+<td><code class="notranslate">1</code> (default) to <code class="notranslate">3</code>, or a key from <code class="notranslate">perception.OBJECT_OPTIONS</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">PERCEPTION_USE_POSE=1</code></td>
+<td>The same as <code class="notranslate">OBJECT_OPTION=2</code>, from before there were object options</td>
+</tr>
+<tr>
+<td><code class="notranslate">PERCEPTION_DETECT_EVERY=2</code></td>
+<td>Run the detector on every second frame if the frame rate is short</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p dir="auto">On the GX10 it takes about 20 ms per frame. Not yet checked: real lidar depth against a ruler (needs the phone), and the tuning in <code class="notranslate">PerceptionConfig</code>.</p>
+<h2 dir="auto">Guidance and voice (lane 3)</h2>
+<p dir="auto"><code class="notranslate">guidance.py</code>, <code class="notranslate">audio_out.py</code> and <code class="notranslate">voice.py</code> are also a working first version. Change anything.</p>
+<p dir="auto">There are twelve ways of guiding (<code class="notranslate">GUIDANCE_MODE=1..12</code>, <code class="notranslate">guidance.OPTIONS</code>), switchable while it runs.<br>
+The demo uses option 3, "combined words": the whole direction at once ("up and left"), a chime when<br>
+lined up, "forward", then "Grab". Options 6 to 12 are newer ideas (amounts in centimetres, two notes to<br>
+match, a rising note, fast repeated words, quiet-unless-drifting, words then a note, a hum that turns<br>
+to beeps) that nobody has followed with a real hand yet.</p>
+<p dir="auto">"Grab" is said by one of five rules (<code class="notranslate">GUIDANCE_GRAB=1..5</code>, <code class="notranslate">guidance.GRAB_OPTIONS</code>). The default,<br>
+"over the object", fires when the fingertip is over the object in the picture and within grabbing<br>
+distance in depth; rule 1 is the first one, the fingertip within 5 cm.</p>
+<p dir="auto">Option 1, tones only:</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>You hear</th>
+<th>It means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tone in the right or left ear</td>
+<td>Move the hand that way</td>
+</tr>
+<tr>
+<td>Pitch higher or lower</td>
+<td>Move up or down</td>
+</tr>
+<tr>
+<td>Faster beeps</td>
+<td>Closer</td>
+</tr>
+<tr>
+<td>Steady tone, then "grab"</td>
+<td>Within grabbing distance (the rule is switchable: <code class="notranslate">guidance.GRAB_OPTIONS</code>)</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">python tools/audio_demo.py --play            <span class="pl-c"><span class="pl-c">#</span> hear a made-up reach. Without --play it writes out/audio_demo.wav</span>
+python main.py --guidance real               <span class="pl-c"><span class="pl-c">#</span> tune by ear: move the fake hand with the arrow keys</span>
+GUIDANCE_WORDS=1 python main.py --guidance real   <span class="pl-c"><span class="pl-c">#</span> fallback: spoken left, right, up, down, forward</span>
+GUIDANCE_MODE=hybrid python main.py --guidance real <span class="pl-c"><span class="pl-c">#</span> direction once, progress beeps, chime, next step</span>
+GUIDANCE_MODE=tones python main.py --guidance real  <span class="pl-c"><span class="pl-c">#</span> original spatial beeps, no spoken directions</span></pre></div>
+<ul dir="auto">
+<li>Distances and timings to tune are in <code class="notranslate">GuidanceConfig</code> in <code class="notranslate">guidance.py</code>; the sound itself is <code class="notranslate">ToneConfig</code> in <code class="notranslate">audio_out.py</code>.</li>
+<li>Spoken mode follows one axis until aligned, pauses at least 1 second before a new direction,<br>
+and repeats an unchanged direction only every 2.5 seconds. It stays silent near the target until "grab".<br>
+Tune <code class="notranslate">word_gap_s</code> and <code class="notranslate">word_repeat_s</code> in <code class="notranslate">GuidanceConfig</code> after testing with the real hand tracker.</li>
+<li>Slower, lower Daniel clips in <code class="notranslate">audio/calm/</code> override the original clips when present. Generate them<br>
+on a Mac with <code class="notranslate">python tools/make_calm_audio.py</code>; copy the WAVs to the GX10 for offline playback.<br>
+Use <code class="notranslate">--voice Samantha --rate 140</code> to regenerate the earlier voice instead.</li>
+<li>The complete Brian voice set in <code class="notranslate">audio/elevenlabs/</code> takes precedence over both older sets.<br>
+These are local 48 kHz mono 16-bit WAVs: no ElevenLabs account, API key, or network is needed<br>
+for playback. Missing or unreadable clips fall back to <code class="notranslate">audio/calm/</code>, then <code class="notranslate">audio/</code>.<br>
+To reconvert the downloaded MP3s in <code class="notranslate">audio/eleven_labs_raw/</code>, run<br>
+<code class="notranslate">python tools/convert_elevenlabs.py</code> (needs PyAV, installed with faster-whisper).<br>
+It trims excess silence and matches speech levels, and writes a combined preview to<br>
+<code class="notranslate">out/elevenlabs_preview_all.wav</code>. Arbitrary sentences still use local Piper/macOS speech.</li>
+<li>Hybrid mode guides one hand movement at a time: sideways, then up/down, then forward/back.<br>
+It says the direction once, then uses fixed-pitch beeps that speed up as that axis gets aligned.<br>
+Beeps stop and a chime plays once after staying within 2.5 cm on that axis for 0.2 seconds.<br>
+After a pause it announces the next direction, skipping axes already aligned.<br>
+If the hand overshoots, it announces the corrective direction once. Completed axes are checked<br>
+again before choosing the next movement. Tune <code class="notranslate">step_m</code>, <code class="notranslate">step_hold_s</code>, and <code class="notranslate">step_pause_s</code>.<br>
+<code class="notranslate">GUIDANCE_MODE</code> overrides the older <code class="notranslate">GUIDANCE_WORDS</code> flag.<br>
+Preview without a camera: <code class="notranslate">python tools/audio_demo.py --hybrid --play</code>.</li>
+<li>At the target, after 0.3 seconds near it, a soft two-note chime plays once followed by "grab".<br>
+Hybrid and words modes are quiet during that short confirmation wait; tones mode uses a steady tone.<br>
+This means the fingertip is near the target; it doesn't detect an actual pickup.<br>
+The next request waits for the spoken audio to finish.</li>
+<li>The clips in <code class="notranslate">audio/</code> remain the original macOS voice fallback.</li>
+<li>If the loop stalls for half a second the tone goes quiet, so an old position never keeps steering.</li>
+<li>With Bluetooth earbuds paired to the GX10, <code class="notranslate">voice.py</code> uses them as the microphone and listens by itself:<br>
+it says what it can see, asks "What do you want to grab?", beeps, and takes the answer (Whisper large-v3<br>
+on the GPU, about 0.2 s). The earbuds are switched to headset mode to listen and back to stereo to guide,<br>
+so the wearer cannot be heard during a reach. Besides an object's name it understands "what's on the<br>
+table", "the second one", "yes", "stop", "again", "help", "option N", "hand option N", "grab option N", "object option N".<br>
+With a wired microphone it is push-to-talk (Enter, speak, Enter); <code class="notranslate">VOICE_MODE=type</code> forces typing.</li>
+<li>When it sees nothing to pick up it says why (turn towards the table, or something is in front of the<br>
+camera), looks again every few seconds, and reminds the wearer that it is listening.</li>
+<li>The GX10 has no speakers or microphone of its own, only HDMI. Pair the earbuds, then set <code class="notranslate">GUIDANCE_DEVICE</code> and <code class="notranslate">VOICE_DEVICE</code> if they are not the default.</li>
+</ul>
+<h2 dir="auto">The language models (helpers, not in the loop)</h2>
+<p dir="auto">Two models run next to the pipeline and are only asked now and then. Both stay on the GX10.</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">bash tools/run_nemotron.sh     <span class="pl-c"><span class="pl-c">#</span> port 8000: turns what the wearer says into an object name</span>
+bash tools/run_cosmos.sh       <span class="pl-c"><span class="pl-c">#</span> port 8001: looks at one picture (8b by default, `2b` is faster)</span>
+bash tools/fetch_models.sh piper   <span class="pl-c"><span class="pl-c">#</span> once: the voice that speaks sentences</span></pre></div>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>The wearer says</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"I want to grab a can", "I'm thirsty"</td>
+<td>Nemotron names the object (<code class="notranslate">can</code>, <code class="notranslate">water bottle</code>), about 0.4 s. A name it has just listed is taken as said, without asking Nemotron.</td>
+</tr>
+<tr>
+<td>"What's on the table?"</td>
+<td>Cosmos looks through the camera and lists what could be picked up; it is spoken, and the wearer answers "the mug" or "the second one"</td>
+</tr>
+<tr>
+<td>A name the detector cannot find</td>
+<td>After one second of searching, Cosmos is asked for the object's box in the background (0.6 to 2 s) and its answer positions the object until the detector takes over</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h3 dir="auto">Talking to it</h3>
+<p dir="auto">The earbuds are the microphone (see above). The backup is a page any phone or laptop can open: a run<br>
+without a target (<code class="notranslate">bash tools/live.sh</code>, or the launcher) serves <code class="notranslate">https://GX10_IP:8644</code>. Open it on a<br>
+device on the same network, accept the certificate warning once, then hold the button (or the space<br>
+bar) and speak, or type in the box; it also has Stop, Again and option buttons. On the GX10 itself the<br>
+launcher's running page links to it as <strong>Type a request</strong>. A new request at any time replaces the<br>
+target, even in the middle of a reach.</p>
+<p dir="auto">If a server is not running, the pipeline carries on without it: a simple rule reads plain requests, and the detector works alone. <code class="notranslate">python tools/ask_cosmos.py photo.jpg --list</code> tries the listing on any picture.</p>
+<h2 dir="auto">Where the time goes</h2>
+<p dir="auto">Every run writes a trace to <code class="notranslate">logs/trace_*.jsonl</code> by itself: one line per camera frame with the time each step took, plus a line for every slow call (model loads, Cosmos, Whisper, audio underruns).</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">python tools/trace_report.py                       <span class="pl-c"><span class="pl-c">#</span> newest run: every step, slowest first, and what limits the frame rate</span>
+python tools/trace_report.py --skip 30 --csv out/trace.csv   <span class="pl-c"><span class="pl-c">#</span> drop warm-up frames; one row per frame for a spreadsheet</span>
+python tools/measure_camera_latency.py pathon      <span class="pl-c"><span class="pl-c">#</span> at the GX10's own screen: real camera-to-GX10 delay, by flashing the screen</span></pre></div>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>In the trace</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">cable_ms</code></td>
+<td>Phone to GX10, extra over the quickest recent frame. Only sources that send a timestamp (PathOn, relay).</td>
+</tr>
+<tr>
+<td><code class="notranslate">wait_ms</code></td>
+<td>The frame had arrived and sat waiting for the loop</td>
+</tr>
+<tr>
+<td><code class="notranslate">skipped</code></td>
+<td>Camera frames that arrived and were never used</td>
+</tr>
+<tr>
+<td><code class="notranslate">stream.prepare</code>, <code class="notranslate">perception.detector</code>, <code class="notranslate">perception.hand</code>, <code class="notranslate">perception.depth</code>, <code class="notranslate">guidance</code></td>
+<td>Time inside each step</td>
+</tr>
+<tr>
+<td><code class="notranslate">loop_ms</code>, <code class="notranslate">idle_ms</code></td>
+<td>The whole loop for that frame, then how long it waited for the camera</td>
+</tr>
+<tr>
+<td><code class="notranslate">e2e_ms</code></td>
+<td>Frame arrived to sound updated</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p dir="auto">To time something new: <code class="notranslate">with tracing.span("my.step"):</code> inside the loop, or <code class="notranslate">tracing.event("my.call", ms=...)</code> for anything slower than a frame. <code class="notranslate">TRACE=0</code> switches tracing off.</p>
+<p dir="auto">The trace cannot see two things: the fixed camera and cable delay (the flash tool measures it) and Bluetooth earbud delay.</p>
+<h2 dir="auto">Workflow</h2>
+<ul dir="auto">
+<li>Pull before you start: <code class="notranslate">git pull --rebase</code></li>
+<li>Small commits, push often</li>
+<li>Don't commit secrets. Put API keys in <code class="notranslate">.env</code> (it's gitignored)</li>
+</ul>
+<h3 dir="auto">Pitch deck</h3>
+<p dir="auto">Plain static files in <code class="notranslate">deck/</code> (three.js and the fonts are inside it), so any web server works:</p>
+<div class="highlight highlight-source-shell" dir="auto"><pre class="notranslate">python -m http.server 8650   <span class="pl-c"><span class="pl-c">#</span> from the repo root, then open http://localhost:8650/deck/</span></pre></div>
+<p dir="auto"><code class="notranslate">main.py</code> also serves it at <a href="http://localhost:8642/deck/" rel="nofollow">http://localhost:8642/deck/</a>, and then the live-demo slide embeds the<br>
+dashboard. From another machine, add <code class="notranslate">?dash=http://&lt;gx10-ip&gt;:8642</code>. With no dashboard reachable,<br>
+the demo slide plays <code class="notranslate">deck/media/demo-run.mp4</code> if it exists.</p>
+<p dir="auto">Online copy: <a href="https://drealveernanda.github.io/ucsc-ai-hackathon-2026/" rel="nofollow">https://drealveernanda.github.io/ucsc-ai-hackathon-2026/</a> (<code class="notranslate">deck/</code>, on the <code class="notranslate">gh-pages</code><br>
+branch), this README at .../readme/ without the email addresses, the Devpost write-up<br>
+(<code class="notranslate">docs/devpost.md</code>) at .../writeup/, and the 2-minute pitch script (<code class="notranslate">docs/script.md</code>) at .../script/. After changing any of them, run <code class="notranslate">bash deck/deploy.sh</code>.</p>
+<p dir="auto">Keys: arrows, space or click to advance; F fullscreen; N speaker notes with a timer.<br>
+<code class="notranslate">?auto</code> plays it on a timer (for recording a video); <code class="notranslate">?still</code> skips animation (for screenshots).</p>
+  </main>
+</body>
+</html>

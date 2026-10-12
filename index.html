@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#080f18">
+  <title>Proprio</title>
+  <meta name="description" content="Three-minute pitch: spoken directions guide a blind person's hand to an object, all on an ASUS Ascent GX10.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/barlow-semi-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="deck.css">
+  <script src="vendor/katex/katex.min.js" defer></script>
+</head>
+<body>
+  <canvas id="stage" class="stage" aria-hidden="true"></canvas>
+  <div class="labels" aria-hidden="true">
+    <span class="lab lab-word" id="lab-word"></span>
+    <span class="lab lab-mug" id="lab-mug">mug</span>
+    <span class="lab lab-you" id="lab-you">Chest camera</span>
+    <span class="lab lab-cloud" id="lab-cloud">Internet</span>
+    <span class="lab lab-q" id="lab-q">?</span>
+    <span class="lab lab-tip" id="lab-tip">Hand</span>
+    <span class="lab lab-hand" id="lab-hand"><svg class="hi hi-open" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="hi hi-grab" viewBox="0 0 24 24"><path d="M18 11.5V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v1.4"/><path d="M14 10V8a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 9.9V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v5"/><path d="M6 14a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-4a8 8 0 0 1-8-8 2 2 0 1 1 4 0"/></svg></span>
+    <span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span><span class="lab lab-motor">&#8203;</span>
+    <span class="lab lab-gx" id="lab-gx10">GX10</span>
+    <span class="lab lab-axis" id="lab-gxx">x right</span>
+    <span class="lab lab-axis" id="lab-gxy">y up</span>
+    <span class="lab lab-axis" id="lab-gxz">z forward</span>
+    <span class="lab lab-axis" id="lab-ax"></span>
+    <span class="lab lab-axis" id="lab-ay"></span>
+    <span class="lab lab-axis" id="lab-az"></span>
+  </div>
+
+  <main class="deck" id="deck">
+
+    <section class="slide" data-id="title" data-shots="title" data-trans="none" data-dur="5">
+      <h1 class="poster" data-scramble>Proprio</h1>
+      <p class="lede">Find it. Grab it. Eyes closed.</p>
+      <aside class="notes">One sentence: a blind person asks for something on the table and spoken words walk their hand to it. Every model runs on the ASUS GX10.</aside>
+    </section>
+
+    <section class="slide" data-id="problem" data-shots="fog,query,phone" data-steps="2" data-trans="lights" data-dur="13">
+      <div class="swap">
+        <div class="stat" data-only="0"><p class="stat-n" data-count="43" data-suffix="M">43M</p><p class="stat-l">people are blind</p></div>
+        <div class="stat" data-only="1"><p class="stat-n">#1</p><p class="stat-l">everyday challenge: finding a dropped or misplaced item</p></div>
+        <div class="stat" data-only="2"><p class="stat-n" data-count="68" data-suffix="%">68%</p><p class="stat-l">of their requests for help needed an answer within 10 minutes</p></div>
+      </div>
+      <p class="fine swap">
+        <span data-only="0">Lancet Global Health, 2020</span>
+        <span data-only="1">Yi et al., Finding Objects for Assisting Blind People, 2013</span>
+        <span data-only="2">Brady et al., CHI 2013: 40,748 questions from 5,329 blind users</span>
+      </p>
+      <aside class="notes">43M blind worldwide, 61M by 2050 (Lancet GH 2020). #1: finding dropped or misplaced items is described as the most common challenge (Yi et al. 2013); interview studies say it touches nearly every household task. 68%: in VizWiz Social, most questions needed an answer within 10 minutes, so help has to be real time (Brady et al., CHI 2013).</aside>
+    </section>
+
+    <section class="slide" data-id="provide" data-shots="ask" data-trans="iris" data-dur="11">
+      <h2 class="head">An aid that<br><span class="nw">guides your hand.</span></h2>
+      <p class="lede small">Ask for any item, and one spoken word at a time walks your hand onto it. It remembers the room, so it can find what you can’t see.</p>
+      <aside class="notes">Say it out loud: "Find my mug." Then let the scene talk: the hand moves one axis at a time and each bubble is the word in the earbud. Hands-free, any object by name, no setup. Memory: it keeps where items are in the room, so an item behind your hand or outside the camera's view can still be found. Today it holds a hidden item's place for 15 seconds using the phone's own motion tracking; the product keeps a map of everything it has seen.</aside>
+    </section>
+
+    <section class="slide" data-id="others" data-shots="recede" data-steps="5" data-trans="wipe" data-dur="12">
+      <h2 class="head">What exists today</h2>
+      <ol class="vs">
+        <li data-step="1"><span class="vs-n">Meta glasses</span><span class="vs-w">a volunteer talks you through it</span><span class="vs-r">needs internet and a person</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li data-step="2"><span class="vs-n">Be My AI</span><span class="vs-w">describes a photo</span><span class="vs-r">never guides your hand</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li data-step="3"><span class="vs-n">Seeing AI</span><span class="vs-w">leads you toward an item</span><span class="vs-r">gets you near it, not onto it</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li data-step="4"><span class="vs-n">AIGuide</span><span class="vs-w">guides your hand</span><span class="vs-r">handheld, objects scanned first</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Gap"><path d="M7 7l10 10M17 7L7 17"/></svg></li>
+        <li class="us" data-step="5"><span class="vs-n">Proprio</span><span class="vs-w">guides your hand by voice</span><span class="vs-r">hands-free, offline, any object</span><svg class="mk" viewBox="0 0 24 24" role="img" aria-label="Fills it"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></li>
+      </ol>
+      <p class="fine" data-step="1">Be My Eyes on Ray-Ban Meta, 2024; Microsoft Research, Find My Things; Lee et al., TACCESS 2022.</p>
+      <aside class="notes">One Enter per tool: say what it does, then the gap. Meta glasses: hands-free, "Hey Meta, Be My Eyes" calls a sighted volunteer; needs internet and a person; 56% retrieval accuracy in an ASSETS 2025 study. Be My AI sends a photo to the cloud and describes it. Seeing AI Find My Things needs four videos per item and leads you until the item is within arm's reach, then stops: it never steers your hand onto it. AIGuide guides the hand but is handheld with pre-scanned objects. Last Enter: ours fills every gap.</aside>
+    </section>
+
+    <section class="slide slide-live" data-id="live" data-shots="off" data-trans="screen" data-dur="38">
+      <iframe class="live" id="live" title="Live dashboard" tabindex="-1" data-src="/#demo"></iframe>
+      <p class="live-note" id="live-note">Live demo</p>
+      <figure class="live-video" id="live-video" hidden>
+        <figcaption>Or watch this video:</figcaption>
+        <div class="live-frame"><iframe data-src="https://www.youtube-nocookie.com/embed/wdUEhJDfMpk?rel=0" title="Proprio demo video" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
+        <a href="https://www.youtube.com/watch?v=wdUEhJDfMpk" target="_blank" rel="noopener">youtube.com/watch?v=wdUEhJDfMpk</a>
+      </figure>
+      <aside class="notes">The Ethernet cable is already out. "She's blindfolded, and the internet is unplugged." Wearer: "Find my mug." Narrate the screen; one grab, about 30 s, then back to the deck. Fallback: the demo video on YouTube, which this slide shows whenever the dashboard is not reachable.</aside>
+    </section>
+
+    <section class="slide" data-id="haptics" data-shots="overload" data-trans="columns" data-dur="6">
+      <h2 class="head">Why not vibration?</h2>
+      <div class="stat"><p class="stat-n" data-count="74" data-suffix="%">74%</p><p class="stat-l">of overlapping buzzes were misread</p></div>
+      <p class="fine">Yeganeh, University of Iceland 2026: 26% read correctly when buzzes overlapped, 93% one at a time.</p>
+      <div class="buzz-fig" aria-hidden="true">
+        <figure class="buzz-item"><div class="buzz-art"><svg class="hi" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><span class="mot" style="left:30%;top:78%"></span><span class="mot" style="left:55%;top:90%"></span><span class="mot" style="left:78%;top:72%"></span></div><figcaption>wrist band</figcaption></figure>
+        <figure class="buzz-item"><div class="buzz-art"><svg class="hi" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8.2" ry="10"/><path d="M8.6 10.2h1.6M13.8 10.2h1.6M12 11.5v3.2l-1 .6M9.6 17.4c1.5 1 3.3 1 4.8 0"/></svg><span class="mot" style="left:50%;top:12%"></span><span class="mot" style="left:24%;top:36%"></span><span class="mot" style="left:76%;top:36%"></span><span class="mot" style="left:26%;top:66%"></span><span class="mot" style="left:74%;top:66%"></span><span class="mot" style="left:50%;top:90%"></span></div><figcaption>face</figcaption></figure>
+      </div>
+      <aside class="notes">Vibration needs a motor per direction spread over the body (a wrist band, a belt, a face rig), and the buzzes overlap: when buzzes overlapped, 74% were misread (26% read correctly, vs 93% one at a time). A face rig has the same problem with more motors. Even single wrist buzzes were felt in the wrong spot 1 time in 10 (Trant et al., Sci Rep 2025, 41 blind participants), and spoken cues gave faster grasps. One word in an earbud needs no decoding.</aside>
+    </section>
+
+    <section class="slide" data-id="how" data-shots="sweep,found,vector,speak" data-steps="3" data-trans="blinds" data-dur="9">
+      <h2 class="head">How it works</h2>
+      <div class="swap words roll">
+        <p class="word" data-only="0">See</p>
+        <p class="word" data-only="1">Find</p>
+        <p class="word" data-only="2">Measure</p>
+        <p class="word" data-only="3">Speak</p>
+      </div>
+      <aside class="notes">See: iPhone color + lidar to the GX10. Find: Whisper hears the request and Nemotron turns it into an item name ("I'm thirsty" becomes water bottle); YOLO-World finds the mug, MediaPipe the fingertip. Measure: lidar turns both into 3D points. Speak: the biggest gap becomes one word in the earbuds.</aside>
+    </section>
+
+    <section class="slide" data-id="math" data-shots="plan" data-trans="split" data-dur="4">
+      <h2 class="head">The core loop</h2>
+      <ol class="math write">
+        <li><span class="eq" data-tex="\mathbf{p} = d\,K^{-1}\!\begin{bmatrix}u\\ v\\ 1\end{bmatrix}"></span><span class="eq-l">pixel and lidar depth to 3D</span></li>
+        <li><span class="eq" data-tex="\mathbf{e} = \mathbf{p}_{\text{mug}} - \mathbf{p}_{\text{finger}}"></span><span class="eq-l">where the hand must go</span></li>
+        <li><span class="eq" data-tex="i^{*} = \arg\max_{i}\,\lvert e_i\rvert \quad \text{if } \lvert e_{i^{*}}\rvert > 3\,\text{cm}"></span><span class="eq-l">one word: right, down, forward</span></li>
+        <li><span class="eq" data-tex="\lVert \mathbf{e} \rVert < 5\,\text{cm for } 0.3\,\text{s} \;\Rightarrow\; \text{grab}"></span><span class="eq-l">then “grab”</span></li>
+      </ol>
+      <aside class="notes">Median depth over a small patch, ignoring holes. Table plane by RANSAC. Words at most twice a second. About 35 ms per frame on the GX10.</aside>
+    </section>
+
+    <section class="slide" data-id="results" data-shots="camonly,both" data-steps="1" data-trans="lift" data-dur="8">
+      <div class="duo">
+        <div class="stat"><p class="stat-n" data-count="52" data-suffix="%">52%</p><p class="stat-l">camera only</p></div>
+        <div class="stat" data-step="1"><p class="stat-n is-grab" data-count="99" data-suffix="%">99%</p><p class="stat-l">with lidar</p></div>
+      </div>
+      <p class="lede small">Depth accuracy, 45 cm to 2 m</p>
+      <p class="fine">Depth to an item at six known distances from 45 cm to 2 m: a camera alone was off by 48% on average, lidar by 1%. Dots illustrate what that does to a reach.</p>
+      <aside class="notes">First camera only: 52% accurate, the grey dots scatter. Then add lidar: 99%, the green dots land on the mug. Accuracy is 100% minus the average depth error over six known distances (45, 83, 100, 120, 150, 200 cm). Camera only read 37 to 72 cm at every one of them, so the farther the item, the worse it got: 64% off at 2 m. Lidar stayed within 2 cm.</aside>
+    </section>
+
+    <section class="slide" data-id="local" data-shots="dome,boxed,quick,cut" data-steps="3" data-trans="diagonal" data-dur="11">
+      <h2 class="head">Why local</h2>
+      <div class="swap">
+        <div class="stat" data-only="0"><p class="stat-n sm">Private</p><p class="stat-l">video of your home never leaves the room</p></div>
+        <div class="stat" data-only="1"><p class="stat-n sm" data-count="128" data-suffix=" GB">128 GB</p><p class="stat-l">holds every model at once: YOLO-World, MediaPipe, Whisper, Nemotron 30B, Cosmos Reason 8B</p></div>
+        <div class="stat" data-only="2"><p class="stat-n sm" data-count="35" data-suffix=" ms">35 ms</p><p class="stat-l">per frame, with no trip to a server</p></div>
+        <div class="stat" data-only="3"><p class="stat-n sm">Offline</p><p class="stat-l">works with the internet unplugged</p></div>
+      </div>
+      <aside class="notes">Private: a camera in someone's home never streams out. 128 GB unified memory keeps YOLO-World, MediaPipe, Whisper, the 30B Nemotron 3 Nano and the 8B Cosmos Reason model loaded together; most laptops can't hold the 30B model next to the rest. 35 ms: measured perception per frame on the GX10; guidance needs a steady loop and a cloud round trip adds varying delay. Offline: in the demo we unplug the GX10's internet and it keeps guiding, because nothing needs the network. Then thank the judges.</aside>
+    </section>
+
+    <section class="slide" data-id="close" data-shots="finale" data-trans="fade" data-dur="3">
+      <h2 class="poster">Proprio</h2>
+      <p class="lede">Find it. Grab it. Eyes closed.</p>
+      <ul class="team"><li>Veer</li><li>Gavin</li><li>Jake</li><li>Sasha</li></ul>
+      <aside class="notes">Thank the judges, then questions. Likely ones: how you measured the numbers (99/52 is depth accuracy at six known distances; published studies for the rest), why not run it on a laptop (privacy, all models together in 128 GB, offline), glass and shiny objects (lidar struggles; falls back to hand size).</aside>
+    </section>
+
+  </main>
+
+  <div class="curtain" id="curtain" aria-hidden="true"></div>
+  <p class="counter" id="counter" aria-live="polite"></p>
+  <p class="toast" id="toast" aria-live="polite"></p>
+  <script type="module" src="deck.js"></script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0f17">
+  <title>Proprio</title>
+  <meta name="description" content="For blind people, finding a dropped or misplaced item is the most common everyday challenge. Proprio guides their hand onto anything they ask for, one spoken word at a time.">
+  <link rel="icon" href="../icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../readme.css">
+</head>
+<body>
+  <nav class="top" aria-label="Site"><a href="../">Presentation</a><span><a href="../script/">Script</a> &nbsp; <a href="../writeup/">Write-up</a> &nbsp; <a href="../readme/">README</a></span></nav>
+  <main class="doc">
+    <h1>Proprio</h1>
+<p class="pitch">Proprio guides blind people's hands onto anything they ask for, one spoken word at a time.</p>
+<h2>Inspiration</h2>
+<p>At a coffee shop, one of us watched a blind customer drop something and sweep the floor with their hands, trying to find it. Being able to see shouldn't decide whether you can find your own things.</p>
+<p>For blind people, finding a dropped or misplaced item is described as the most common everyday challenge, and most requests for help need an answer within minutes. Today's tools describe what a camera sees or call a volunteer over the internet. None of them walk your hand onto the item, hands-free, without the internet.</p>
+<h2>What it does</h2>
+<p>You wear an iPhone on your chest and say "find my mug." Proprio finds the mug and your fingertip in 3D and speaks one word at a time into your earbuds: <em>right</em>, <em>down</em>, <em>forward</em>, then <em>grab</em>. It works for any item you can name, with no setup or pre-scanning. It remembers where items are in the room, so it can still guide you to one your hand is covering or the camera can't see. Every model runs on one ASUS Ascent GX10, so no video leaves the room and it keeps working with the internet unplugged.</p>
+<h2>How we built it</h2>
+<ul><li><strong>See:</strong> the iPhone streams color and lidar depth to the GX10.</li><li><strong>Ask:</strong> Whisper hears the request, and Nemotron 3 Nano (30B) turns it into an item name, so "I'm thirsty" becomes "water bottle".</li><li><strong>Find:</strong> YOLO-World finds the item by name; MediaPipe tracks the fingertip.</li><li><strong>Measure:</strong> lidar depth turns both into 3D points.</li><li><strong>Remember:</strong> the phone's own motion tracking (ARKit pose) keeps the item's place in room coordinates, so it holds steady when the hand covers it or the wearer leans or turns.</li><li><strong>Speak:</strong> the axis with the biggest gap becomes one word, decided from the last 0.8 s of frames so one noisy frame can't change it.</li><li><strong>Show:</strong> a live dashboard draws the lidar scene in 3D with the hand, the item and the word being spoken.</li><li><strong>Test:</strong> we checked depth to an item at six known distances, from 45 cm to 2 m, with a camera alone and with lidar.</li></ul>
+<p>Mathematically:</p>
+<div class="math">\mathbf{p} = d\,K^{-1}\begin{bmatrix}u &amp; v &amp; 1\end{bmatrix}^{\top} \qquad \text{(pixel and lidar depth to 3D)}</div>
+<div class="math">\mathbf{e} = \mathbf{p}_{\text{item}} - \mathbf{p}_{\text{finger}} \qquad \text{(where the hand must go)}</div>
+<div class="math">k = \arg\max_{i}\,\lvert e_i\rvert \quad \text{if } \lvert e_k\rvert &gt; 3\,\text{cm} \qquad \text{(one word: right, down, forward)}</div>
+<div class="math">\lVert \mathbf{e} \rVert &lt; 5\,\text{cm for } 0.3\,\text{s} \;\Rightarrow\; \text{grab}</div>
+<h2>Challenges we ran into</h2>
+<ul><li>Getting the iPhone's lidar stream onto an ARM box (the GX10) took a custom build.</li><li>Lidar reads nothing under about 20 cm, so a hand near the chest has no depth; we estimate it from the hand's size in the image.</li><li>A forearm in front of the item can lend it the wrong depth, so we keep the item's place in the room instead of trusting every frame.</li><li>Making guidance usable: tones confused testers, so we switched to single spoken words.</li></ul>
+<h2>Accomplishments that we're proud of</h2>
+<ul><li>A full loop from voice request to grab, running locally on one box.</li><li>Lidar depth was 99% accurate from 45 cm to 2 m (1% average error), against 52% for a camera alone (48% average error).</li><li>It works offline: we unplug the internet mid-demo.</li><li>The first four people from outside our team to try it all grabbed the item with no issues.</li></ul>
+<h2>What we learned</h2>
+<p>Cues have to be easy to read, not just present. Vibration and other cues made people misjudge where the item was, or overloaded them with too much to decode at once: in published studies, 1 in 10 wrist buzzes is felt in the wrong spot, and 74% of overlapping buzzes are misread. A single plain word in the ear needs no decoding.</p>
+<p>Depth precision decides whether hand guidance works. In our test a camera alone misjudged depth by 48% on average, and by 64% at 2 m; lidar stayed within 1%. A camera's depth errors are different for the hand and the item, so the guidance is poor.</p>
+<h2>What's next for Proprio</h2>
+<p>A memory that reaches beyond one room. Proprio would learn the places you go most, the items you use most, and where each was last seen, so when you forget where you left your keys it already knows, even if they're in another room, and guides you there.</p>
+<p>Alongside that: trials with blind and low-vision testers, glass and shiny items, and making it into a more compact device.</p>
+  </main>
+  <script src="../vendor/katex/katex.min.js"></script>
+  <script>
+    document.querySelectorAll(".math").forEach((e) => katex.render(e.textContent, e, { displayMode: true, throwOnError: false }));
+  </script>
+</body>
+</html>

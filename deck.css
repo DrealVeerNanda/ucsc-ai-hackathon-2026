@@ -1,0 +1,274 @@
+/* Pitch deck. Same world as the dashboard (DESIGN.md): blue-black ground, telestrator yellow
+   only for the fingertip-to-object line, grab green only for success, Barlow. Sizes are
+   viewport-based so it fills any screen the GX10 drives. */
+
+@font-face { font-family: "Barlow"; font-weight: 400; font-display: swap; src: url("fonts/barlow-400.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 500; font-display: swap; src: url("fonts/barlow-500.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: swap; src: url("fonts/barlow-600.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; font-display: swap; src: url("fonts/barlow-semi-condensed-700.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Fallback"; src: local("Arial"), local("Helvetica"), local("Liberation Sans"); size-adjust: 93%; ascent-override: 100%; descent-override: 20%; }
+@font-face { font-family: "Barlow Display Fallback"; src: local("Arial Narrow"), local("Arial"), local("Liberation Sans Narrow"); size-adjust: 88%; ascent-override: 100%; descent-override: 20%; }
+
+:root {
+  color-scheme: dark;
+  --ground: oklch(0.165 0.022 255);
+  --plate: oklch(0.215 0.026 255);
+  --rule: oklch(0.33 0.03 255);
+  --text: oklch(0.965 0.005 255);
+  --muted: oklch(0.76 0.02 255);
+  --faint: oklch(0.6 0.022 255);
+  --leg: oklch(0.88 0.165 96);
+  --on-leg: oklch(0.21 0.04 96);
+  --grab: oklch(0.82 0.16 152);
+  --on-grab: oklch(0.2 0.04 152);
+  --scrim: oklch(0.12 0.02 255 / 0.82);
+
+  --font: "Barlow", "Barlow Fallback", sans-serif;
+  --display: "Barlow Semi Condensed", "Barlow Display Fallback", sans-serif;
+
+  --t-poster: min(11vw, 19vh);
+  --t-head: min(5.4vw, 9.5vh);
+  --t-stat: min(6.2vw, 11vh);
+  --t-lede: min(2.5vw, 4.4vh);
+  --t-body: min(2vw, 3.6vh);
+  --t-small: min(1.35vw, 2.4vh);
+  --t-fine: min(0.95vw, 1.7vh);
+
+  --gx: 5vw;
+  --gy: 7vh;
+  --col: min(46vw, 82vh);
+  --radius: 3px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--ground); color: var(--text); }
+body {
+  overflow: hidden;
+  font: 400 var(--t-body)/1.35 var(--font);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  cursor: default;
+}
+body.is-idle { cursor: none; }
+::selection { background: var(--text); color: var(--ground); }
+h1, h2, p, ol, ul, figure { margin: 0; }
+
+.stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+
+/* labels that track points in the 3D scene */
+.labels { position: fixed; inset: 0; pointer-events: none; }
+.lab {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  font: 600 var(--t-small)/1.25 var(--font);
+  white-space: nowrap;
+  opacity: 0;
+}
+.lab-word {
+  background: var(--text);
+  color: var(--ground);
+  font: 700 var(--t-lede)/1.1 var(--display);
+  padding: 0.35em 0.7em;
+  border-radius: var(--radius);
+}
+.lab-word::after {
+  content: "";
+  position: absolute;
+  left: 0.9em;
+  bottom: -0.45em;
+  border: 0.5em solid transparent;
+  border-top-color: var(--text);
+  border-bottom: 0;
+  border-left-width: 0;
+}
+.lab-word.is-grab::after { border-top-color: var(--grab); }
+.lab-word.is-big { font-size: min(6vw, 10vh); translate: -100% 0; }
+.lab-word.is-big::after { left: auto; right: 0.9em; border-left-width: 0.5em; border-right-width: 0; }
+.lab-word.pop { animation: pop 260ms cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes pop { from { scale: 0.7; } }
+.lab-gx { background: var(--scrim); color: var(--text); }
+.lab-motor { width: 36px; height: 36px; padding: 0; border: 3px solid var(--muted); border-radius: 50%; background: transparent; }
+.lab-motor.is-on { border-color: var(--text); scale: 1.35; }
+.lab-tip { background: var(--text); color: var(--ground); }
+/* the hand: a Lucide outline icon riding the 3D grip point (vendor/lucide, ISC) */
+.lab-hand { padding: 0; background: none; translate: -50% -55%; width: min(6.4vw, 11.5vh); height: min(6.4vw, 11.5vh); }
+.hi { width: 100%; height: 100%; fill: none; stroke: var(--text); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.lab-hand .hi { position: absolute; inset: 0; filter: drop-shadow(0 0 0.35vh oklch(0.12 0.02 255)); transition: opacity 150ms linear; }
+.lab-hand .hi-grab, .lab-hand.is-grab .hi-open { opacity: 0; }
+.lab-hand.is-grab .hi-grab { opacity: 1; stroke: var(--grab); }
+/* Phosphor styles (vendor/phosphor, MIT) are filled shapes, not strokes */
+.lab-hand.ph .hi { fill: currentColor; stroke: none; color: var(--text); }
+.lab-hand.ph.is-grab .hi-grab { color: var(--grab); }
+/* the Proprio hand is anchored so its reticle, not its centre, sits on the tracked point */
+.lab-hand.pp { translate: -60.2% -24.0%; width: min(9vw, 16vh); height: min(9vw, 16vh); }
+.lab-hand.pp .hi { stroke: none; fill: none; filter: none; }
+.lab-hand.pp.is-grab .hi-grab { stroke: none; }
+.toast { position: fixed; left: 50%; bottom: 3vh; translate: -50% 0; margin: 0; padding: 0.5vh 1vw; border-radius: var(--radius); background: var(--text); color: var(--ground); font: 600 var(--t-small)/1.3 var(--font); opacity: 0; transition: opacity 150ms linear; pointer-events: none; z-index: 6; }
+.toast.is-on { opacity: 1; }
+
+/* why not vibration: a hand and a face, every motor rippling at once */
+.buzz-fig { position: fixed; right: 7vw; top: 50%; translate: 0 -50%; display: flex; gap: 6vw; align-items: end; pointer-events: none; }
+.buzz-item { margin: 0; display: grid; justify-items: center; gap: 2vh; }
+.buzz-item figcaption { font-size: var(--t-small); color: var(--muted); }
+.buzz-art { position: relative; width: min(15vw, 27vh); aspect-ratio: 1; }
+.buzz-art .hi { stroke-width: 1.1; stroke: var(--muted); }
+.mot { position: absolute; width: 1.1vh; height: 1.1vh; margin: -0.55vh 0 0 -0.55vh; border-radius: 50%; background: var(--text); }
+.mot::before, .mot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--text); animation: ripple 900ms cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.mot::after { animation-delay: 450ms; }
+@keyframes ripple { from { scale: 1; opacity: 0.9; } to { scale: 4.2; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .mot::before, .mot::after { animation: none; scale: 2.4; opacity: 0.4; } }
+.lab-q { background: var(--text); color: var(--ground); font: 700 min(5vw, 9vh)/1 var(--display); padding: 0.15em 0.4em; }
+.lab-word.is-grab { background: var(--grab); color: var(--on-grab); }
+.lab-mug { background: var(--text); color: var(--ground); }
+.lab-you { background: var(--text); color: var(--ground); }
+.lab-cloud { background: var(--scrim); color: var(--muted); font-weight: 500; }
+.lab-cloud.is-cut { text-decoration: line-through; }
+.lab-axis { background: var(--scrim); color: var(--text); font-weight: 500; }
+
+/* slides */
+.deck { position: fixed; inset: 0; pointer-events: none; }
+.slide {
+  position: absolute;
+  inset: 0;
+  padding: var(--gy) var(--gx);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3.2vh;
+  max-width: calc(var(--col) + 2 * var(--gx));
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 320ms var(--ease), visibility 0s linear 320ms;
+}
+.is-still .slide, .is-still [data-step], .is-still [data-only], .is-still .lab { transition: none !important; }
+.slide.is-on { opacity: 1; visibility: visible; transition: opacity 420ms var(--ease) 120ms, visibility 0s; pointer-events: auto; }
+.slide-full { max-width: none; }
+.slide .notes { display: none; }
+
+[data-step] { transition: opacity 420ms var(--ease), translate 420ms var(--ease); }
+[data-step].is-later { opacity: 0; translate: 0 1.2vh; }
+@media (prefers-reduced-motion: reduce) { [data-step].is-later { translate: none; } }
+
+.poster { font: 700 var(--t-poster)/0.95 var(--display); }
+.poster.quote { font-size: min(8.5vw, 15vh); }
+.head { font: 700 var(--t-head)/1 var(--display); }
+.lede { font-size: var(--t-lede); line-height: 1.3; color: var(--text); max-width: 30ch; }
+.lede.small { font-size: var(--t-body); }
+.fine { font-size: var(--t-small); color: var(--muted); max-width: 60ch; line-height: 1.4; }
+
+/* builds that replace each other in place */
+.swap { display: grid; }
+.swap > * { grid-area: 1 / 1; }
+[data-only] { transition: opacity 260ms var(--ease) 40ms; }
+[data-only].is-off { opacity: 0; transition: none; pointer-events: none; }
+
+.stat { display: grid; gap: 1vh; }
+.stat-n { font: 700 min(14vw, 24vh)/0.9 var(--display); }
+.stat-n.is-grab { color: var(--grab); }
+.stat-l { font-size: var(--t-lede); color: var(--text); max-width: 24ch; line-height: 1.3; }
+.duo { display: flex; gap: 5vw; align-items: end; }
+
+.word { font: 700 min(8vw, 14vh)/1 var(--display); }
+.word.is-grab { color: var(--grab); }
+
+.math { list-style: none; padding: 0; display: grid; gap: 3vh; }
+.math li { display: grid; gap: 0.6vh; }
+.eq { font-size: var(--t-lede); color: var(--text); }
+.eq .katex { font-size: 1.15em; }
+.eq sub, .eq sup { font-size: 0.6em; line-height: 0; }
+.eq-l { font-size: var(--t-body); color: var(--muted); }
+
+/* competitors: one tool per Enter, what it does and its gap; ours last */
+.vs { list-style: none; padding: 0; display: grid; width: min(50vw, 96vh); }
+.vs li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "n mk" "w mk" "r mk";
+  align-items: center;
+  column-gap: 2vw;
+  padding: 1.5vh 0;
+  border-bottom: 1px solid var(--rule);
+}
+.vs-n { grid-area: n; font: 700 var(--t-lede)/1.1 var(--display); }
+.vs-w { grid-area: w; font-size: var(--t-small); color: var(--muted); }
+.vs-r { grid-area: r; font-size: var(--t-small); font-weight: 600; color: var(--text); }
+.vs .mk { grid-area: mk; width: min(2.6vw, 4.6vh); height: min(2.6vw, 4.6vh); fill: none; stroke: var(--faint); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.vs .mk path { stroke-dasharray: 40; stroke-dashoffset: 0; transition: stroke-dashoffset 450ms ease-out 250ms; }
+.vs li.is-later .mk path { stroke-dashoffset: 40; transition: none; }
+.vs li.us { border-bottom: 0; padding: 1.7vh 1.2vw; margin-top: 1vh; background: var(--grab); border-radius: var(--radius); }
+.vs li.us .vs-n, .vs li.us .vs-w, .vs li.us .vs-r { color: var(--on-grab); }
+.vs li.us .mk { stroke: var(--on-grab); stroke-width: 2.8; }
+
+.team { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 1.2vh 2.4vw; font: 600 var(--t-body)/1.2 var(--font); }
+
+/* transitions: the curtain each slide is revealed through (see deck.js) */
+.curtain { position: fixed; inset: 0; background: var(--ground); opacity: 0; pointer-events: none; z-index: 5; }
+.curtain .slat { height: 12.5%; background: var(--ground); transform-origin: center top; }
+.curtain .col { flex: 1; height: 100%; background: var(--ground); transform-origin: left center; }
+.curtain .half { position: absolute; left: 0; right: 0; height: 50%; background: var(--ground); }
+.curtain .half.top { top: 0; }
+.curtain .half.bottom { bottom: 0; }
+.is-still .curtain { display: none; }
+
+/* how it works: words roll up like a counter */
+.roll { overflow: hidden; }
+.roll [data-only] { transition: translate 360ms cubic-bezier(0.65, 0, 0.35, 1), opacity 200ms linear; }
+.roll [data-only].is-off { translate: 0 100%; opacity: 0; transition: none; }
+.roll [data-only].is-off.is-past { translate: 0 -100%; }
+
+/* core loop: each equation is written on, left to right, one after another */
+.slide.is-on .write li { animation: write 700ms cubic-bezier(0.65, 0, 0.35, 1) both; }
+.slide.is-on .write li:nth-child(1) { animation-delay: 700ms; }
+.slide.is-on .write li:nth-child(2) { animation-delay: 1150ms; }
+.slide.is-on .write li:nth-child(3) { animation-delay: 1600ms; }
+.slide.is-on .write li:nth-child(4) { animation-delay: 2050ms; }
+@keyframes write { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+/* stats in a smaller cut for the GX10 reasons */
+.stat-n.sm { font-size: min(10vw, 17vh); }
+
+@media (prefers-reduced-motion: reduce) {
+  .slide.is-on .write li { animation: none; }
+  .vs .mk path { transition: none; }
+  .roll [data-only], .roll [data-only].is-off { translate: none; }
+}
+.is-still .slide * { animation: none !important; }
+
+/* live demo: the dashboard, full screen */
+.slide-live { padding: 0; max-width: none; background: var(--ground); }
+.live { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; background: var(--ground); }
+.live-note {
+  position: absolute;
+  max-width: 40ch;
+  text-align: center;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  font: 700 var(--t-lede)/1.2 var(--display);
+  color: var(--muted);
+}
+.live.is-loaded + .live-note { display: none; }
+.slide-live.is-offline { padding: var(--gy) var(--gx); align-items: center; gap: 2.4vh; }
+.slide-live.is-offline .live-note { position: static; translate: none; color: var(--text); }
+.live-video { margin: 0; width: min(100%, 64vw, 100vh); display: flex; flex-direction: column; align-items: center; gap: 1.6vh; }
+.live-video[hidden] { display: none; }
+.live-video figcaption { font: 600 var(--t-body)/1.2 var(--font); color: var(--muted); }
+.live-frame { width: 100%; aspect-ratio: 16 / 9; background: var(--plate); border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
+.live-frame iframe { display: block; width: 100%; height: 100%; border: 0; }
+.live-video a { font: 400 var(--t-small)/1.2 var(--font); color: var(--muted); text-underline-offset: 3px; }
+.live-video a:hover { color: var(--text); }
+.live-video a:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+.counter {
+  position: fixed;
+  right: 1.6vw;
+  bottom: 1.6vh;
+  font-size: var(--t-fine);
+  color: var(--faint);
+  pointer-events: none;
+}
+.nw { white-space: nowrap; }
