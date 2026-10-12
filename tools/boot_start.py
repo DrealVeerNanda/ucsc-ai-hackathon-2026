@@ -7,8 +7,13 @@ seeing the pages (double-click Proprio).
   bash tools/install_launcher.sh --boot   # install that service (no sudo; needs "linger", which the GX10 has)
 
 It never starts with a red line: with no headphones the sound would come out of the screen.
-PROPRIO_BOOT_START=0 in .env.launcher leaves Start to a person; PROPRIO_BOOT_WAIT_S (600) is how
+PROPRIO_BOOT_START=0 in .env.launcher leaves Start to a person; PROPRIO_BOOT_WAIT_S (1800) is how
 long it waits for the lines to turn green before leaving it at the checklist.
+
+One thing does need a person, once, at the GX10's keyboard: while its login screen is up, the
+login screen's own sound server holds Bluetooth, and the headphones get no microphone (11 Oct
+2026). Log in, or press Ctrl+Alt+F3 and log in there. This script then restarts our sound manager
+so it can claim the headphones, and reconnects them.
 """
 import json
 import os
@@ -35,6 +40,25 @@ def answering(url: str) -> bool:
         return False
 
 
+def login_screen_up() -> bool:
+    """Is the login screen the one in front? Then its sound server, not ours, has Bluetooth."""
+    try:
+        out = subprocess.run(["loginctl", "list-sessions", "--no-legend"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return any(" gdm " in f" {row} " and " active " in f" {row} " for row in out.splitlines())
+
+
+def take_headphones(port: int):
+    """The login screen has just stepped aside: our sound manager was refused the microphone side
+    while it was there, and only asks again when it starts."""
+    subprocess.run(["systemctl", "--user", "restart", "wireplumber"], capture_output=True, timeout=20)
+    time.sleep(5.0)
+    lines = {l["id"]: l["level"] for l in (launcher.ask(port) or {}).get("lines", [])}
+    got = launcher.ask(port, "reconnect_airpods" if lines.get("airpods") == "green" else "connect_airpods", timeout_s=20.0)
+    say(f"sound manager restarted; headphones: {(got or {}).get('message', 'the keeper did not answer')}")
+
+
 def main() -> int:
     uid = os.getuid()
     os.environ.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
@@ -58,7 +82,8 @@ def main() -> int:
     if env.get("PROPRIO_BOOT_START", "1") == "0":
         say("Start is left to a person (PROPRIO_BOOT_START=0)")
         return 0
-    end, reds = time.monotonic() + float(env.get("PROPRIO_BOOT_WAIT_S", "600")), None
+    end, reds = time.monotonic() + float(env.get("PROPRIO_BOOT_WAIT_S", "1800")), None
+    held = login_screen_up()             # was Bluetooth the login screen's when this began?
     while time.monotonic() < end:
         state = launcher.ask(port) or {}
         if state.get("mode") in ("running", "stopping"):
@@ -69,9 +94,18 @@ def main() -> int:
             say(f"every line is green: {(got or {}).get('message', 'the keeper did not answer')}")
             return 0
         now = [l["title"] for l in state.get("lines", []) if l.get("level") == "red"]
+        pods_red = any(l.get("level") == "red" for l in state.get("lines", []) if str(l.get("id", "")).startswith("airpods"))
+        if held and not login_screen_up():
+            held = False
+            if pods_red:
+                say("the login screen has stepped aside")
+                take_headphones(port)
+                continue
         if now != reds:
             reds = now
-            say("waiting for: " + (", ".join(now) or "the checklist"))
+            say("waiting for: " + (", ".join(now) or "the checklist")
+                + (". Log in at the GX10's keyboard (or Ctrl+Alt+F3 and log in): its login screen is holding Bluetooth."
+                   if held and pods_red else ""))
         time.sleep(2.0)
     say("still not green: left at the checklist. Press Start (or Start anyway) on the page.")
     return 0

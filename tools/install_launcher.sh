@@ -29,7 +29,7 @@ Type=oneshot
 WorkingDirectory=$REPO
 ExecStart="$REPO/.venv/bin/python" "$REPO/tools/boot_start.py"
 KillMode=process
-TimeoutStartSec=900
+TimeoutStartSec=2100
 
 [Install]
 WantedBy=default.target
